@@ -5,9 +5,10 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
-from sqlalchemy import func
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, func
+from sqlalchemy.types import JSON
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
     AsyncEngine,
@@ -119,3 +120,143 @@ class TimestampMixin:
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+# ---------------------------------------------------------------------------
+# OAM Models (10 tables)
+# ---------------------------------------------------------------------------
+
+
+class Target(TimestampMixin, Base):
+    """Top-level reconnaissance target (company / domain)."""
+
+    __tablename__ = "targets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_name: Mapped[str] = mapped_column(String(255))
+    base_domain: Mapped[str] = mapped_column(String(255))
+    target_profile: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+class Asset(TimestampMixin, Base):
+    """Discovered asset linked to a target (subdomain, IP, URL, etc.)."""
+
+    __tablename__ = "assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    asset_type: Mapped[str] = mapped_column(String(50))
+    asset_value: Mapped[str] = mapped_column(String(500))
+    source_tool: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+
+class Identity(TimestampMixin, Base):
+    """WHOIS / ASN identity data associated with a target."""
+
+    __tablename__ = "identities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    asn: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    organization: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    whois_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+class Location(TimestampMixin, Base):
+    """Network location (port / service) observed on an asset."""
+
+    __tablename__ = "locations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    asset_id: Mapped[int] = mapped_column(Integer, ForeignKey("assets.id"))
+    port: Mapped[int] = mapped_column(Integer)
+    protocol: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    service: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    state: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
+
+class Observation(TimestampMixin, Base):
+    """HTTP / technology observation gathered from an asset."""
+
+    __tablename__ = "observations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    asset_id: Mapped[int] = mapped_column(Integer, ForeignKey("assets.id"))
+    tech_stack: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    page_title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    status_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    headers: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+class CloudAsset(TimestampMixin, Base):
+    """Cloud resource (S3 bucket, Azure blob, GCP storage, etc.)."""
+
+    __tablename__ = "cloud_assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    provider: Mapped[str] = mapped_column(String(20))
+    asset_type: Mapped[str] = mapped_column(String(100))
+    url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    findings: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+class Parameter(TimestampMixin, Base):
+    """URL / form parameter discovered on an asset."""
+
+    __tablename__ = "parameters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    asset_id: Mapped[int] = mapped_column(Integer, ForeignKey("assets.id"))
+    param_name: Mapped[str] = mapped_column(String(255))
+    param_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+
+
+class Vulnerability(TimestampMixin, Base):
+    """Security vulnerability found against a target / asset."""
+
+    __tablename__ = "vulnerabilities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    asset_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("assets.id"), nullable=True
+    )
+    severity: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(String(500))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    poc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_tool: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+
+class JobState(TimestampMixin, Base):
+    """Runtime state of a reconnaissance container / job."""
+
+    __tablename__ = "job_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    container_name: Mapped[str] = mapped_column(String(255))
+    current_phase: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(20))
+    last_seen: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    last_tool_executed: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True
+    )
+
+
+class Alert(TimestampMixin, Base):
+    """Notification / alert tied to a target and optionally a vulnerability."""
+
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    vulnerability_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("vulnerabilities.id"), nullable=True
+    )
+    alert_type: Mapped[str] = mapped_column(String(100))
+    message: Mapped[str] = mapped_column(Text)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)

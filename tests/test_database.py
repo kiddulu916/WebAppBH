@@ -30,3 +30,90 @@ async def test_create_all_tables():
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+from lib_webbh.database import (
+    Target, Asset, Identity, Location, Observation,
+    CloudAsset, Parameter, Vulnerability, JobState, Alert,
+)
+
+
+@pytest.mark.asyncio
+async def test_insert_target_and_asset():
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with get_session() as session:
+        target = Target(company_name="TestCorp", base_domain="testcorp.com")
+        session.add(target)
+        await session.commit()
+        await session.refresh(target)
+        asset = Asset(target_id=target.id, asset_type="subdomain", asset_value="api.testcorp.com", source_tool="amass")
+        session.add(asset)
+        await session.commit()
+        await session.refresh(asset)
+        assert target.id is not None
+        assert asset.target_id == target.id
+        assert asset.asset_value == "api.testcorp.com"
+
+
+@pytest.mark.asyncio
+async def test_insert_location_linked_to_asset():
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with get_session() as session:
+        target = Target(company_name="LocCorp", base_domain="loccorp.com")
+        session.add(target)
+        await session.commit()
+        await session.refresh(target)
+        asset = Asset(target_id=target.id, asset_type="ip", asset_value="10.0.0.1", source_tool="nmap")
+        session.add(asset)
+        await session.commit()
+        await session.refresh(asset)
+        loc = Location(asset_id=asset.id, port=443, protocol="tcp", service="https", state="open")
+        session.add(loc)
+        await session.commit()
+        await session.refresh(loc)
+        assert loc.asset_id == asset.id
+        assert loc.port == 443
+
+
+@pytest.mark.asyncio
+async def test_insert_vulnerability_with_severity():
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with get_session() as session:
+        target = Target(company_name="VulnCorp", base_domain="vulncorp.com")
+        session.add(target)
+        await session.commit()
+        await session.refresh(target)
+        asset = Asset(target_id=target.id, asset_type="subdomain", asset_value="admin.vulncorp.com", source_tool="subfinder")
+        session.add(asset)
+        await session.commit()
+        await session.refresh(asset)
+        vuln = Vulnerability(target_id=target.id, asset_id=asset.id, severity="critical", title="SQL Injection", description="Login form injectable", poc="sqlmap -u '...'", source_tool="sqlmap")
+        session.add(vuln)
+        await session.commit()
+        await session.refresh(vuln)
+        assert vuln.severity == "critical"
+        assert vuln.target_id == target.id
+
+
+@pytest.mark.asyncio
+async def test_job_state_status_values():
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with get_session() as session:
+        target = Target(company_name="JobCorp", base_domain="jobcorp.com")
+        session.add(target)
+        await session.commit()
+        await session.refresh(target)
+        job = JobState(target_id=target.id, container_name="recon-core-01", current_phase="recon", status="RUNNING", last_tool_executed="amass")
+        session.add(job)
+        await session.commit()
+        await session.refresh(job)
+        assert job.status == "RUNNING"
+        assert job.container_name == "recon-core-01"
