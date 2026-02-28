@@ -65,3 +65,47 @@ def test_bind_extra_override(capsys):
         captured = capsys.readouterr()
         record = json.loads(captured.out.strip())
         assert record["extra"]["asset_type"] == "subdomain"
+
+
+def test_log_level_from_env(monkeypatch, capsys):
+    monkeypatch.setenv("LOG_LEVEL", "WARNING")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        log = setup_logger("test-level", log_dir=tmpdir)
+        log.info("should be suppressed")
+        log.warning("should appear")
+        captured = capsys.readouterr()
+        lines = [l for l in captured.out.strip().splitlines() if l]
+        assert len(lines) == 1
+        record = json.loads(lines[0])
+        assert record["level"] == "WARNING"
+
+
+def test_container_from_hostname_env(monkeypatch, capsys):
+    monkeypatch.setenv("HOSTNAME", "worker-abc123")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        log = setup_logger("test-container", log_dir=tmpdir)
+        log.info("check container")
+        captured = capsys.readouterr()
+        record = json.loads(captured.out.strip())
+        assert record["container"] == "worker-abc123"
+
+
+def test_timestamp_is_utc_iso8601(capsys):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        log = setup_logger("test-ts", log_dir=tmpdir)
+        log.info("ts check")
+        captured = capsys.readouterr()
+        record = json.loads(captured.out.strip())
+        ts = record["timestamp"]
+        assert "+00:00" in ts or ts.endswith("Z")
+
+
+def test_bind_does_not_mutate_parent(capsys):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        log = setup_logger("test-immutable", log_dir=tmpdir)
+        parent = log.bind(target_id=1)
+        child = parent.bind(target_id=2)
+        parent.info("parent msg")
+        captured = capsys.readouterr()
+        record = json.loads(captured.out.strip())
+        assert record["target_id"] == 1

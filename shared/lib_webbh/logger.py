@@ -74,7 +74,12 @@ class JsonFormatter(logging.Formatter):
 # ---------------------------------------------------------------------------
 
 class BoundLogger:
-    """Thin wrapper around a stdlib ``logging.Logger`` that carries context.
+    """Thin wrapper around a stdlib logging.Logger that carries bound context.
+
+    Intentionally does NOT inherit from logging.LoggerAdapter.
+    A custom wrapper provides cleaner separation between bound context
+    (target_id, asset_type) and per-call extras, which LoggerAdapter.process()
+    conflates into a single extra dict on the LogRecord.
 
     Parameters
     ----------
@@ -112,10 +117,16 @@ class BoundLogger:
     def critical(self, msg: str, *, extra: Optional[Dict[str, Any]] = None) -> None:
         self._log(logging.CRITICAL, msg, extra)
 
+    def exception(self, msg: str, *, extra: Optional[Dict[str, Any]] = None) -> None:
+        """Log at ERROR level with current exception traceback attached."""
+        self._log(logging.ERROR, msg, extra, exc_info=True)
+
     # -- internals ----------------------------------------------------------
 
-    def _log(self, level: int, msg: str, call_extra: Optional[Dict[str, Any]]) -> None:
+    def _log(self, level: int, msg: str, call_extra: Optional[Dict[str, Any]], exc_info: Any = None) -> None:
         """Create a LogRecord, inject context, and hand it to the logger."""
+        if not self._logger.isEnabledFor(level):
+            return
         record = self._logger.makeRecord(
             name=self._logger.name,
             level=level,
@@ -123,7 +134,7 @@ class BoundLogger:
             lno=0,
             msg=msg,
             args=(),
-            exc_info=None,
+            exc_info=exc_info,
         )
         record._bound_context = self._context  # type: ignore[attr-defined]
         record._call_extra = call_extra or {}  # type: ignore[attr-defined]
