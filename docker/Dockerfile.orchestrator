@@ -1,0 +1,31 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# System deps (gcc + libpq for asyncpg, plus Docker CLI isn't needed — we use the SDK)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Shared library
+COPY shared/lib_webbh /app/shared/lib_webbh
+RUN pip install --no-cache-dir /app/shared/lib_webbh
+
+# Orchestrator deps
+COPY orchestrator/requirements.txt /app/orchestrator/requirements.txt
+RUN pip install --no-cache-dir -r /app/orchestrator/requirements.txt
+
+# Orchestrator source
+COPY orchestrator /app/orchestrator
+COPY shared/setup_env.py /app/shared/setup_env.py
+
+# Shared volume dirs
+RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs
+
+# Verify imports
+RUN python -c "from lib_webbh import Target, push_task, setup_logger; print('lib_webbh OK')" && \
+    python -c "import fastapi, docker, psutil; print('orchestrator deps OK')"
+
+EXPOSE 8000
+
+CMD ["uvicorn", "orchestrator.main:app", "--host", "0.0.0.0", "--port", "8000"]
