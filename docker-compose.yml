@@ -67,12 +67,12 @@ services:
       REDIS_PORT: "6379"
       WEB_APP_BH_API_KEY: ${WEB_APP_BH_API_KEY:-}
     ports:
-      - "8000:8000"
+      - "8001:8001"
     volumes:
       - ./shared:/app/shared
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/docs')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -93,7 +93,7 @@ services:
       orchestrator:
         condition: service_healthy
     environment:
-      NEXT_PUBLIC_API_URL: http://orchestrator:8000
+      NEXT_PUBLIC_API_URL: http://orchestrator:8001
       NEXT_PUBLIC_API_KEY: ${WEB_APP_BH_API_KEY:-}
     ports:
       - "3000:3000"
