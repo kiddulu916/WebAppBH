@@ -1,0 +1,112 @@
+# tests/test_main.py
+"""Tests for orchestrator.main — FastAPI endpoints."""
+
+import os
+import json
+import pytest
+from unittest.mock import AsyncMock, patch, MagicMock
+
+os.environ["DB_DRIVER"] = "sqlite+aiosqlite"
+os.environ["DB_NAME"] = ":memory:"
+os.environ["WEB_APP_BH_API_KEY"] = "test-api-key-1234"
+
+import tests._patch_logger  # noqa: F401
+
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from lib_webbh.database import get_engine, Base, get_session, Target, JobState
+
+# Patch event_engine background tasks before importing app
+with patch("orchestrator.event_engine.run_event_loop", new_callable=AsyncMock), \
+     patch("orchestrator.event_engine.run_heartbeat", new_callable=AsyncMock):
+    from orchestrator.main import app
+
+
+API_KEY_HEADER = {"X-API-KEY": "test-api-key-1234"}
+
+
+@pytest_asyncio.fixture
+async def db():
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+
+
+@pytest_asyncio.fixture
+async def client():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+
+# --- Fix 1: pause -> PAUSED, stop -> STOPPED ---
+
+@pytest.mark.asyncio
+async def test_control_pause_sets_paused_status(db, client):
+    # Seed a target + job
+    async with get_session() as session:
+        t = Target(company_name="PauseCorp", base_domain="pause.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        job = JobState(target_id=t.id, container_name="webbh-fuzzing-t1", status="RUNNING", current_phase="fuzzing")
+        session.add(job)
+        await session.commit()
+
+    with patch("orchestrator.main.worker_manager.pause_worker", new_callable=AsyncMock, return_value=True):
+        resp = await client.post("/api/v1/control", json={"container_name": "webbh-fuzzing-t1", "action": "pause"}, headers=API_KEY_HEADER)
+    assert resp.status_code == 200
+
+    async with get_session() as session:
+        from sqlalchemy import select
+        result = await session.execute(select(JobState).where(JobState.container_name == "webbh-fuzzing-t1"))
+        job = result.scalar_one()
+        assert job.status == "PAUSED"
+
+
+@pytest.mark.asyncio
+async def test_control_stop_sets_stopped_status(db, client):
+    async with get_session() as session:
+        t = Target(company_name="StopCorp", base_domain="stop.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        job = JobState(target_id=t.id, container_name="webbh-fuzzing-t2", status="RUNNING", current_phase="fuzzing")
+        session.add(job)
+        await session.commit()
+
+    with patch("orchestrator.main.worker_manager.stop_worker", new_callable=AsyncMock, return_value=True):
+        resp = await client.post("/api/v1/control", json={"container_name": "webbh-fuzzing-t2", "action": "stop"}, headers=API_KEY_HEADER)
+    assert resp.status_code == 200
+
+    async with get_session() as session:
+        from sqlalchemy import select
+        result = await session.execute(select(JobState).where(JobState.container_name == "webbh-fuzzing-t2"))
+        job = result.scalar_one()
+        assert job.status == "STOPPED"
+
+
+# --- Fix 8: unpause action exposed ---
+
+@pytest.mark.asyncio
+async def test_control_unpause_sets_running_status(db, client):
+    async with get_session() as session:
+        t = Target(company_name="UnpauseCorp", base_domain="unpause.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        job = JobState(target_id=t.id, container_name="webbh-fuzzing-t3", status="PAUSED", current_phase="fuzzing")
+        session.add(job)
+        await session.commit()
+
+    with patch("orchestrator.main.worker_manager.unpause_worker", new_callable=AsyncMock, return_value=True):
+        resp = await client.post("/api/v1/control", json={"container_name": "webbh-fuzzing-t3", "action": "unpause"}, headers=API_KEY_HEADER)
+    assert resp.status_code == 200
+
+    async with get_session() as session:
+        from sqlalchemy import select
+        result = await session.execute(select(JobState).where(JobState.container_name == "webbh-fuzzing-t3"))
+        job = result.scalar_one()
+        assert job.status == "RUNNING"

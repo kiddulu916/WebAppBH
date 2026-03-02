@@ -194,6 +194,7 @@ async def control_worker(body: ControlAction):
         "pause": worker_manager.pause_worker,
         "stop": worker_manager.stop_worker,
         "restart": worker_manager.restart_worker,
+        "unpause": worker_manager.unpause_worker,
     }
     fn = actions.get(body.action)
     if fn is None:
@@ -204,7 +205,7 @@ async def control_worker(body: ControlAction):
         raise HTTPException(status_code=404, detail=f"Container '{body.container_name}' not found or action failed")
 
     # Update job_state to reflect the action
-    new_status = {"pause": "QUEUED", "stop": "COMPLETED", "restart": "RUNNING"}.get(body.action, "RUNNING")
+    new_status = {"pause": "PAUSED", "stop": "STOPPED", "restart": "RUNNING", "unpause": "RUNNING"}.get(body.action, "RUNNING")
     async with get_session() as session:
         stmt = select(JobState).where(JobState.container_name == body.container_name)
         result = await session.execute(stmt)
