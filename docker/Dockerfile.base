@@ -1,0 +1,23 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# System deps for asyncpg compilation
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy shared library
+COPY shared/lib_webbh /app/shared/lib_webbh
+
+# Install lib_webbh (non-editable for Docker; editable only for local dev)
+RUN pip install --no-cache-dir /app/shared/lib_webbh
+
+# Copy setup_env script
+COPY shared/setup_env.py /app/shared/setup_env.py
+
+# Create shared volume directories
+RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs
+
+# Verify install
+RUN python -c "from lib_webbh import Target, ScopeManager, setup_logger; print('lib_webbh OK')"
