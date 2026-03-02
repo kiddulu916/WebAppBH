@@ -4,42 +4,19 @@ Import this module's fixtures via conftest.py or direct import in test files.
 """
 
 import os
-import asyncio
-import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
-from dataclasses import dataclass
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
 
 # Force SQLite for tests before any lib_webbh import
 os.environ["DB_DRIVER"] = "sqlite+aiosqlite"
 os.environ["DB_NAME"] = ":memory:"
 os.environ["WEB_APP_BH_API_KEY"] = "test-api-key-1234"
 
-# Patch setup_logger to use a temp directory instead of /app/shared/logs/
-# This must happen before any orchestrator module is imported, because
-# worker_manager.py and event_engine.py call setup_logger at module level.
-import lib_webbh
-import lib_webbh.logger
-
-_test_log_dir = tempfile.mkdtemp()
-_orig_setup_logger = lib_webbh.logger.setup_logger
-
-
-def _patched_setup_logger(name, log_dir=_test_log_dir):
-    return _orig_setup_logger(name, log_dir=log_dir)
-
-
-lib_webbh.logger.setup_logger = _patched_setup_logger
-lib_webbh.setup_logger = _patched_setup_logger
+import tests._patch_logger  # noqa: F401 — must be imported before orchestrator modules
 
 from lib_webbh.database import get_engine, get_session, Base, Target, Asset, Location, Parameter, CloudAsset, JobState, Alert
-
-# Restore originals after all module-level imports have completed
-lib_webbh.logger.setup_logger = _orig_setup_logger
-lib_webbh.setup_logger = _orig_setup_logger
 
 
 @pytest_asyncio.fixture
