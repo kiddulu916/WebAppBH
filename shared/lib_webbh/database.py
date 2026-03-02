@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.types import JSON
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # ---------------------------------------------------------------------------
 # Module-level singletons
@@ -131,23 +131,42 @@ class Target(TimestampMixin, Base):
     """Top-level reconnaissance target (company / domain)."""
 
     __tablename__ = "targets"
+    __table_args__ = (
+        UniqueConstraint("company_name", "base_domain", name="uq_targets_company_domain"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     company_name: Mapped[str] = mapped_column(String(255))
     base_domain: Mapped[str] = mapped_column(String(255))
     target_profile: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
+    assets: Mapped[list["Asset"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+    identities: Mapped[list["Identity"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+    cloud_assets: Mapped[list["CloudAsset"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+    vulnerabilities: Mapped[list["Vulnerability"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+    jobs: Mapped[list["JobState"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+    alerts: Mapped[list["Alert"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+
 
 class Asset(TimestampMixin, Base):
     """Discovered asset linked to a target (subdomain, IP, URL, etc.)."""
 
     __tablename__ = "assets"
+    __table_args__ = (
+        UniqueConstraint("target_id", "asset_type", "asset_value", name="uq_assets_target_type_value"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
     asset_type: Mapped[str] = mapped_column(String(50))
     asset_value: Mapped[str] = mapped_column(String(500))
     source_tool: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    target: Mapped["Target"] = relationship(back_populates="assets")
+    locations: Mapped[list["Location"]] = relationship(back_populates="asset", cascade="all, delete-orphan")
+    observations: Mapped[list["Observation"]] = relationship(back_populates="asset", cascade="all, delete-orphan")
+    parameters: Mapped[list["Parameter"]] = relationship(back_populates="asset", cascade="all, delete-orphan")
+    vulnerabilities: Mapped[list["Vulnerability"]] = relationship(back_populates="asset")
 
 
 class Identity(TimestampMixin, Base):
@@ -161,11 +180,16 @@ class Identity(TimestampMixin, Base):
     organization: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     whois_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
+    target: Mapped["Target"] = relationship(back_populates="identities")
+
 
 class Location(TimestampMixin, Base):
     """Network location (port / service) observed on an asset."""
 
     __tablename__ = "locations"
+    __table_args__ = (
+        UniqueConstraint("asset_id", "port", "protocol", name="uq_locations_asset_port_proto"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     asset_id: Mapped[int] = mapped_column(Integer, ForeignKey("assets.id"))
@@ -173,6 +197,8 @@ class Location(TimestampMixin, Base):
     protocol: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     service: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     state: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
+    asset: Mapped["Asset"] = relationship(back_populates="locations")
 
 
 class Observation(TimestampMixin, Base):
@@ -186,6 +212,8 @@ class Observation(TimestampMixin, Base):
     page_title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     status_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     headers: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    asset: Mapped["Asset"] = relationship(back_populates="observations")
 
 
 class CloudAsset(TimestampMixin, Base):
@@ -201,17 +229,24 @@ class CloudAsset(TimestampMixin, Base):
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
     findings: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
+    target: Mapped["Target"] = relationship(back_populates="cloud_assets")
+
 
 class Parameter(TimestampMixin, Base):
     """URL / form parameter discovered on an asset."""
 
     __tablename__ = "parameters"
+    __table_args__ = (
+        UniqueConstraint("asset_id", "param_name", name="uq_parameters_asset_name"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     asset_id: Mapped[int] = mapped_column(Integer, ForeignKey("assets.id"))
     param_name: Mapped[str] = mapped_column(String(255))
     param_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     source_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+
+    asset: Mapped["Asset"] = relationship(back_populates="parameters")
 
 
 class Vulnerability(TimestampMixin, Base):
@@ -230,6 +265,10 @@ class Vulnerability(TimestampMixin, Base):
     poc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     source_tool: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
+    target: Mapped["Target"] = relationship(back_populates="vulnerabilities")
+    asset: Mapped[Optional["Asset"]] = relationship(back_populates="vulnerabilities")
+    alerts: Mapped[list["Alert"]] = relationship(back_populates="vulnerability")
+
 
 class JobState(TimestampMixin, Base):
     """Runtime state of a reconnaissance container / job."""
@@ -246,6 +285,8 @@ class JobState(TimestampMixin, Base):
         String(100), nullable=True
     )
 
+    target: Mapped["Target"] = relationship(back_populates="jobs")
+
 
 class Alert(TimestampMixin, Base):
     """Notification / alert tied to a target and optionally a vulnerability."""
@@ -260,3 +301,6 @@ class Alert(TimestampMixin, Base):
     alert_type: Mapped[str] = mapped_column(String(100))
     message: Mapped[str] = mapped_column(Text)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    target: Mapped["Target"] = relationship(back_populates="alerts")
+    vulnerability: Mapped[Optional["Vulnerability"]] = relationship(back_populates="alerts")
