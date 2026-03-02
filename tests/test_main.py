@@ -110,3 +110,26 @@ async def test_control_unpause_sets_running_status(db, client):
         result = await session.execute(select(JobState).where(JobState.container_name == "webbh-fuzzing-t3"))
         job = result.scalar_one()
         assert job.status == "RUNNING"
+
+
+# --- Fix 3: always write config files ---
+
+@pytest.mark.asyncio
+async def test_create_target_writes_all_config_files(db, client, tmp_path):
+    """All 4 config files should be written even with empty profile."""
+    with patch("orchestrator.main.SHARED_CONFIG", tmp_path), \
+         patch("orchestrator.main.SHARED_RAW", tmp_path / "raw"):
+        resp = await client.post("/api/v1/targets", json={
+            "company_name": "ConfigCorp",
+            "base_domain": "config.com",
+        }, headers=API_KEY_HEADER)
+    assert resp.status_code == 201
+    tid = resp.json()["target_id"]
+    config_dir = tmp_path / str(tid)
+    assert (config_dir / "target_profile.json").exists()
+    assert (config_dir / "custom_headers.json").exists()
+    assert (config_dir / "rate_limits.json").exists()
+    assert (config_dir / "scope.json").exists()
+    # Verify empty defaults
+    assert json.loads((config_dir / "custom_headers.json").read_text()) == {}
+    assert json.loads((config_dir / "rate_limits.json").read_text()) == {}

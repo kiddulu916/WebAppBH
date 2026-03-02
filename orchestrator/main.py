@@ -273,13 +273,11 @@ def _generate_tool_configs(target_id: int, profile: dict) -> None:
 
     # Custom headers file (consumed by httpx-based workers)
     custom_headers = profile.get("custom_headers", {})
-    if custom_headers:
-        (config_dir / "custom_headers.json").write_text(json.dumps(custom_headers, indent=2))
+    (config_dir / "custom_headers.json").write_text(json.dumps(custom_headers, indent=2))
 
     # Rate-limit config
     rate_limits = profile.get("rate_limits", {})
-    if rate_limits:
-        (config_dir / "rate_limits.json").write_text(json.dumps(rate_limits, indent=2))
+    (config_dir / "rate_limits.json").write_text(json.dumps(rate_limits, indent=2))
 
     # Scope rules (consumed by ScopeManager in workers)
     scope_keys = ("in_scope_domains", "out_scope_domains", "in_scope_cidrs", "in_scope_regex")
