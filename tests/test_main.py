@@ -151,3 +151,36 @@ async def test_control_rejects_non_webbh_container(db, client):
 async def test_auth_rejected_without_key(db, client):
     resp = await client.get("/api/v1/status")
     assert resp.status_code == 401
+
+
+# --- Fix 13: SSE pending message cleanup ---
+
+@pytest.mark.asyncio
+async def test_sse_generator_cleans_up_on_disconnect():
+    """The SSE generator should release pending messages on disconnect."""
+    from unittest.mock import AsyncMock, MagicMock
+    from uuid import uuid4
+
+    mock_redis = AsyncMock()
+    mock_redis.xgroup_create = AsyncMock()
+    mock_redis.xreadgroup = AsyncMock(return_value=[])
+    mock_redis.xack = AsyncMock()
+    mock_redis.xautoclaim = AsyncMock()
+
+    mock_request = AsyncMock()
+    # Immediately disconnected
+    mock_request.is_disconnected = AsyncMock(return_value=True)
+
+    with patch("orchestrator.main.get_redis", return_value=mock_redis), \
+         patch("orchestrator.main.uuid4") as mock_uuid:
+        mock_uuid.return_value = MagicMock(hex="abc123")
+        from orchestrator.main import stream_events
+        response = await stream_events(target_id=1, request=mock_request)
+
+        # Consume the generator to trigger the finally block
+        gen = response.body_iterator
+        async for _ in gen:
+            pass
+
+    # xautoclaim should have been called during cleanup
+    mock_redis.xautoclaim.assert_called_once()

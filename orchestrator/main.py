@@ -36,6 +36,7 @@ from lib_webbh import (
     push_task,
     setup_logger,
 )
+from lib_webbh.messaging import get_redis
 
 from orchestrator import event_engine, worker_manager
 
@@ -236,8 +237,6 @@ async def stream_events(target_id: int, request: Request):
     Events are pushed to the ``events:{target_id}`` Redis stream by the event
     engine and consumed here.
     """
-    from lib_webbh.messaging import get_redis
-
     queue = f"events:{target_id}"
     group = "sse_consumers"
     consumer = f"sse-{uuid4().hex}"
@@ -250,22 +249,29 @@ async def stream_events(target_id: int, request: Request):
 
     async def _generate():
         last_id = ">"
-        while True:
-            if await request.is_disconnected():
-                break
-            messages = await redis.xreadgroup(
-                groupname=group,
-                consumername=consumer,
-                streams={queue: last_id},
-                count=10,
-                block=2000,
-            )
-            for _, entries in messages:
-                for msg_id, data in entries:
-                    payload = json.loads(data.get("payload", "{}"))
-                    event_type = payload.get("event", "message")
-                    yield {"event": event_type, "data": json.dumps(payload)}
-                    await redis.xack(queue, group, msg_id)
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                messages = await redis.xreadgroup(
+                    groupname=group,
+                    consumername=consumer,
+                    streams={queue: last_id},
+                    count=10,
+                    block=2000,
+                )
+                for _, entries in messages:
+                    for msg_id, data in entries:
+                        payload = json.loads(data.get("payload", "{}"))
+                        event_type = payload.get("event", "message")
+                        yield {"event": event_type, "data": json.dumps(payload)}
+                        await redis.xack(queue, group, msg_id)
+        finally:
+            # Release any claimed-but-unacked messages
+            try:
+                await redis.xautoclaim(queue, group, consumer, min_idle_time=0)
+            except Exception:
+                pass
 
     return EventSourceResponse(_generate())
 
