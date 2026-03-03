@@ -332,6 +332,57 @@ async def test_zombie_does_not_restart_after_max_retries(seed_zombie_job_exceede
         assert len(alerts) >= 1
 
 
+# --- Fix 14: Batch heartbeat handles mixed job states ---
+
+
+@pytest_asyncio.fixture
+async def seed_multiple_running_jobs(db):
+    """Three RUNNING jobs: one healthy container, one grace period, one zombie."""
+    now = datetime.now(timezone.utc)
+    async with get_session() as session:
+        t = Target(company_name="BatchCorp", base_domain="batch.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+
+        # Job 1: healthy (container will be found running)
+        j1 = JobState(target_id=t.id, container_name="webbh-fuzzing-tbatch1", status="RUNNING", current_phase="fuzzing", last_seen=now - timedelta(seconds=10))
+        # Job 2: grace period (container gone, recent last_seen)
+        j2 = JobState(target_id=t.id, container_name="webbh-webapp_testing-tbatch2", status="RUNNING", current_phase="webapp_testing", last_seen=now - timedelta(seconds=30))
+        # Job 3: zombie (container gone, old last_seen)
+        j3 = JobState(target_id=t.id, container_name="webbh-api_testing-tbatch3", status="RUNNING", current_phase="api_testing", last_seen=now - timedelta(seconds=700))
+        session.add_all([j1, j2, j3])
+        await session.commit()
+        return t.id
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_handles_mixed_job_states(seed_multiple_running_jobs, mock_wm):
+    """Heartbeat correctly classifies healthy, grace, and zombie jobs."""
+    healthy_info = ContainerInfo(name="webbh-fuzzing-tbatch1", status="running", image="test:latest")
+
+    async def _status(name):
+        if name == "webbh-fuzzing-tbatch1":
+            return healthy_info
+        return None  # gone
+
+    mock_wm.get_container_status = AsyncMock(side_effect=_status)
+
+    from orchestrator.event_engine import _heartbeat_cycle
+    await _heartbeat_cycle()
+
+    async with get_session() as session:
+        from sqlalchemy import select
+        jobs = {j.container_name: j for j in (await session.execute(select(JobState))).scalars().all()}
+
+    # Healthy: still RUNNING, last_seen updated
+    assert jobs["webbh-fuzzing-tbatch1"].status == "RUNNING"
+    # Grace: still RUNNING (not marked FAILED)
+    assert jobs["webbh-webapp_testing-tbatch2"].status == "RUNNING"
+    # Zombie: marked FAILED
+    assert jobs["webbh-api_testing-tbatch3"].status == "FAILED"
+
+
 # --- Fix 11: Worker env includes API key ---
 
 def test_worker_env_includes_api_key():

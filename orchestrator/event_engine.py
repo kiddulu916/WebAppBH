@@ -324,117 +324,141 @@ async def run_heartbeat() -> None:
 
 
 async def _heartbeat_cycle() -> None:
-    """Single heartbeat iteration."""
+    """Single heartbeat iteration — batched DB access."""
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(seconds=ZOMBIE_TIMEOUT)
 
+    # --- Read phase ---
     async with get_session() as session:
-        # Find RUNNING jobs
         stmt = select(JobState).where(JobState.status == "RUNNING")
         result = await session.execute(stmt)
         running_jobs = result.scalars().all()
 
-    for job in running_jobs:
-        info = await worker_manager.get_container_status(job.container_name)
+    if not running_jobs:
+        await _promote_queued_jobs()
+        return
 
-        if info is None or info.status != "running":
-            # Container gone or stopped — check if zombie
+    # Gather container statuses concurrently
+    statuses = await asyncio.gather(
+        *(worker_manager.get_container_status(j.container_name) for j in running_jobs)
+    )
+
+    # Classify jobs
+    healthy_ids: list[int] = []
+    grace_jobs: list[JobState] = []
+    zombie_jobs: list[JobState] = []
+
+    for job, info in zip(running_jobs, statuses):
+        if info is not None and info.status == "running":
+            healthy_ids.append(job.id)
+        else:
             # Normalise tz: SQLite returns naive datetimes, PostgreSQL returns aware
             last_seen = job.last_seen
             if last_seen and last_seen.tzinfo is None:
                 last_seen = last_seen.replace(tzinfo=timezone.utc)
             if last_seen and last_seen < cutoff:
-                logger.warning(
-                    "ZOMBIE_RESTART — killing unresponsive job",
-                    extra={"container": job.container_name, "last_seen": str(job.last_seen)},
-                )
-                await worker_manager.kill_worker(job.container_name)
-
-                async with get_session() as session:
-                    stmt = (
-                        update(JobState)
-                        .where(JobState.id == job.id)
-                        .values(status="FAILED", last_seen=now)
-                    )
-                    await session.execute(stmt)
-                    await session.commit()
-
-                # Check retry count before restarting
-                async with get_session() as session:
-                    retry_stmt = (
-                        select(func.count(Alert.id))
-                        .where(
-                            Alert.target_id == job.target_id,
-                            Alert.alert_type == "ZOMBIE_RESTART",
-                            Alert.message.like(f"%{job.container_name}%"),
-                        )
-                    )
-                    result = await session.execute(retry_stmt)
-                    retry_count = result.scalar() or 0
-
-                if retry_count >= ZOMBIE_MAX_RETRIES:
-                    # Permanently failed — emit critical alert
-                    async with get_session() as session:
-                        alert = Alert(
-                            target_id=job.target_id,
-                            alert_type="CRITICAL_ALERT",
-                            message=f"Container {job.container_name} exceeded {ZOMBIE_MAX_RETRIES} zombie restarts. Permanently failed.",
-                        )
-                        session.add(alert)
-                        await session.commit()
-                    await _emit_event(job.target_id, "CRITICAL_ALERT", {
-                        "container": job.container_name,
-                        "message": f"Exceeded {ZOMBIE_MAX_RETRIES} zombie restarts",
-                    })
-                else:
-                    # Create alert and restart
-                    async with get_session() as session:
-                        alert = Alert(
-                            target_id=job.target_id,
-                            alert_type="ZOMBIE_RESTART",
-                            message=f"Container {job.container_name} was unresponsive for >{ZOMBIE_TIMEOUT}s. Restarting (attempt {retry_count + 1}/{ZOMBIE_MAX_RETRIES}).",
-                        )
-                        session.add(alert)
-                        await session.commit()
-
-                    # Restart the worker
-                    parts = job.container_name.replace("webbh-", "").rsplit("-t", 1)
-                    worker_key = parts[0] if parts else None
-                    if worker_key and worker_key in WORKER_IMAGES:
-                        await _trigger_worker(job.target_id, worker_key, job.current_phase or worker_key)
+                zombie_jobs.append(job)
             else:
-                # Container gone but within timeout — grace period for restart policy
-                logger.info(
-                    "Container missing but within grace period",
-                    extra={"container": job.container_name, "last_seen": str(job.last_seen)},
-                )
-        else:
-            # Container running — update last_seen
-            async with get_session() as session:
-                stmt = (
-                    update(JobState)
-                    .where(JobState.id == job.id)
-                    .values(last_seen=now)
-                )
-                await session.execute(stmt)
-                await session.commit()
+                grace_jobs.append(job)
 
-    # Promote QUEUED jobs if resources are available
-    if not await worker_manager.should_queue():
+    # --- Write phase ---
+    # Bulk update last_seen for healthy jobs
+    if healthy_ids:
         async with get_session() as session:
-            stmt = select(JobState).where(JobState.status == "QUEUED").order_by(JobState.created_at)
-            result = await session.execute(stmt)
-            queued = result.scalars().all()
+            stmt = (
+                update(JobState)
+                .where(JobState.id.in_(healthy_ids))
+                .values(last_seen=now)
+            )
+            await session.execute(stmt)
+            await session.commit()
 
-        for job in queued:
-            # Derive worker key from container name (e.g. webbh-fuzzing-t1 -> fuzzing)
-            parts = job.container_name.replace("webbh-", "").rsplit("-t", 1)
-            worker_key = parts[0] if parts else None
-            if worker_key and worker_key in WORKER_IMAGES:
-                await _trigger_worker(job.target_id, worker_key, job.current_phase or worker_key)
-                # Re-check resources after each start
-                if await worker_manager.should_queue():
-                    break
+    # Log grace-period jobs
+    for job in grace_jobs:
+        logger.info(
+            "Container missing but within grace period",
+            extra={"container": job.container_name, "last_seen": str(job.last_seen)},
+        )
+
+    # Handle zombies
+    for job in zombie_jobs:
+        await _handle_zombie(job, now)
+
+    # Promote queued jobs
+    await _promote_queued_jobs()
+
+
+async def _handle_zombie(job: JobState, now: datetime) -> None:
+    """Kill a zombie job, create alert, and restart if within retry limit."""
+    logger.warning(
+        "ZOMBIE_RESTART — killing unresponsive job",
+        extra={"container": job.container_name, "last_seen": str(job.last_seen)},
+    )
+    await worker_manager.kill_worker(job.container_name)
+
+    async with get_session() as session:
+        # Mark FAILED
+        stmt = update(JobState).where(JobState.id == job.id).values(status="FAILED", last_seen=now)
+        await session.execute(stmt)
+
+        # Count prior zombie restarts
+        retry_stmt = (
+            select(func.count(Alert.id))
+            .where(
+                Alert.target_id == job.target_id,
+                Alert.alert_type == "ZOMBIE_RESTART",
+                Alert.message.like(f"%{job.container_name}%"),
+            )
+        )
+        result = await session.execute(retry_stmt)
+        retry_count = result.scalar() or 0
+
+        if retry_count >= ZOMBIE_MAX_RETRIES:
+            alert = Alert(
+                target_id=job.target_id,
+                alert_type="CRITICAL_ALERT",
+                message=f"Container {job.container_name} exceeded {ZOMBIE_MAX_RETRIES} zombie restarts. Permanently failed.",
+            )
+            session.add(alert)
+        else:
+            alert = Alert(
+                target_id=job.target_id,
+                alert_type="ZOMBIE_RESTART",
+                message=f"Container {job.container_name} was unresponsive for >{ZOMBIE_TIMEOUT}s. Restarting (attempt {retry_count + 1}/{ZOMBIE_MAX_RETRIES}).",
+            )
+            session.add(alert)
+
+        await session.commit()
+
+    if retry_count >= ZOMBIE_MAX_RETRIES:
+        await _emit_event(job.target_id, "CRITICAL_ALERT", {
+            "container": job.container_name,
+            "message": f"Exceeded {ZOMBIE_MAX_RETRIES} zombie restarts",
+        })
+    else:
+        parts = job.container_name.replace("webbh-", "").rsplit("-t", 1)
+        worker_key = parts[0] if parts else None
+        if worker_key and worker_key in WORKER_IMAGES:
+            await _trigger_worker(job.target_id, worker_key, job.current_phase or worker_key)
+
+
+async def _promote_queued_jobs() -> None:
+    """Promote QUEUED jobs if resources are available."""
+    if await worker_manager.should_queue():
+        return
+
+    async with get_session() as session:
+        stmt = select(JobState).where(JobState.status == "QUEUED").order_by(JobState.created_at)
+        result = await session.execute(stmt)
+        queued = result.scalars().all()
+
+    for job in queued:
+        parts = job.container_name.replace("webbh-", "").rsplit("-t", 1)
+        worker_key = parts[0] if parts else None
+        if worker_key and worker_key in WORKER_IMAGES:
+            await _trigger_worker(job.target_id, worker_key, job.current_phase or worker_key)
+            if await worker_manager.should_queue():
+                break
 
 
 async def _auto_resume() -> None:
