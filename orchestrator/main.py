@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncIterator, Optional
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.security import APIKeyHeader
@@ -239,7 +240,7 @@ async def stream_events(target_id: int, request: Request):
 
     queue = f"events:{target_id}"
     group = "sse_consumers"
-    consumer = f"sse-{id(request)}"
+    consumer = f"sse-{uuid4().hex}"
 
     redis = get_redis()
     try:
