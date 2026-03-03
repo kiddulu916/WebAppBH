@@ -125,3 +125,73 @@ async def test_web_trigger_does_not_override_paused_job(seed_target_with_paused_
     from orchestrator.event_engine import _check_web_trigger
     await _check_web_trigger()
     mock_wm.start_worker.assert_not_called()
+
+
+# --- Fix 4: Cloud trigger ignores stale assets ---
+
+@pytest_asyncio.fixture
+async def seed_target_with_stale_cloud_asset(db):
+    """Target with a cloud_asset created BEFORE the last completed cloud job."""
+    async with get_session() as session:
+        t = Target(company_name="StaleCorp", base_domain="stale.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+
+        # Cloud asset created first
+        ca = CloudAsset(target_id=t.id, provider="aws", asset_type="s3", url="s3://stale-bucket")
+        session.add(ca)
+        await session.commit()
+
+        # Then a cloud job ran and completed AFTER the asset was created
+        job = JobState(
+            target_id=t.id,
+            container_name=f"webbh-cloud_testing-t{t.id}",
+            status="COMPLETED",
+            current_phase="cloud_enum",
+            last_seen=datetime.now(timezone.utc),
+        )
+        session.add(job)
+        await session.commit()
+        return t.id
+
+
+@pytest_asyncio.fixture
+async def seed_target_with_fresh_cloud_asset(db):
+    """Target with a cloud_asset created AFTER the last completed cloud job."""
+    async with get_session() as session:
+        t = Target(company_name="FreshCorp", base_domain="fresh.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+
+        # Old completed job
+        job = JobState(
+            target_id=t.id,
+            container_name=f"webbh-cloud_testing-t{t.id}",
+            status="COMPLETED",
+            current_phase="cloud_enum",
+            last_seen=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        )
+        session.add(job)
+        await session.commit()
+
+        # New cloud asset discovered after the job finished
+        ca = CloudAsset(target_id=t.id, provider="aws", asset_type="s3", url="s3://fresh-bucket")
+        session.add(ca)
+        await session.commit()
+        return t.id
+
+
+@pytest.mark.asyncio
+async def test_cloud_trigger_ignores_stale_assets(seed_target_with_stale_cloud_asset, mock_wm):
+    from orchestrator.event_engine import _check_cloud_trigger
+    await _check_cloud_trigger()
+    mock_wm.start_worker.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cloud_trigger_fires_for_fresh_assets(seed_target_with_fresh_cloud_asset, mock_wm):
+    from orchestrator.event_engine import _check_cloud_trigger
+    await _check_cloud_trigger()
+    mock_wm.start_worker.assert_called()

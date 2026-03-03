@@ -171,19 +171,44 @@ async def _trigger_worker(
 # Trigger evaluation — called each poll cycle
 # ---------------------------------------------------------------------------
 async def _check_cloud_trigger() -> None:
-    """If new cloud_assets appeared since last check, trigger cloud worker."""
+    """If new cloud_assets appeared since the last completed cloud job, trigger cloud worker."""
     async with get_session() as session:
-        # Find targets with cloud_assets that have no running cloud job
+        # Subquery: targets with an active cloud job (skip them)
+        active_sub = (
+            select(JobState.target_id)
+            .where(
+                JobState.container_name.like("webbh-cloud_testing-%"),
+                JobState.status.in_(ACTIVE_STATUSES),
+            )
+        ).subquery()
+
+        # Subquery: latest completed cloud job's last_seen per target
+        done_sub = (
+            select(
+                JobState.target_id,
+                func.max(JobState.last_seen).label("done_at"),
+            )
+            .where(
+                JobState.container_name.like("webbh-cloud_testing-%"),
+                JobState.status.in_(["COMPLETED", "STOPPED", "FAILED"]),
+            )
+            .group_by(JobState.target_id)
+        ).subquery()
+
+        # Find targets with cloud_assets newer than the last completed job
         stmt = (
             select(CloudAsset.target_id)
-            .outerjoin(
-                JobState,
-                (JobState.target_id == CloudAsset.target_id)
-                & (JobState.container_name.like("webbh-cloud_testing-%"))
-                & (JobState.status.in_(ACTIVE_STATUSES)),
+            .outerjoin(done_sub, done_sub.c.target_id == CloudAsset.target_id)
+            .where(
+                CloudAsset.target_id.notin_(select(active_sub.c.target_id)),
             )
-            .where(JobState.id.is_(None))
             .group_by(CloudAsset.target_id)
+            .having(
+                func.max(CloudAsset.created_at) > func.coalesce(
+                    func.max(done_sub.c.done_at),
+                    datetime(1970, 1, 1, tzinfo=timezone.utc),
+                )
+            )
         )
         result = await session.execute(stmt)
         target_ids = [row[0] for row in result.all()]
