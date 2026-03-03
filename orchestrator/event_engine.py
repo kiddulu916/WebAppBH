@@ -206,6 +206,7 @@ async def _check_web_trigger() -> None:
             .join(Asset, Location.asset_id == Asset.id)
             .where(
                 Location.port.in_([80, 443]),
+                Location.state == "open",
                 Asset.target_id.notin_(select(subq_fuzz.c.target_id)),
             )
             .group_by(Location.asset_id, Asset.target_id)
