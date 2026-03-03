@@ -119,6 +119,7 @@ def _worker_env(target_id: int) -> dict:
         "DB_PASS": os.environ.get("DB_PASS", ""),
         "REDIS_HOST": os.environ.get("REDIS_HOST", "redis"),
         "REDIS_PORT": os.environ.get("REDIS_PORT", "6379"),
+        "WEB_APP_BH_API_KEY": os.environ.get("WEB_APP_BH_API_KEY", ""),
     }
 
 

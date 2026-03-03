@@ -330,3 +330,12 @@ async def test_zombie_does_not_restart_after_max_retries(seed_zombie_job_exceede
         result = await session.execute(select(Alert).where(Alert.alert_type == "CRITICAL_ALERT"))
         alerts = result.scalars().all()
         assert len(alerts) >= 1
+
+
+# --- Fix 11: Worker env includes API key ---
+
+def test_worker_env_includes_api_key():
+    with patch.dict(os.environ, {"WEB_APP_BH_API_KEY": "secret-key-123"}):
+        from orchestrator.event_engine import _worker_env
+        env = _worker_env(target_id=1)
+        assert env["WEB_APP_BH_API_KEY"] == "secret-key-123"
