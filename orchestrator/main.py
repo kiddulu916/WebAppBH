@@ -89,6 +89,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with get_engine().begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    if not API_KEY:
+        logger.warning("WEB_APP_BH_API_KEY is not set — all endpoints are unauthenticated")
+
     # Start background tasks
     engine_task = asyncio.create_task(event_engine.run_event_loop(), name="event-engine")
     heartbeat_task = asyncio.create_task(event_engine.run_heartbeat(), name="heartbeat")
@@ -190,6 +193,9 @@ async def get_status(target_id: int | None = None):
 # ---------------------------------------------------------------------------
 @app.post("/api/v1/control")
 async def control_worker(body: ControlAction):
+    if not body.container_name.startswith("webbh-"):
+        raise HTTPException(status_code=400, detail="Can only control webbh worker containers")
+
     actions = {
         "pause": worker_manager.pause_worker,
         "stop": worker_manager.stop_worker,

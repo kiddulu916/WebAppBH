@@ -133,3 +133,21 @@ async def test_create_target_writes_all_config_files(db, client, tmp_path):
     # Verify empty defaults
     assert json.loads((config_dir / "custom_headers.json").read_text()) == {}
     assert json.loads((config_dir / "rate_limits.json").read_text()) == {}
+
+
+# --- Fix 4: container name validation + auth warning ---
+
+@pytest.mark.asyncio
+async def test_control_rejects_non_webbh_container(db, client):
+    resp = await client.post("/api/v1/control", json={
+        "container_name": "postgres",
+        "action": "stop",
+    }, headers=API_KEY_HEADER)
+    assert resp.status_code == 400
+    assert "webbh" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_auth_rejected_without_key(db, client):
+    resp = await client.get("/api/v1/status")
+    assert resp.status_code == 401
