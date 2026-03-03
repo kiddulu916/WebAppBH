@@ -45,3 +45,15 @@ async def test_should_queue_returns_true_when_unhealthy():
         mock_cr.return_value = ResourceSnapshot(cpu_percent=90.0, memory_percent=90.0, is_healthy=False)
         result = await should_queue()
         assert result is True
+
+
+@pytest.mark.asyncio
+async def test_check_resources_uses_non_blocking_cpu():
+    """cpu_percent should be called with interval=None (non-blocking)."""
+    with patch("orchestrator.worker_manager.psutil") as mock_psutil:
+        mock_psutil.cpu_percent.return_value = 50.0
+        mock_mem = MagicMock()
+        mock_mem.percent = 60.0
+        mock_psutil.virtual_memory.return_value = mock_mem
+        await check_resources()
+        mock_psutil.cpu_percent.assert_called_once_with(interval=None)

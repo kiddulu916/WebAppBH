@@ -268,7 +268,7 @@ async def check_resources() -> ResourceSnapshot:
     loop = asyncio.get_running_loop()
 
     def _run() -> ResourceSnapshot:
-        cpu = psutil.cpu_percent(interval=1)
+        cpu = psutil.cpu_percent(interval=None)
         mem = psutil.virtual_memory().percent
         return ResourceSnapshot(
             cpu_percent=cpu,
