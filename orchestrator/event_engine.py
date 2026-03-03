@@ -337,7 +337,11 @@ async def _heartbeat_cycle() -> None:
 
         if info is None or info.status != "running":
             # Container gone or stopped — check if zombie
-            if job.last_seen and job.last_seen < cutoff:
+            # Normalise tz: SQLite returns naive datetimes, PostgreSQL returns aware
+            last_seen = job.last_seen
+            if last_seen and last_seen.tzinfo is None:
+                last_seen = last_seen.replace(tzinfo=timezone.utc)
+            if last_seen and last_seen < cutoff:
                 logger.warning(
                     "ZOMBIE_RESTART — killing unresponsive job",
                     extra={"container": job.container_name, "last_seen": str(job.last_seen)},
@@ -363,15 +367,11 @@ async def _heartbeat_cycle() -> None:
                     session.add(alert)
                     await session.commit()
             else:
-                # Container gone but within timeout — mark FAILED
-                async with get_session() as session:
-                    stmt = (
-                        update(JobState)
-                        .where(JobState.id == job.id)
-                        .values(status="FAILED", last_seen=now)
-                    )
-                    await session.execute(stmt)
-                    await session.commit()
+                # Container gone but within timeout — grace period for restart policy
+                logger.info(
+                    "Container missing but within grace period",
+                    extra={"container": job.container_name, "last_seen": str(job.last_seen)},
+                )
         else:
             # Container running — update last_seen
             async with get_session() as session:

@@ -195,3 +195,45 @@ async def test_cloud_trigger_fires_for_fresh_assets(seed_target_with_fresh_cloud
     from orchestrator.event_engine import _check_cloud_trigger
     await _check_cloud_trigger()
     mock_wm.start_worker.assert_called()
+
+
+# --- Fix 9: Heartbeat grace period for vanished containers ---
+
+from orchestrator.worker_manager import ContainerInfo
+
+
+@pytest_asyncio.fixture
+async def seed_running_job_recent(db):
+    """A RUNNING job with recent last_seen (within zombie timeout)."""
+    async with get_session() as session:
+        t = Target(company_name="GraceCorp", base_domain="grace.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        # Use naive UTC datetime — SQLite strips timezone info
+        job = JobState(
+            target_id=t.id,
+            container_name="webbh-fuzzing-tgrace",
+            status="RUNNING",
+            current_phase="fuzzing",
+            last_seen=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=30),
+        )
+        session.add(job)
+        await session.commit()
+        return t.id
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_grace_period_for_vanished_container(seed_running_job_recent, mock_wm):
+    """Container gone but last_seen is recent — should NOT mark FAILED."""
+    mock_wm.get_container_status = AsyncMock(return_value=None)  # container gone
+
+    from orchestrator.event_engine import _heartbeat_cycle
+    await _heartbeat_cycle()
+
+    async with get_session() as session:
+        from sqlalchemy import select
+        result = await session.execute(select(JobState).where(JobState.container_name == "webbh-fuzzing-tgrace"))
+        job = result.scalar_one()
+        # Should still be RUNNING (grace period), NOT FAILED
+        assert job.status == "RUNNING"
