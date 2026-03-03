@@ -492,3 +492,47 @@ async def _auto_resume() -> None:
                 resumed += 1
 
     logger.info("Auto-resume complete", extra={"resumed": resumed})
+
+
+# ---------------------------------------------------------------------------
+# Redis background listener — real-time reactive path
+# ---------------------------------------------------------------------------
+async def _dispatch_recon_event(msg_id: str, data: dict) -> None:
+    """Fan out a recon_queue message to the appropriate work queue."""
+    asset_type = data.get("asset_type")
+    target_id = data.get("target_id")
+
+    if asset_type == "location":
+        port = data.get("port")
+        state = data.get("state")
+        if port in (80, 443) and state == "open":
+            await push_task("fuzzing_queue", data)
+            await push_task("webapp_queue", data)
+            logger.info("Dispatched web location to fuzzing + webapp queues",
+                        extra={"target_id": target_id, "asset_id": data.get("asset_id")})
+
+    elif asset_type == "cloud_asset":
+        await push_task("cloud_queue", data)
+        logger.info("Dispatched cloud asset to cloud_queue",
+                    extra={"target_id": target_id})
+
+    elif asset_type == "param":
+        await push_task("api_queue", data)
+        logger.info("Dispatched param to api_queue",
+                    extra={"target_id": target_id})
+
+
+async def run_redis_listener() -> None:
+    """Listen on recon_queue and fan out to work queues.
+
+    Complements the DB poll loop — this provides sub-second reactivity.
+    """
+    from lib_webbh import listen_queue
+
+    logger.info("Redis listener started on recon_queue")
+    await listen_queue(
+        queue="recon_queue",
+        group="orchestrator",
+        consumer="event-engine",
+        callback=_dispatch_recon_event,
+    )

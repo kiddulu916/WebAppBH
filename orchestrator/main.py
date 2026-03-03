@@ -97,6 +97,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Start background tasks
     engine_task = asyncio.create_task(event_engine.run_event_loop(), name="event-engine")
     heartbeat_task = asyncio.create_task(event_engine.run_heartbeat(), name="heartbeat")
+    redis_task = asyncio.create_task(event_engine.run_redis_listener(), name="redis-listener")
     logger.info("Background tasks started")
 
     yield
@@ -104,7 +105,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Shutdown
     engine_task.cancel()
     heartbeat_task.cancel()
-    for task in (engine_task, heartbeat_task):
+    redis_task.cancel()
+    for task in (engine_task, heartbeat_task, redis_task):
         try:
             await task
         except asyncio.CancelledError:

@@ -390,3 +390,77 @@ def test_worker_env_includes_api_key():
         from orchestrator.event_engine import _worker_env
         env = _worker_env(target_id=1)
         assert env["WEB_APP_BH_API_KEY"] == "secret-key-123"
+
+
+# --- Fix 16/P3: Redis background listener dispatch ---
+
+
+@pytest.mark.asyncio
+async def test_redis_listener_callback_dispatches_web_location(mock_push):
+    """A recon_queue message with asset_type=location and port 443 should push to fuzzing_queue."""
+    from orchestrator.event_engine import _dispatch_recon_event
+
+    msg_data = {
+        "asset_type": "location",
+        "asset_id": 42,
+        "target_id": 1,
+        "port": 443,
+        "state": "open",
+    }
+
+    await _dispatch_recon_event("msg-001", msg_data)
+
+    calls = mock_push.call_args_list
+    queues_pushed = [c[0][0] for c in calls]
+    assert "fuzzing_queue" in queues_pushed
+    assert "webapp_queue" in queues_pushed
+
+
+@pytest.mark.asyncio
+async def test_redis_listener_callback_dispatches_cloud_asset(mock_push):
+    from orchestrator.event_engine import _dispatch_recon_event
+
+    msg_data = {
+        "asset_type": "cloud_asset",
+        "asset_id": 99,
+        "target_id": 2,
+    }
+
+    await _dispatch_recon_event("msg-002", msg_data)
+
+    calls = mock_push.call_args_list
+    queues_pushed = [c[0][0] for c in calls]
+    assert "cloud_queue" in queues_pushed
+
+
+@pytest.mark.asyncio
+async def test_redis_listener_callback_dispatches_param(mock_push):
+    from orchestrator.event_engine import _dispatch_recon_event
+
+    msg_data = {
+        "asset_type": "param",
+        "asset_id": 55,
+        "target_id": 3,
+    }
+
+    await _dispatch_recon_event("msg-003", msg_data)
+
+    calls = mock_push.call_args_list
+    queues_pushed = [c[0][0] for c in calls]
+    assert "api_queue" in queues_pushed
+
+
+@pytest.mark.asyncio
+async def test_redis_listener_callback_ignores_closed_port(mock_push):
+    from orchestrator.event_engine import _dispatch_recon_event
+
+    msg_data = {
+        "asset_type": "location",
+        "asset_id": 42,
+        "target_id": 1,
+        "port": 443,
+        "state": "closed",
+    }
+
+    await _dispatch_recon_event("msg-004", msg_data)
+    mock_push.assert_not_called()
