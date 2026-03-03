@@ -52,6 +52,9 @@ WORKER_IMAGES = {
     "api_testing":     os.environ.get("WORKER_IMAGE_API",      "webbh/api-worker:latest"),
 }
 
+# Statuses that indicate a job is active and should not be re-triggered
+ACTIVE_STATUSES = ["RUNNING", "QUEUED", "PAUSED", "STOPPED"]
+
 # Shared volume mount passed to every worker
 SHARED_VOLUME = {
     os.environ.get("SHARED_VOLUME_HOST", "./shared"): {
@@ -177,7 +180,7 @@ async def _check_cloud_trigger() -> None:
                 JobState,
                 (JobState.target_id == CloudAsset.target_id)
                 & (JobState.container_name.like("webbh-cloud_testing-%"))
-                & (JobState.status.in_(["RUNNING", "QUEUED"])),
+                & (JobState.status.in_(ACTIVE_STATUSES)),
             )
             .where(JobState.id.is_(None))
             .group_by(CloudAsset.target_id)
@@ -197,7 +200,7 @@ async def _check_web_trigger() -> None:
             select(JobState.target_id)
             .where(
                 JobState.container_name.like("webbh-fuzzing-%"),
-                JobState.status.in_(["RUNNING", "QUEUED"]),
+                JobState.status.in_(ACTIVE_STATUSES),
             )
         ).subquery()
 
@@ -241,7 +244,7 @@ async def _check_api_trigger() -> None:
                 select(JobState.target_id)
                 .where(
                     JobState.container_name.like("webbh-api_testing-%"),
-                    JobState.status.in_(["RUNNING", "QUEUED"]),
+                    JobState.status.in_(ACTIVE_STATUSES),
                     JobState.target_id.in_(candidates),
                 )
             )

@@ -95,3 +95,33 @@ async def test_web_trigger_ignores_closed_port(seed_target_with_closed_port, moc
     from orchestrator.event_engine import _check_web_trigger
     await _check_web_trigger()
     mock_wm.start_worker.assert_not_called()
+
+
+# --- Fix 3: Triggers must respect PAUSED and STOPPED statuses ---
+
+@pytest_asyncio.fixture
+async def seed_target_with_paused_web_job(db):
+    """Target with open port 443 AND a PAUSED fuzzing job."""
+    async with get_session() as session:
+        t = Target(company_name="PausedWeb", base_domain="pausedweb.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        a = Asset(target_id=t.id, asset_type="ip", asset_value="10.0.0.3", source_tool="nmap")
+        session.add(a)
+        await session.commit()
+        await session.refresh(a)
+        loc = Location(asset_id=a.id, port=443, protocol="tcp", service="https", state="open")
+        session.add(loc)
+        await session.commit()
+        job = JobState(target_id=t.id, container_name="webbh-fuzzing-t" + str(t.id), status="PAUSED", current_phase="fuzzing")
+        session.add(job)
+        await session.commit()
+        return t.id
+
+
+@pytest.mark.asyncio
+async def test_web_trigger_does_not_override_paused_job(seed_target_with_paused_web_job, mock_wm):
+    from orchestrator.event_engine import _check_web_trigger
+    await _check_web_trigger()
+    mock_wm.start_worker.assert_not_called()
