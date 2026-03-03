@@ -43,6 +43,7 @@ POLL_INTERVAL = int(os.environ.get("EVENT_POLL_INTERVAL", "15"))       # seconds
 HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "60"))   # seconds
 ZOMBIE_TIMEOUT = int(os.environ.get("ZOMBIE_TIMEOUT", "600"))         # 10 minutes
 PARAM_THRESHOLD = int(os.environ.get("PARAM_THRESHOLD", "20"))         # unique keys
+ZOMBIE_MAX_RETRIES = int(os.environ.get("ZOMBIE_MAX_RETRIES", "3"))
 
 # Worker image names (Phase 4+ will supply the real images)
 WORKER_IMAGES = {
@@ -357,15 +358,49 @@ async def _heartbeat_cycle() -> None:
                     await session.execute(stmt)
                     await session.commit()
 
-                # Create alert
+                # Check retry count before restarting
                 async with get_session() as session:
-                    alert = Alert(
-                        target_id=job.target_id,
-                        alert_type="ZOMBIE_RESTART",
-                        message=f"Container {job.container_name} was unresponsive for >{ZOMBIE_TIMEOUT}s and was killed.",
+                    retry_stmt = (
+                        select(func.count(Alert.id))
+                        .where(
+                            Alert.target_id == job.target_id,
+                            Alert.alert_type == "ZOMBIE_RESTART",
+                            Alert.message.like(f"%{job.container_name}%"),
+                        )
                     )
-                    session.add(alert)
-                    await session.commit()
+                    result = await session.execute(retry_stmt)
+                    retry_count = result.scalar() or 0
+
+                if retry_count >= ZOMBIE_MAX_RETRIES:
+                    # Permanently failed — emit critical alert
+                    async with get_session() as session:
+                        alert = Alert(
+                            target_id=job.target_id,
+                            alert_type="CRITICAL_ALERT",
+                            message=f"Container {job.container_name} exceeded {ZOMBIE_MAX_RETRIES} zombie restarts. Permanently failed.",
+                        )
+                        session.add(alert)
+                        await session.commit()
+                    await _emit_event(job.target_id, "CRITICAL_ALERT", {
+                        "container": job.container_name,
+                        "message": f"Exceeded {ZOMBIE_MAX_RETRIES} zombie restarts",
+                    })
+                else:
+                    # Create alert and restart
+                    async with get_session() as session:
+                        alert = Alert(
+                            target_id=job.target_id,
+                            alert_type="ZOMBIE_RESTART",
+                            message=f"Container {job.container_name} was unresponsive for >{ZOMBIE_TIMEOUT}s. Restarting (attempt {retry_count + 1}/{ZOMBIE_MAX_RETRIES}).",
+                        )
+                        session.add(alert)
+                        await session.commit()
+
+                    # Restart the worker
+                    parts = job.container_name.replace("webbh-", "").rsplit("-t", 1)
+                    worker_key = parts[0] if parts else None
+                    if worker_key and worker_key in WORKER_IMAGES:
+                        await _trigger_worker(job.target_id, worker_key, job.current_phase or worker_key)
             else:
                 # Container gone but within timeout — grace period for restart policy
                 logger.info(
