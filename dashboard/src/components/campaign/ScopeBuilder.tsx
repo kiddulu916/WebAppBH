@@ -51,7 +51,7 @@ export default function ScopeBuilder() {
     const lines = (s: string) =>
       s.split("\n").map((l) => l.trim()).filter(Boolean);
 
-    let parsedHeaders: Record<string, string> = {};
+    const parsedHeaders: Record<string, string> = {};
     try {
       if (customHeaders.trim()) {
         // Support "Key: Value" lines

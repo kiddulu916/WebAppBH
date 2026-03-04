@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
@@ -12,6 +12,13 @@ export default function AlertDropdown() {
   const [open, setOpen] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const ref = useRef<HTMLDivElement>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  // Refresh relative timestamps every minute
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Close on outside click
   useEffect(() => {
@@ -50,15 +57,15 @@ export default function AlertDropdown() {
     decrementUnreadAlerts();
   }
 
-  function timeAgo(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime();
+  const timeAgo = useCallback((iso: string): string => {
+    const diff = now - new Date(iso).getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return "just now";
     if (mins < 60) return `${mins}m ago`;
     const hrs = Math.floor(mins / 60);
     if (hrs < 24) return `${hrs}h ago`;
     return `${Math.floor(hrs / 24)}d ago`;
-  }
+  }, [now]);
 
   return (
     <div ref={ref} className="relative">

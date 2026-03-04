@@ -1,4 +1,4 @@
-import type { JobState, Target, TargetProfile } from "@/types/schema";
+import type { JobState, TargetProfile } from "@/types/schema";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "";

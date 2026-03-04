@@ -75,13 +75,18 @@ export default function VulnsPage() {
       router.push("/");
       return;
     }
-    setLoading(true);
+    let cancelled = false;
     const severity = tab === "all" ? undefined : tab;
     api
       .getVulnerabilities(activeTarget.id, severity)
-      .then((res) => setData(res.vulnerabilities as VulnRow[]))
+      .then((res) => {
+        if (!cancelled) setData(res.vulnerabilities as VulnRow[]);
+      })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [activeTarget, tab, router]);
 
   return (
