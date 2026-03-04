@@ -14,7 +14,7 @@ import tests._patch_logger  # noqa: F401
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from lib_webbh.database import get_engine, Base, get_session, Target, JobState, Asset, Location
+from lib_webbh.database import get_engine, Base, get_session, Target, JobState, Asset, Location, Alert
 
 # Patch event_engine background tasks before importing app
 with patch("orchestrator.event_engine.run_event_loop", new_callable=AsyncMock), \
@@ -237,3 +237,96 @@ async def test_get_assets_returns_with_locations(db, client):
     assert assets[0]["asset_value"] == "sub.asset.com"
     assert len(assets[0]["locations"]) == 1
     assert assets[0]["locations"][0]["port"] == 443
+
+
+# --- GET vulnerabilities, cloud_assets, alerts + PATCH alerts ---
+
+@pytest.mark.asyncio
+async def test_get_vulnerabilities_with_severity_filter(db, client):
+    from lib_webbh.database import Vulnerability as VulnModel
+    async with get_session() as session:
+        t = Target(company_name="VulnCorp", base_domain="vuln.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        session.add(VulnModel(target_id=t.id, severity="critical", title="RCE in login"))
+        session.add(VulnModel(target_id=t.id, severity="low", title="Missing header"))
+        await session.commit()
+
+    resp = await client.get(f"/api/v1/vulnerabilities?target_id={t.id}&severity=critical", headers=API_KEY_HEADER)
+    assert resp.status_code == 200
+    vulns = resp.json()["vulnerabilities"]
+    assert len(vulns) == 1
+    assert vulns[0]["title"] == "RCE in login"
+
+
+@pytest.mark.asyncio
+async def test_get_vulnerabilities_all(db, client):
+    from lib_webbh.database import Vulnerability as VulnModel
+    async with get_session() as session:
+        t = Target(company_name="VulnCorp2", base_domain="vuln2.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        session.add(VulnModel(target_id=t.id, severity="high", title="XSS"))
+        session.add(VulnModel(target_id=t.id, severity="medium", title="CSRF"))
+        await session.commit()
+
+    resp = await client.get(f"/api/v1/vulnerabilities?target_id={t.id}", headers=API_KEY_HEADER)
+    assert resp.status_code == 200
+    assert len(resp.json()["vulnerabilities"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_cloud_assets(db, client):
+    from lib_webbh.database import CloudAsset as CloudModel
+    async with get_session() as session:
+        t = Target(company_name="CloudCorp", base_domain="cloud.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        session.add(CloudModel(target_id=t.id, provider="AWS", asset_type="s3_bucket", url="s3://cloud-corp-backup", is_public=True))
+        await session.commit()
+
+    resp = await client.get(f"/api/v1/cloud_assets?target_id={t.id}", headers=API_KEY_HEADER)
+    assert resp.status_code == 200
+    ca = resp.json()["cloud_assets"]
+    assert len(ca) == 1
+    assert ca[0]["provider"] == "AWS"
+    assert ca[0]["is_public"] is True
+
+
+@pytest.mark.asyncio
+async def test_get_alerts_filtered_by_is_read(db, client):
+    async with get_session() as session:
+        t = Target(company_name="AlertCorp", base_domain="alert.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        session.add(Alert(target_id=t.id, alert_type="CRITICAL_ALERT", message="exposed .env", is_read=False))
+        session.add(Alert(target_id=t.id, alert_type="ZOMBIE_RESTART", message="worker restarted", is_read=True))
+        await session.commit()
+
+    resp = await client.get(f"/api/v1/alerts?target_id={t.id}&is_read=false", headers=API_KEY_HEADER)
+    assert resp.status_code == 200
+    alerts = resp.json()["alerts"]
+    assert len(alerts) == 1
+    assert alerts[0]["message"] == "exposed .env"
+
+
+@pytest.mark.asyncio
+async def test_patch_alert_mark_read(db, client):
+    async with get_session() as session:
+        t = Target(company_name="PatchCorp", base_domain="patch.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        a = Alert(target_id=t.id, alert_type="CRITICAL_ALERT", message="open bucket", is_read=False)
+        session.add(a)
+        await session.commit()
+        await session.refresh(a)
+        alert_id = a.id
+
+    resp = await client.patch(f"/api/v1/alerts/{alert_id}", json={"is_read": True}, headers=API_KEY_HEADER)
+    assert resp.status_code == 200
+    assert resp.json()["is_read"] is True

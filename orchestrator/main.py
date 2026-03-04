@@ -2,12 +2,16 @@
 
 Endpoints
 ---------
-POST /api/v1/targets       – initialise a new scan target
-GET  /api/v1/targets       – list all targets
-GET  /api/v1/assets        – list assets for a target (with locations)
-GET  /api/v1/status        – real-time job states
-POST /api/v1/control       – pause / stop / restart workers
-GET  /api/v1/stream/{id}   – SSE event stream per target
+POST  /api/v1/targets              – initialise a new scan target
+GET   /api/v1/targets              – list all targets
+GET   /api/v1/assets               – list assets for a target (with locations)
+GET   /api/v1/vulnerabilities      – list vulnerabilities for a target
+GET   /api/v1/cloud_assets         – list cloud assets for a target
+GET   /api/v1/alerts               – list alerts for a target
+PATCH /api/v1/alerts/{alert_id}    – update alert read status
+GET   /api/v1/status               – real-time job states
+POST  /api/v1/control              – pause / stop / restart workers
+GET   /api/v1/stream/{id}          – SSE event stream per target
 """
 
 from __future__ import annotations
@@ -84,6 +88,10 @@ class TargetCreate(BaseModel):
 class ControlAction(BaseModel):
     container_name: str
     action: str = Field(description="pause | stop | restart")
+
+
+class AlertUpdate(BaseModel):
+    is_read: bool
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +356,131 @@ async def list_assets(target_id: int = Query(..., description="Target ID to filt
             for a in assets
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/vulnerabilities — list vulnerabilities for a target
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/vulnerabilities")
+async def list_vulnerabilities(
+    target_id: int = Query(..., description="Target ID to filter vulnerabilities"),
+    severity: Optional[str] = Query(None, description="Filter by severity level"),
+):
+    async with get_session() as session:
+        stmt = (
+            select(Vulnerability)
+            .where(Vulnerability.target_id == target_id)
+            .options(selectinload(Vulnerability.asset))
+        )
+        if severity is not None:
+            stmt = stmt.where(Vulnerability.severity == severity)
+        result = await session.execute(stmt)
+        vulns = result.scalars().all()
+
+    return {
+        "vulnerabilities": [
+            {
+                "id": v.id,
+                "target_id": v.target_id,
+                "asset_id": v.asset_id,
+                "asset_value": v.asset.asset_value if v.asset else None,
+                "severity": v.severity,
+                "title": v.title,
+                "description": v.description,
+                "poc": v.poc,
+                "source_tool": v.source_tool,
+                "created_at": v.created_at.isoformat() if v.created_at else None,
+                "updated_at": v.updated_at.isoformat() if v.updated_at else None,
+            }
+            for v in vulns
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/cloud_assets — list cloud assets for a target
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/cloud_assets")
+async def list_cloud_assets(
+    target_id: int = Query(..., description="Target ID to filter cloud assets"),
+):
+    async with get_session() as session:
+        stmt = (
+            select(CloudAsset)
+            .where(CloudAsset.target_id == target_id)
+        )
+        result = await session.execute(stmt)
+        cloud_assets = result.scalars().all()
+
+    return {
+        "cloud_assets": [
+            {
+                "id": ca.id,
+                "target_id": ca.target_id,
+                "provider": ca.provider,
+                "asset_type": ca.asset_type,
+                "url": ca.url,
+                "is_public": ca.is_public,
+                "findings": ca.findings,
+                "created_at": ca.created_at.isoformat() if ca.created_at else None,
+                "updated_at": ca.updated_at.isoformat() if ca.updated_at else None,
+            }
+            for ca in cloud_assets
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/alerts — list alerts for a target
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/alerts")
+async def list_alerts(
+    target_id: int = Query(..., description="Target ID to filter alerts"),
+    is_read: Optional[bool] = Query(None, description="Filter by read status"),
+):
+    async with get_session() as session:
+        stmt = (
+            select(Alert)
+            .where(Alert.target_id == target_id)
+            .order_by(Alert.created_at.desc())
+        )
+        if is_read is not None:
+            stmt = stmt.where(Alert.is_read == is_read)
+        result = await session.execute(stmt)
+        alerts = result.scalars().all()
+
+    return {
+        "alerts": [
+            {
+                "id": a.id,
+                "target_id": a.target_id,
+                "vulnerability_id": a.vulnerability_id,
+                "alert_type": a.alert_type,
+                "message": a.message,
+                "is_read": a.is_read,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in alerts
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/alerts/{alert_id} — update alert read status
+# ---------------------------------------------------------------------------
+@app.patch("/api/v1/alerts/{alert_id}")
+async def update_alert(alert_id: int, body: AlertUpdate):
+    async with get_session() as session:
+        stmt = select(Alert).where(Alert.id == alert_id)
+        result = await session.execute(stmt)
+        alert = result.scalar_one_or_none()
+        if alert is None:
+            raise HTTPException(status_code=404, detail="Alert not found")
+        alert.is_read = body.is_read
+        await session.commit()
+        await session.refresh(alert)
+
+    return {"id": alert.id, "is_read": alert.is_read}
 
 
 # ---------------------------------------------------------------------------
