@@ -47,6 +47,7 @@ ZOMBIE_MAX_RETRIES = int(os.environ.get("ZOMBIE_MAX_RETRIES", "3"))
 
 # Worker image names (Phase 4+ will supply the real images)
 WORKER_IMAGES = {
+    "recon":           os.environ.get("WORKER_IMAGE_RECON",    "webbh/recon-core:latest"),
     "cloud_testing":   os.environ.get("WORKER_IMAGE_CLOUD",   "webbh/cloud-worker:latest"),
     "fuzzing":         os.environ.get("WORKER_IMAGE_FUZZING",  "webbh/fuzzing-worker:latest"),
     "webapp_testing":  os.environ.get("WORKER_IMAGE_WEBAPP",   "webbh/webapp-worker:latest"),
@@ -253,6 +254,40 @@ async def _check_web_trigger() -> None:
             await _trigger_worker(target_id, "webapp_testing", "webapp_testing")
 
 
+async def _check_recon_trigger() -> None:
+    """Trigger recon worker for new targets with no active/completed recon job."""
+    async with get_session() as session:
+        active_sub = (
+            select(JobState.target_id)
+            .where(
+                JobState.container_name.like("webbh-recon-%"),
+                JobState.status.in_(ACTIVE_STATUSES),
+            )
+        ).subquery()
+
+        completed_sub = (
+            select(JobState.target_id)
+            .where(
+                JobState.container_name.like("webbh-recon-%"),
+                JobState.status == "COMPLETED",
+            )
+        ).subquery()
+
+        stmt = (
+            select(Target.id)
+            .where(
+                Target.id.notin_(select(active_sub.c.target_id)),
+                Target.id.notin_(select(completed_sub.c.target_id)),
+            )
+        )
+        result = await session.execute(stmt)
+        target_ids = [row[0] for row in result.all()]
+
+    for tid in target_ids:
+        logger.info("Recon trigger fired", extra={"target_id": tid})
+        await _trigger_worker(tid, "recon", "passive_discovery")
+
+
 async def _check_api_trigger() -> None:
     """If a target's parameters exceed the threshold, trigger API testing."""
     async with get_session() as session:
@@ -296,6 +331,7 @@ async def run_event_loop() -> None:
 
     while True:
         try:
+            await _check_recon_trigger()
             await _check_cloud_trigger()
             await _check_web_trigger()
             await _check_api_trigger()
