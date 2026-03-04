@@ -14,7 +14,7 @@ import tests._patch_logger  # noqa: F401
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from lib_webbh.database import get_engine, Base, get_session, Target, JobState
+from lib_webbh.database import get_engine, Base, get_session, Target, JobState, Asset, Location
 
 # Patch event_engine background tasks before importing app
 with patch("orchestrator.event_engine.run_event_loop", new_callable=AsyncMock), \
@@ -184,3 +184,55 @@ async def test_sse_generator_cleans_up_on_disconnect():
 
     # xautoclaim should have been called during cleanup
     mock_redis.xautoclaim.assert_called_once()
+
+
+# --- Phase 3: GET endpoints ---
+
+@pytest.mark.asyncio
+async def test_get_targets_returns_all(db, client):
+    async with get_session() as session:
+        session.add(Target(company_name="Corp1", base_domain="corp1.com"))
+        session.add(Target(company_name="Corp2", base_domain="corp2.com"))
+        await session.commit()
+
+    resp = await client.get("/api/v1/targets", headers=API_KEY_HEADER)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["targets"]) == 2
+    assert data["targets"][0]["company_name"] == "Corp1"
+
+
+@pytest.mark.asyncio
+async def test_get_targets_empty(db, client):
+    resp = await client.get("/api/v1/targets", headers=API_KEY_HEADER)
+    assert resp.status_code == 200
+    assert resp.json()["targets"] == []
+
+
+@pytest.mark.asyncio
+async def test_get_assets_requires_target_id(db, client):
+    resp = await client.get("/api/v1/assets", headers=API_KEY_HEADER)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_assets_returns_with_locations(db, client):
+    async with get_session() as session:
+        t = Target(company_name="AssetCorp", base_domain="asset.com")
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        a = Asset(target_id=t.id, asset_type="subdomain", asset_value="sub.asset.com", source_tool="amass")
+        session.add(a)
+        await session.commit()
+        await session.refresh(a)
+        session.add(Location(asset_id=a.id, port=443, protocol="tcp", service="https", state="open"))
+        await session.commit()
+
+    resp = await client.get(f"/api/v1/assets?target_id={t.id}", headers=API_KEY_HEADER)
+    assert resp.status_code == 200
+    assets = resp.json()["assets"]
+    assert len(assets) == 1
+    assert assets[0]["asset_value"] == "sub.asset.com"
+    assert len(assets[0]["locations"]) == 1
+    assert assets[0]["locations"][0]["port"] == 443

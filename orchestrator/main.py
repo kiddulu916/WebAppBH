@@ -3,6 +3,8 @@
 Endpoints
 ---------
 POST /api/v1/targets       – initialise a new scan target
+GET  /api/v1/targets       – list all targets
+GET  /api/v1/assets        – list assets for a target (with locations)
 GET  /api/v1/status        – real-time job states
 POST /api/v1/control       – pause / stop / restart workers
 GET  /api/v1/stream/{id}   – SSE event stream per target
@@ -19,18 +21,22 @@ from pathlib import Path
 from typing import AsyncIterator, Optional
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from lib_webbh import (
     Alert,
     Asset,
     Base,
+    CloudAsset,
     JobState,
+    Location,
     Target,
+    Vulnerability,
     get_engine,
     get_session,
     push_task,
@@ -276,6 +282,71 @@ async def stream_events(target_id: int, request: Request):
                 pass
 
     return EventSourceResponse(_generate())
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/targets — list all targets
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/targets")
+async def list_targets():
+    async with get_session() as session:
+        stmt = select(Target).order_by(Target.created_at.desc())
+        result = await session.execute(stmt)
+        targets = result.scalars().all()
+
+    return {
+        "targets": [
+            {
+                "id": t.id,
+                "company_name": t.company_name,
+                "base_domain": t.base_domain,
+                "target_profile": t.target_profile,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+            }
+            for t in targets
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/assets — list assets for a target (with locations)
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/assets")
+async def list_assets(target_id: int = Query(..., description="Target ID to filter assets")):
+    async with get_session() as session:
+        stmt = (
+            select(Asset)
+            .where(Asset.target_id == target_id)
+            .options(selectinload(Asset.locations))
+        )
+        result = await session.execute(stmt)
+        assets = result.scalars().all()
+
+    return {
+        "assets": [
+            {
+                "id": a.id,
+                "target_id": a.target_id,
+                "asset_type": a.asset_type,
+                "asset_value": a.asset_value,
+                "source_tool": a.source_tool,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+                "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+                "locations": [
+                    {
+                        "id": loc.id,
+                        "port": loc.port,
+                        "protocol": loc.protocol,
+                        "service": loc.service,
+                        "state": loc.state,
+                    }
+                    for loc in a.locations
+                ],
+            }
+            for a in assets
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------
