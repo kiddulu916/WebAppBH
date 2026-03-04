@@ -32,7 +32,9 @@ export default function WorkerFeed({ events }: { events: SSEEvent[] }) {
           events.map((evt, i) => (
             <div key={i} className="flex gap-2">
               <span className="shrink-0 text-text-muted">
-                {new Date().toLocaleTimeString()}
+                {evt.timestamp
+                  ? new Date(evt.timestamp).toLocaleTimeString()
+                  : "—"}
               </span>
               <span className={eventColor(evt.event)}>
                 [{evt.event}]

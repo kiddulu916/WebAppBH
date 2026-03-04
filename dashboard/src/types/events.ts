@@ -9,6 +9,7 @@ export type SSEEventType =
 export interface SSEEvent {
   event: SSEEventType;
   target_id: number;
+  timestamp?: string; // ISO-8601, added client-side on receipt
   [key: string]: unknown;
 }
 
