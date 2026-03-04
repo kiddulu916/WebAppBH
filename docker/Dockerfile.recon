@@ -1,0 +1,69 @@
+# ============================================================
+# Stage 1: Go tool builder
+# ============================================================
+FROM golang:1.22-bookworm AS go-builder
+
+ENV GOPATH=/go
+ENV PATH=$GOPATH/bin:$PATH
+
+RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
+    go install github.com/tomnomnom/assetfinder@latest && \
+    go install github.com/projectdiscovery/chaos-client/cmd/chaos@latest && \
+    go install github.com/owasp-amass/amass/v4/...@latest && \
+    go install github.com/projectdiscovery/httpx/cmd/httpx@latest && \
+    go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest && \
+    go install github.com/projectdiscovery/katana/cmd/katana@latest && \
+    go install github.com/hakluke/hakrawler@latest && \
+    go install github.com/bp0lr/gauplus@latest
+
+# ============================================================
+# Stage 2: Python tool builder
+# ============================================================
+FROM python:3.10-slim-bookworm AS py-builder
+
+RUN pip install --no-cache-dir --target=/py-tools \
+    sublist3r \
+    knockpy \
+    paramspider
+
+# ============================================================
+# Stage 3: Runtime
+# ============================================================
+FROM python:3.10-slim-bookworm
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc libpq-dev libpcap-dev massdns git && \
+    rm -rf /var/lib/apt/lists/*
+
+# Go binaries
+COPY --from=go-builder /go/bin/subfinder /usr/local/bin/
+COPY --from=go-builder /go/bin/assetfinder /usr/local/bin/
+COPY --from=go-builder /go/bin/chaos /usr/local/bin/
+COPY --from=go-builder /go/bin/amass /usr/local/bin/
+COPY --from=go-builder /go/bin/httpx /usr/local/bin/
+COPY --from=go-builder /go/bin/naabu /usr/local/bin/
+COPY --from=go-builder /go/bin/katana /usr/local/bin/
+COPY --from=go-builder /go/bin/hakrawler /usr/local/bin/
+COPY --from=go-builder /go/bin/gauplus /usr/local/bin/
+
+# Python tools
+COPY --from=py-builder /py-tools /usr/local/lib/python3.10/site-packages/
+
+# Install lib_webbh
+COPY shared/lib_webbh /app/shared/lib_webbh
+RUN pip install --no-cache-dir /app/shared/lib_webbh
+
+# Shared directories
+RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs
+
+# Worker source
+COPY workers/__init__.py /app/workers/__init__.py
+COPY workers/recon_core /app/workers/recon_core
+
+# Verify
+RUN python -c "from workers.recon_core.main import main; print('recon-core OK')"
+
+ENTRYPOINT ["python", "-m", "workers.recon_core.main"]
