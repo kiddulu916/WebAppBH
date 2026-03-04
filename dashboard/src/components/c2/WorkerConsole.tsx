@@ -15,6 +15,8 @@ import type { JobState, JobStatus } from "@/types/schema";
 const STATUS_COLORS: Record<JobStatus, string> = {
   RUNNING: "text-success",
   QUEUED: "text-warning",
+  PAUSED: "text-warning",
+  STOPPED: "text-text-muted",
   COMPLETED: "text-text-muted",
   FAILED: "text-danger",
 };
@@ -22,6 +24,8 @@ const STATUS_COLORS: Record<JobStatus, string> = {
 const STATUS_DOT: Record<JobStatus, string> = {
   RUNNING: "bg-success",
   QUEUED: "bg-warning",
+  PAUSED: "bg-warning",
+  STOPPED: "bg-text-muted",
   COMPLETED: "bg-text-muted",
   FAILED: "bg-danger",
 };
@@ -31,7 +35,7 @@ export default function WorkerConsole({ jobs }: { jobs: JobState[] }) {
 
   async function handleAction(
     containerName: string,
-    action: "pause" | "stop" | "restart",
+    action: "pause" | "stop" | "restart" | "unpause",
   ) {
     setLoading(`${containerName}-${action}`);
     try {
@@ -107,7 +111,29 @@ export default function WorkerConsole({ jobs }: { jobs: JobState[] }) {
                       </button>
                     </>
                   )}
-                  {(job.status === "FAILED" || job.status === "COMPLETED") && (
+                  {job.status === "PAUSED" && (
+                    <>
+                      <button
+                        onClick={() =>
+                          handleAction(job.container_name, "unpause")
+                        }
+                        title="Resume"
+                        className="rounded p-1.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-success"
+                      >
+                        <Play className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleAction(job.container_name, "stop")
+                        }
+                        title="Stop"
+                        className="rounded p-1.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-danger"
+                      >
+                        <Square className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                  {(job.status === "FAILED" || job.status === "COMPLETED" || job.status === "STOPPED") && (
                     <button
                       onClick={() =>
                         handleAction(job.container_name, "restart")
