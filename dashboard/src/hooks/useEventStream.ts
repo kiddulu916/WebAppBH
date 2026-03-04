@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
 import type { SSEEvent } from "@/types/events";
 
@@ -22,7 +21,7 @@ export function useEventStream(targetId: number | null) {
   useEffect(() => {
     if (targetId == null) return;
 
-    const url = api.sseUrl(targetId);
+    const url = `/api/sse/${targetId}`;
     const es = new EventSource(url);
     sourceRef.current = es;
 
@@ -32,6 +31,7 @@ export function useEventStream(targetId: number | null) {
     const handleEvent = (e: MessageEvent) => {
       try {
         const data: SSEEvent = JSON.parse(e.data);
+        data.timestamp = new Date().toISOString();
         addEvent(data);
 
         if (data.event === "CRITICAL_ALERT") {
