@@ -7,6 +7,7 @@ interface CampaignState {
   activeTarget: Target | null;
   currentPhase: string | null;
   jobs: JobState[];
+  unreadAlerts: number;
 
   /* connectivity */
   connected: boolean;
@@ -16,6 +17,9 @@ interface CampaignState {
   setCurrentPhase: (phase: string | null) => void;
   setJobs: (jobs: JobState[]) => void;
   setConnected: (v: boolean) => void;
+  setUnreadAlerts: (count: number) => void;
+  incrementUnreadAlerts: () => void;
+  decrementUnreadAlerts: () => void;
 }
 
 export const useCampaignStore = create<CampaignState>()(
@@ -24,12 +28,18 @@ export const useCampaignStore = create<CampaignState>()(
       activeTarget: null,
       currentPhase: null,
       jobs: [],
+      unreadAlerts: 0,
       connected: false,
 
       setActiveTarget: (target) => set({ activeTarget: target }),
       setCurrentPhase: (phase) => set({ currentPhase: phase }),
       setJobs: (jobs) => set({ jobs }),
       setConnected: (v) => set({ connected: v }),
+      setUnreadAlerts: (count) => set({ unreadAlerts: count }),
+      incrementUnreadAlerts: () =>
+        set((s) => ({ unreadAlerts: s.unreadAlerts + 1 })),
+      decrementUnreadAlerts: () =>
+        set((s) => ({ unreadAlerts: Math.max(0, s.unreadAlerts - 1) })),
     }),
     {
       name: "webbh-campaign",
