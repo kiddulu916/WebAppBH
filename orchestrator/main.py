@@ -319,6 +319,7 @@ async def list_assets(target_id: int = Query(..., description="Target ID to filt
             select(Asset)
             .where(Asset.target_id == target_id)
             .options(selectinload(Asset.locations))
+            .order_by(Asset.created_at.desc())
         )
         result = await session.execute(stmt)
         assets = result.scalars().all()

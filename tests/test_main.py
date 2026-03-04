@@ -199,7 +199,8 @@ async def test_get_targets_returns_all(db, client):
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["targets"]) == 2
-    assert data["targets"][0]["company_name"] == "Corp1"
+    names = {t["company_name"] for t in data["targets"]}
+    assert names == {"Corp1", "Corp2"}
 
 
 @pytest.mark.asyncio
