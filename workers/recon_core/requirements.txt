@@ -1,0 +1,3 @@
+# lib_webbh is installed from shared/ in the Dockerfile
+# All recon tools are Go/system binaries called via asyncio subprocess
+# No additional Python dependencies required beyond lib_webbh
