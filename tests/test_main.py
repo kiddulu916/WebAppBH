@@ -330,3 +330,25 @@ async def test_patch_alert_mark_read(db, client):
     resp = await client.patch(f"/api/v1/alerts/{alert_id}", json={"is_read": True}, headers=API_KEY_HEADER)
     assert resp.status_code == 200
     assert resp.json()["is_read"] is True
+
+
+# --- PATCH /targets/{id} for profile updates ---
+
+@pytest.mark.asyncio
+async def test_patch_target_profile(db, client, tmp_path):
+    with patch("orchestrator.main.SHARED_CONFIG", tmp_path):
+        resp = await client.post("/api/v1/targets", json={
+            "company_name": "PatchTarget",
+            "base_domain": "patchtarget.com",
+            "target_profile": {"rate_limits": {"pps": 50}, "custom_headers": {"X-Old": "val"}},
+        }, headers=API_KEY_HEADER)
+        tid = resp.json()["target_id"]
+
+        resp = await client.patch(f"/api/v1/targets/{tid}", json={
+            "custom_headers": {"Authorization": "Bearer new"},
+            "rate_limits": {"pps": 100},
+        }, headers=API_KEY_HEADER)
+    assert resp.status_code == 200
+    profile = resp.json()["target_profile"]
+    assert profile["custom_headers"] == {"Authorization": "Bearer new"}
+    assert profile["rate_limits"] == {"pps": 100}

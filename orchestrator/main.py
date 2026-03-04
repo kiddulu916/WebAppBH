@@ -9,6 +9,7 @@ GET   /api/v1/vulnerabilities      – list vulnerabilities for a target
 GET   /api/v1/cloud_assets         – list cloud assets for a target
 GET   /api/v1/alerts               – list alerts for a target
 PATCH /api/v1/alerts/{alert_id}    – update alert read status
+PATCH /api/v1/targets/{target_id}  – update target profile (headers, rate limits)
 GET   /api/v1/status               – real-time job states
 POST  /api/v1/control              – pause / stop / restart workers
 GET   /api/v1/stream/{id}          – SSE event stream per target
@@ -30,7 +31,7 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import attributes, selectinload
 
 from lib_webbh import (
     Alert,
@@ -92,6 +93,11 @@ class ControlAction(BaseModel):
 
 class AlertUpdate(BaseModel):
     is_read: bool
+
+
+class TargetProfileUpdate(BaseModel):
+    custom_headers: Optional[dict] = None
+    rate_limits: Optional[dict] = None
 
 
 # ---------------------------------------------------------------------------
@@ -481,6 +487,36 @@ async def update_alert(alert_id: int, body: AlertUpdate):
         await session.refresh(alert)
 
     return {"id": alert.id, "is_read": alert.is_read}
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/targets/{target_id} — update target profile
+# ---------------------------------------------------------------------------
+@app.patch("/api/v1/targets/{target_id}")
+async def update_target_profile(target_id: int, body: TargetProfileUpdate):
+    async with get_session() as session:
+        result = await session.execute(select(Target).where(Target.id == target_id))
+        target = result.scalar_one_or_none()
+        if not target:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+        profile = target.target_profile or {}
+        if body.custom_headers is not None:
+            profile["custom_headers"] = body.custom_headers
+        if body.rate_limits is not None:
+            profile["rate_limits"] = body.rate_limits
+        target.target_profile = profile
+        attributes.flag_modified(target, "target_profile")
+        await session.commit()
+        await session.refresh(target)
+
+    # Rewrite config files
+    _generate_tool_configs(target_id, target.target_profile or {})
+
+    return {
+        "target_id": target_id,
+        "target_profile": target.target_profile,
+    }
 
 
 # ---------------------------------------------------------------------------
