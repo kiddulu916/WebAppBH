@@ -13,7 +13,7 @@ export type CloudProvider = "AWS" | "Azure" | "GCP" | "Other";
 
 export type VulnSeverity = "info" | "low" | "medium" | "high" | "critical";
 
-export type JobStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+export type JobStatus = "QUEUED" | "RUNNING" | "PAUSED" | "STOPPED" | "COMPLETED" | "FAILED";
 
 export type AssetType = "subdomain" | "ip" | "cidr" | "url" | string;
 
