@@ -431,3 +431,93 @@ async def test_dom_sink_analyzer_static_phase(tmp_path):
     call_kwargs = save_vuln.call_args[1]
     assert "Potential DOM XSS" in call_kwargs["title"]
     assert call_kwargs["severity"] == "high"
+
+
+# ---------------------------------------------------------------------------
+# StorageAuditor tests
+# ---------------------------------------------------------------------------
+
+
+def test_storage_auditor_is_sensitive():
+    """_is_sensitive should match auth-related storage keys."""
+    from workers.webapp_worker.tools.storage_auditor import StorageAuditor
+
+    tool = StorageAuditor()
+    assert tool._is_sensitive("auth_token") is True
+    assert tool._is_sensitive("api_key") is True
+    assert tool._is_sensitive("sessionId") is True
+    assert tool._is_sensitive("jwt_refresh") is True
+    assert tool._is_sensitive("theme_preference") is False
+    assert tool._is_sensitive("language") is False
+
+
+@pytest.mark.anyio
+async def test_storage_auditor_flags_sensitive_storage():
+    """StorageAuditor should flag sensitive keys found in browser storage."""
+    from workers.webapp_worker.tools.storage_auditor import StorageAuditor
+
+    tool = StorageAuditor()
+
+    browser_mgr = MagicMock()
+    mock_page = MagicMock()
+    mock_page.goto = AsyncMock()
+    mock_page.evaluate = AsyncMock(return_value=[
+        {"store": "localStorage", "key": "auth_token", "value": "abc123"},
+        {"store": "localStorage", "key": "theme", "value": "dark"},
+    ])
+    browser_mgr.new_page = AsyncMock(return_value=mock_page)
+    browser_mgr.release_page = AsyncMock()
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+
+    with (
+        patch.object(tool, "_get_live_urls", new_callable=AsyncMock,
+                     return_value=[(1, "example.com")]),
+        patch.object(tool, "check_cooldown", new_callable=AsyncMock,
+                     return_value=False),
+        patch.object(tool, "update_tool_state", new_callable=AsyncMock),
+        patch.object(tool, "_save_vulnerability", save_vuln),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            browser=browser_mgr,
+        )
+
+    assert result["urls_checked"] == 1
+    assert result["sensitive_keys_found"] == 1
+    save_vuln.assert_awaited_once()
+    assert "auth_token" in save_vuln.call_args[1]["title"]
+    browser_mgr.release_page.assert_awaited()
+
+
+# ---------------------------------------------------------------------------
+# SourcemapDetector tests
+# ---------------------------------------------------------------------------
+
+
+def test_sourcemap_detector_get_map_url():
+    """_get_map_url should append .map to JS URL."""
+    from workers.webapp_worker.tools.sourcemap_detector import SourcemapDetector
+
+    assert SourcemapDetector._get_map_url("https://cdn.example.com/app.js") == "https://cdn.example.com/app.js.map"
+    assert SourcemapDetector._get_map_url("https://cdn.example.com/bundle.min.js") == "https://cdn.example.com/bundle.min.js.map"
+
+
+# ---------------------------------------------------------------------------
+# WebSocketAnalyzer tests
+# ---------------------------------------------------------------------------
+
+
+def test_websocket_analyzer_attributes():
+    """Verify WebSocketAnalyzer has correct class-level attributes."""
+    from workers.webapp_worker.tools.websocket_analyzer import WebSocketAnalyzer
+    from workers.webapp_worker.base_tool import ToolType
+    from workers.webapp_worker.concurrency import WeightClass
+
+    assert WebSocketAnalyzer.name == "websocket_analyzer"
+    assert WebSocketAnalyzer.tool_type == ToolType.BROWSER
+    assert WebSocketAnalyzer.weight_class == WeightClass.HEAVY
