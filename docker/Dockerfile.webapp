@@ -1,0 +1,75 @@
+# ============================================================
+# Stage 1: Node.js tool builder (Newman / Postman CLI)
+# ============================================================
+FROM node:20-slim AS node-builder
+
+RUN npm install -g newman
+
+# ============================================================
+# Stage 2: Python tool builder
+# ============================================================
+FROM python:3.10-slim-bookworm AS py-builder
+
+RUN pip install --no-cache-dir --target=/py-tools \
+    httpx[http2] \
+    beautifulsoup4
+
+# ============================================================
+# Stage 3: Runtime
+# ============================================================
+FROM python:3.10-slim-bookworm
+
+WORKDIR /app
+
+# System dependencies for Chromium and Playwright
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc libpq-dev git \
+        # Chromium runtime deps
+        chromium \
+        libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+        libcups2 libdrm2 libxcomposite1 libxdamage1 libxrandr2 \
+        libgbm1 libpango-1.0-0 libcairo2 libasound2 libxshmfence1 \
+        # Node.js for newman
+        nodejs npm && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Playwright and its bundled Chromium
+RUN pip install --no-cache-dir playwright && \
+    playwright install chromium
+
+# Python tools from builder stage
+COPY --from=py-builder /py-tools /usr/local/lib/python3.10/site-packages/
+
+# Newman from Node builder stage
+COPY --from=node-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node-builder /usr/local/bin/newman /usr/local/bin/newman
+
+# Install CLI security tools from GitHub
+# linkfinder — JS endpoint extractor
+RUN pip install --no-cache-dir git+https://github.com/GerbenJavado/LinkFinder.git || true
+
+# SecretFinder — JS secret extractor
+RUN pip install --no-cache-dir git+https://github.com/m4ll0k/SecretFinder.git || true
+
+# mantra — JS secret scanner (JSON output)
+RUN pip install --no-cache-dir mantra-scanner || true
+
+# jsminer — JS endpoint/path miner
+RUN pip install --no-cache-dir jsminer || true
+
+# Install lib_webbh
+COPY shared/lib_webbh /app/shared/lib_webbh
+RUN pip install --no-cache-dir /app/shared/lib_webbh
+
+# Shared directories
+RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs
+
+# Worker source
+COPY workers/__init__.py /app/workers/__init__.py
+COPY workers/webapp_worker /app/workers/webapp_worker
+
+# Verify import chain
+RUN python -c "from workers.webapp_worker.main import main; print('webapp-worker OK')"
+
+ENTRYPOINT ["python", "-m", "workers.webapp_worker.main"]
