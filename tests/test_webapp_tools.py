@@ -208,3 +208,40 @@ async def test_js_crawler_class_attributes():
     assert JsCrawler.name == "js_crawler"
     assert JsCrawler.tool_type == ToolType.BROWSER
     assert JsCrawler.weight_class == WeightClass.HEAVY
+
+
+# ---------------------------------------------------------------------------
+# LinkFinder tests
+# ---------------------------------------------------------------------------
+
+
+def test_linkfinder_parses_endpoints():
+    """LinkFinder.parse_output splits lines and filters empty/bracket lines."""
+    from workers.webapp_worker.tools.linkfinder import LinkFinder
+
+    stdout = "/api/users\n/api/v1/login\n/health\n"
+    results = LinkFinder.parse_output(stdout)
+    assert results == ["/api/users", "/api/v1/login", "/health"]
+
+
+# ---------------------------------------------------------------------------
+# JsMiner tests
+# ---------------------------------------------------------------------------
+
+
+def test_jsminer_parses_json_output():
+    """JsMiner.parse_output handles JSON array output."""
+    from workers.webapp_worker.tools.jsminer import JsMiner
+
+    stdout = '["/api/secret", "/admin/config"]\n'
+    results = JsMiner.parse_output(stdout)
+    assert results == ["/api/secret", "/admin/config"]
+
+
+def test_jsminer_parses_line_output():
+    """JsMiner.parse_output falls back to line-per-line for non-JSON output."""
+    from workers.webapp_worker.tools.jsminer import JsMiner
+
+    stdout = "/path1\n/path2\n"
+    results = JsMiner.parse_output(stdout)
+    assert results == ["/path1", "/path2"]
