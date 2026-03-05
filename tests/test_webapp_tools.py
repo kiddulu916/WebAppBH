@@ -637,3 +637,54 @@ def test_form_analyzer_passes_with_csrf():
     issues = FormAnalyzer._analyze_forms(html)
     csrf_issues = [i for i in issues if "CSRF" in i]
     assert len(csrf_issues) == 0
+
+
+# ---------------------------------------------------------------------------
+# SensitivePaths tests
+# ---------------------------------------------------------------------------
+
+
+def test_sensitive_paths_has_wordlist():
+    """SENSITIVE_WORDLIST should contain key paths."""
+    from workers.webapp_worker.tools.sensitive_paths import SENSITIVE_WORDLIST
+
+    assert len(SENSITIVE_WORDLIST) >= 10
+    assert "/.git/HEAD" in SENSITIVE_WORDLIST
+    assert "/.env" in SENSITIVE_WORDLIST
+
+
+# ---------------------------------------------------------------------------
+# RobotsSitemap tests
+# ---------------------------------------------------------------------------
+
+
+def test_robots_sitemap_parses_robots():
+    """_parse_robots should extract disallow/allow paths."""
+    from workers.webapp_worker.tools.robots_sitemap import RobotsSitemap
+
+    robots_txt = (
+        "User-agent: *\n"
+        "Disallow: /admin/\n"
+        "Disallow: /private/secret\n"
+        "Allow: /public/\n"
+    )
+    paths = RobotsSitemap._parse_robots(robots_txt)
+    assert "/admin/" in paths
+    assert "/private/secret" in paths
+    assert "/public/" in paths
+
+
+def test_robots_sitemap_parses_sitemap():
+    """_parse_sitemap should extract loc URLs from XML."""
+    from workers.webapp_worker.tools.robots_sitemap import RobotsSitemap
+
+    xml = (
+        '<?xml version="1.0"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        "<url><loc>https://example.com/page1</loc></url>"
+        "<url><loc>https://example.com/page2</loc></url>"
+        "</urlset>"
+    )
+    urls = RobotsSitemap._parse_sitemap(xml)
+    assert len(urls) == 2
+    assert "https://example.com/page1" in urls
