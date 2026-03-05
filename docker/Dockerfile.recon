@@ -15,7 +15,11 @@ RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && 
     go install github.com/projectdiscovery/katana/cmd/katana@latest && \
     go install github.com/hakluke/hakrawler@latest && \
     go install github.com/bp0lr/gauplus@latest && \
-    go install github.com/rverton/webanalyze/cmd/webanalyze@latest
+    go install github.com/rverton/webanalyze/cmd/webanalyze@latest && \
+    go install github.com/haccer/subjack@latest
+
+# Copy fingerprints.json for subjack (needed at build time for reliable path)
+RUN cp $(find /go/pkg/mod/github.com/haccer/subjack@* -name fingerprints.json -print -quit) /opt/fingerprints.json
 
 # ============================================================
 # Stage 2: Python tool builder
@@ -50,6 +54,8 @@ COPY --from=go-builder /go/bin/katana /usr/local/bin/
 COPY --from=go-builder /go/bin/hakrawler /usr/local/bin/
 COPY --from=go-builder /go/bin/gauplus /usr/local/bin/
 COPY --from=go-builder /go/bin/webanalyze /usr/local/bin/
+COPY --from=go-builder /go/bin/subjack /usr/local/bin/
+COPY --from=go-builder /opt/fingerprints.json /opt/fingerprints.json
 
 # Python tools
 COPY --from=py-builder /py-tools /usr/local/lib/python3.10/site-packages/
