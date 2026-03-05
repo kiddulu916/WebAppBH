@@ -274,3 +274,160 @@ def test_secretfinder_parses_secrets():
     stdout = "APIKey: sk_live_abc123\nBearer: eyJhbGci...\n"
     results = SecretFinder.parse_output(stdout)
     assert len(results) == 2
+
+
+# ---------------------------------------------------------------------------
+# PostMessage tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_postmessage_detects_insecure_listener():
+    """PostMessage should flag listeners that lack origin validation."""
+    from workers.webapp_worker.tools.postmessage import PostMessage
+
+    tool = PostMessage()
+
+    # ---- Mock BrowserManager ----
+    browser_mgr = MagicMock()
+    mock_page = MagicMock()
+    mock_page.add_init_script = AsyncMock()
+    mock_page.goto = AsyncMock()
+    mock_page.evaluate = AsyncMock(
+        return_value=[
+            {
+                "has_origin_check": False,
+                "handler_preview": "fn(e){doStuff(e.data)}",
+            }
+        ]
+    )
+    browser_mgr.new_page = AsyncMock(return_value=mock_page)
+    browser_mgr.release_page = AsyncMock()
+
+    scope_mgr = MagicMock()
+
+    save_vuln = AsyncMock(return_value=100)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            browser=browser_mgr,
+        )
+
+    # Verify vulnerability was saved for the insecure listener
+    save_vuln.assert_awaited_once()
+    call_kwargs = save_vuln.call_args[1]
+    assert call_kwargs["severity"] == "high"
+    assert "Insecure postMessage listener" in call_kwargs["title"]
+    assert result["insecure_listeners"] == 1
+    assert result["skipped_cooldown"] is False
+
+    # Verify page cleanup
+    browser_mgr.release_page.assert_awaited()
+
+
+# ---------------------------------------------------------------------------
+# DomSinkAnalyzer tests
+# ---------------------------------------------------------------------------
+
+
+def test_dom_sink_analyzer_detects_sinks():
+    """_find_sinks should detect dangerous DOM sink patterns in JS code."""
+    from workers.webapp_worker.tools.dom_sink_analyzer import _find_sinks
+
+    # This JS code contains an innerHTML sink and a setTimeout sink
+    js_code = (
+        "element.innerHTML = input;\n"
+        "setTimeout(data, 1000);"
+    )
+    sinks = _find_sinks(js_code)
+
+    # Should detect at least one sink mentioning "innerHTML"
+    assert len(sinks) >= 1
+    assert any("innerHTML" in s for s in sinks)
+
+
+def test_dom_sink_analyzer_detects_sources():
+    """_find_sources should detect user-controllable DOM sources."""
+    from workers.webapp_worker.tools.dom_sink_analyzer import _find_sources
+
+    js_code = "var q = location.hash; var r = document.referrer;"
+    sources = _find_sources(js_code)
+
+    assert len(sources) >= 2
+    assert any("location.hash" in s for s in sources)
+    assert any("document.referrer" in s for s in sources)
+
+
+@pytest.mark.anyio
+async def test_dom_sink_analyzer_static_phase(tmp_path):
+    """DomSinkAnalyzer Phase 1 should flag files with sinks + sources."""
+    from workers.webapp_worker.tools.dom_sink_analyzer import DomSinkAnalyzer
+
+    tool = DomSinkAnalyzer()
+    scope_mgr = MagicMock()
+
+    # Create a JS file with both sinks and sources
+    js_dir = tmp_path / "42" / "js"
+    js_dir.mkdir(parents=True)
+    js_file = js_dir / "vuln.js"
+    # Intentionally contains dangerous patterns for security testing
+    js_file.write_text(
+        "var input = location.hash;\n"
+        "document.getElementById('x').innerHTML = input;\n"
+    )
+
+    save_vuln = AsyncMock(return_value=200)
+
+    with (
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+        patch(
+            "workers.webapp_worker.tools.dom_sink_analyzer.JS_DIR",
+            str(tmp_path),
+        ),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            # No browser — only static phase runs
+        )
+
+    assert result["files_scanned"] == 1
+    assert result["source_sink_vulns"] == 1
+    save_vuln.assert_awaited_once()
+    call_kwargs = save_vuln.call_args[1]
+    assert "Potential DOM XSS" in call_kwargs["title"]
+    assert call_kwargs["severity"] == "high"
