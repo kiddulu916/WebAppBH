@@ -10,13 +10,14 @@ os.environ.setdefault("DB_NAME", ":memory:")
 
 def test_stages_defined_in_order():
     from workers.recon_core.pipeline import STAGES
-    assert len(STAGES) == 6
+    assert len(STAGES) == 7
     assert STAGES[0].name == "passive_discovery"
     assert STAGES[1].name == "active_discovery"
     assert STAGES[2].name == "liveness_dns"
-    assert STAGES[3].name == "fingerprinting"
-    assert STAGES[4].name == "port_mapping"
-    assert STAGES[5].name == "deep_recon"
+    assert STAGES[3].name == "subdomain_takeover"
+    assert STAGES[4].name == "fingerprinting"
+    assert STAGES[5].name == "port_mapping"
+    assert STAGES[6].name == "deep_recon"
 
 
 def test_each_stage_has_tools():
@@ -50,6 +51,6 @@ async def test_run_pipeline_skips_completed_stages():
 
                         await pipeline.run(target, scope_mgr)
 
-                        assert mock_run.call_count == 4
+                        assert mock_run.call_count == 5
                         called_stages = [call.args[0].name for call in mock_run.call_args_list]
-                        assert called_stages == ["liveness_dns", "fingerprinting", "port_mapping", "deep_recon"]
+                        assert called_stages == ["liveness_dns", "subdomain_takeover", "fingerprinting", "port_mapping", "deep_recon"]
