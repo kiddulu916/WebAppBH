@@ -172,3 +172,75 @@ async def test_base_tool_save_vulnerability_creates_alert_for_critical():
 
     # Verify push_task was called for SSE
     mock_push.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Pipeline tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skip(reason="Wired in Task 16")
+def test_webapp_stages_defined_in_order():
+    """Verify the 6 stages are declared in the expected order."""
+    from workers.webapp_worker.pipeline import STAGES
+
+    assert len(STAGES) == 6
+    assert STAGES[0].name == "js_discovery"
+    assert STAGES[1].name == "static_js_analysis"
+    assert STAGES[2].name == "browser_security"
+    assert STAGES[3].name == "http_security"
+    assert STAGES[4].name == "path_api_discovery"
+    assert STAGES[5].name == "api_probing"
+
+
+@pytest.mark.skip(reason="Wired in Task 16")
+def test_webapp_each_stage_has_tools():
+    """Every stage must contain at least one tool class."""
+    from workers.webapp_worker.pipeline import STAGES
+
+    for stage in STAGES:
+        assert len(stage.tool_classes) > 0, f"Stage {stage.name} has no tools"
+
+
+@pytest.mark.skip(reason="Wired in Task 16")
+def test_webapp_stage_tools_are_webapp_tool_subclasses():
+    """All tool_classes entries must subclass WebAppTool."""
+    from workers.webapp_worker.pipeline import STAGES
+    from workers.webapp_worker.base_tool import WebAppTool
+
+    for stage in STAGES:
+        for tool_cls in stage.tool_classes:
+            assert issubclass(tool_cls, WebAppTool), f"{tool_cls} is not a WebAppTool"
+
+
+@pytest.mark.anyio
+async def test_webapp_pipeline_skips_completed_stages():
+    """Pipeline resumes after the last completed stage."""
+    from workers.webapp_worker.pipeline import Pipeline
+
+    pipeline = Pipeline(target_id=1, container_name="test")
+
+    with patch.object(pipeline, "_get_completed_phase", return_value="static_js_analysis"):
+        with patch.object(pipeline, "_run_stage", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = {"found": 0, "in_scope": 0, "new": 0}
+            with patch.object(pipeline, "_update_phase", new_callable=AsyncMock):
+                with patch.object(pipeline, "_mark_completed", new_callable=AsyncMock):
+                    with patch("workers.webapp_worker.pipeline.push_task", new_callable=AsyncMock):
+                        with patch.object(pipeline, "_manage_browser", new_callable=AsyncMock) as mock_browser:
+                            mock_browser.return_value = None
+
+                            target = MagicMock(base_domain="example.com", target_profile={})
+                            scope_mgr = MagicMock()
+
+                            await pipeline.run(target, scope_mgr)
+
+                            assert mock_run.call_count == 4
+                            called_stages = [
+                                call.args[0].name for call in mock_run.call_args_list
+                            ]
+                            assert called_stages == [
+                                "browser_security",
+                                "http_security",
+                                "path_api_discovery",
+                                "api_probing",
+                            ]
