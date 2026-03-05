@@ -755,3 +755,245 @@ def test_newman_prober_generates_collection():
         assert "method" in item["request"]
         assert "url" in item["request"]
         assert item["request"]["method"] in ("GET", "POST", "PUT", "DELETE")
+
+
+# ---------------------------------------------------------------------------
+# PrototypePollution tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_prototype_pollution_detects_vulnerable_page():
+    """PrototypePollution flags pages where URL payloads cause pollution."""
+    from workers.webapp_worker.tools.prototype_pollution import PrototypePollution
+
+    tool = PrototypePollution()
+
+    # ---- Mock BrowserManager ----
+    browser_mgr = MagicMock()
+
+    # Base page (init-script probe): no detections from the proxy
+    base_page = MagicMock()
+    base_page.add_init_script = AsyncMock()
+    base_page.goto = AsyncMock()
+    base_page.evaluate = AsyncMock(return_value=[])  # no init-script hits
+    browser_mgr.release_page = AsyncMock()
+
+    # Probe page: first payload succeeds (pptest === 'true')
+    probe_page = MagicMock()
+    probe_page.goto = AsyncMock()
+    probe_page.evaluate = AsyncMock(return_value=True)  # pollution worked
+
+    # new_page returns base_page first, then probe_page
+    browser_mgr.new_page = AsyncMock(side_effect=[base_page, probe_page])
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            browser=browser_mgr,
+        )
+
+    # Vulnerability was saved for the URL-based payload
+    save_vuln.assert_awaited_once()
+    call_kwargs = save_vuln.call_args[1]
+    assert call_kwargs["severity"] == "high"
+    assert "prototype pollution" in call_kwargs["title"].lower()
+    assert result["vulns_found"] == 1
+    assert result["skipped_cooldown"] is False
+
+    # Browser cleanup
+    browser_mgr.release_page.assert_awaited()
+
+
+@pytest.mark.anyio
+async def test_prototype_pollution_clean_page():
+    """No findings on a page without prototype pollution."""
+    from workers.webapp_worker.tools.prototype_pollution import PrototypePollution
+
+    tool = PrototypePollution()
+
+    browser_mgr = MagicMock()
+
+    # Base page: no init-script detections
+    base_page = MagicMock()
+    base_page.add_init_script = AsyncMock()
+    base_page.goto = AsyncMock()
+    base_page.evaluate = AsyncMock(return_value=[])
+
+    # All 3 probe pages: pollution check returns False
+    probe_pages = []
+    for _ in range(3):
+        p = MagicMock()
+        p.goto = AsyncMock()
+        p.evaluate = AsyncMock(return_value=False)
+        probe_pages.append(p)
+
+    browser_mgr.new_page = AsyncMock(
+        side_effect=[base_page] + probe_pages
+    )
+    browser_mgr.release_page = AsyncMock()
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "clean-site.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+    ):
+        result = await tool.execute(
+            target="clean-site.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            browser=browser_mgr,
+        )
+
+    save_vuln.assert_not_awaited()
+    assert result["vulns_found"] == 0
+    assert result["urls_checked"] == 1
+    assert result["skipped_cooldown"] is False
+
+
+# ---------------------------------------------------------------------------
+# DomClobberingDetector tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_dom_clobbering_detects_shadowed_globals():
+    """DomClobberingDetector flags elements that shadow global names."""
+    from workers.webapp_worker.tools.dom_clobbering import DomClobberingDetector
+
+    tool = DomClobberingDetector()
+
+    browser_mgr = MagicMock()
+    mock_page = MagicMock()
+    mock_page.goto = AsyncMock()
+    # evaluate returns two clobbering elements
+    mock_page.evaluate = AsyncMock(return_value=[
+        {"tag": "FORM", "attr": "location"},
+        {"tag": "IMG", "attr": "name"},
+    ])
+    browser_mgr.new_page = AsyncMock(return_value=mock_page)
+    browser_mgr.release_page = AsyncMock()
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            browser=browser_mgr,
+        )
+
+    # Two vulnerabilities should have been saved
+    assert save_vuln.await_count == 2
+    assert result["clobbering_risks"] == 2
+    assert result["urls_checked"] == 1
+    assert result["skipped_cooldown"] is False
+
+    # Verify severity and content for first call
+    first_call = save_vuln.call_args_list[0][1]
+    assert first_call["severity"] == "medium"
+    assert "location" in first_call["title"]
+
+    # Browser cleanup
+    browser_mgr.release_page.assert_awaited()
+
+
+@pytest.mark.anyio
+async def test_dom_clobbering_clean_page():
+    """No findings on a page without clobberable elements."""
+    from workers.webapp_worker.tools.dom_clobbering import DomClobberingDetector
+
+    tool = DomClobberingDetector()
+
+    browser_mgr = MagicMock()
+    mock_page = MagicMock()
+    mock_page.goto = AsyncMock()
+    mock_page.evaluate = AsyncMock(return_value=[])  # no clobberable elements
+    browser_mgr.new_page = AsyncMock(return_value=mock_page)
+    browser_mgr.release_page = AsyncMock()
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "clean-site.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+    ):
+        result = await tool.execute(
+            target="clean-site.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            browser=browser_mgr,
+        )
+
+    save_vuln.assert_not_awaited()
+    assert result["clobbering_risks"] == 0
+    assert result["urls_checked"] == 1
+    assert result["skipped_cooldown"] is False
