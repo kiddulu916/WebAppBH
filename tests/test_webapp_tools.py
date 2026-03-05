@@ -688,3 +688,44 @@ def test_robots_sitemap_parses_sitemap():
     urls = RobotsSitemap._parse_sitemap(xml)
     assert len(urls) == 2
     assert "https://example.com/page1" in urls
+
+
+# ---------------------------------------------------------------------------
+# GraphqlProber tests
+# ---------------------------------------------------------------------------
+
+
+def test_graphql_prober_has_common_paths():
+    """GRAPHQL_PATHS should contain standard GraphQL paths."""
+    from workers.webapp_worker.tools.graphql_prober import GRAPHQL_PATHS
+
+    assert "/graphql" in GRAPHQL_PATHS
+    assert "/api/graphql" in GRAPHQL_PATHS
+
+
+# ---------------------------------------------------------------------------
+# OpenApiDetector tests
+# ---------------------------------------------------------------------------
+
+
+def test_openapi_detector_has_common_paths():
+    """OPENAPI_PATHS should contain standard OpenAPI/Swagger paths."""
+    from workers.webapp_worker.tools.openapi_detector import OPENAPI_PATHS
+
+    assert "/swagger.json" in OPENAPI_PATHS
+    assert "/api-docs" in OPENAPI_PATHS
+
+
+# ---------------------------------------------------------------------------
+# OpenRedirect tests
+# ---------------------------------------------------------------------------
+
+
+def test_open_redirect_identifies_redirect_params():
+    """REDIRECT_PARAMS should contain common redirect parameter names."""
+    from workers.webapp_worker.tools.open_redirect import REDIRECT_PARAMS
+
+    assert "redirect" in REDIRECT_PARAMS
+    assert "url" in REDIRECT_PARAMS
+    assert "next" in REDIRECT_PARAMS
+    assert "return" in REDIRECT_PARAMS
