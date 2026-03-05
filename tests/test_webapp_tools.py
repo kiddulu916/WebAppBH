@@ -245,3 +245,32 @@ def test_jsminer_parses_line_output():
     stdout = "/path1\n/path2\n"
     results = JsMiner.parse_output(stdout)
     assert results == ["/path1", "/path2"]
+
+
+# ---------------------------------------------------------------------------
+# Mantra tests
+# ---------------------------------------------------------------------------
+
+
+def test_mantra_parses_secrets():
+    """Mantra.parse_output parses JSON-per-line secrets output."""
+    from workers.webapp_worker.tools.mantra import Mantra
+
+    stdout = '{"file":"main.js","type":"AWS Key","match":"AKIA1234"}\n'
+    results = Mantra.parse_output(stdout)
+    assert len(results) == 1
+    assert results[0]["type"] == "AWS Key"
+
+
+# ---------------------------------------------------------------------------
+# SecretFinder tests
+# ---------------------------------------------------------------------------
+
+
+def test_secretfinder_parses_secrets():
+    """SecretFinder.parse_output splits line-per-line findings."""
+    from workers.webapp_worker.tools.secretfinder import SecretFinder
+
+    stdout = "APIKey: sk_live_abc123\nBearer: eyJhbGci...\n"
+    results = SecretFinder.parse_output(stdout)
+    assert len(results) == 2
