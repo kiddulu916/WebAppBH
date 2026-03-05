@@ -4,10 +4,11 @@ import asyncio
 import json
 import os
 import tempfile
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from lib_webbh import Asset, Alert, Observation, get_session, push_task, setup_logger
+from lib_webbh import Asset, Alert, JobState, Observation, get_session, push_task, setup_logger
 
 from workers.recon_core.base_tool import ReconTool
 from workers.recon_core.concurrency import WeightClass, get_semaphore
@@ -54,6 +55,10 @@ class SubjackTool(ReconTool):
         """Override to write input file and insert Observation + Alert rows."""
         log = setup_logger("recon-tool").bind(target_id=target_id)
 
+        if await self.check_cooldown(target_id, container_name):
+            log.info(f"Skipping {self.name} — within cooldown period")
+            return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": True}
+
         # Query all discovered domains
         async with get_session() as session:
             stmt = select(Asset.asset_value).where(
@@ -62,6 +67,8 @@ class SubjackTool(ReconTool):
             )
             result = await session.execute(stmt)
             domains = [row[0] for row in result.all()]
+
+        log.info(f"Running {self.name} against {len(domains)} domains")
 
         if not domains:
             return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
@@ -79,7 +86,11 @@ class SubjackTool(ReconTool):
             cmd = self.build_command(target, headers)
             try:
                 stdout = await self.run_subprocess(cmd)
-            except (asyncio.TimeoutError, FileNotFoundError):
+            except asyncio.TimeoutError:
+                log.warning(f"{self.name} timed out")
+                return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
+            except FileNotFoundError:
+                log.error(f"{self.name} binary not found")
                 return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
 
             results = self.parse_output(stdout)
@@ -104,6 +115,15 @@ class SubjackTool(ReconTool):
                     if asset is None:
                         continue
 
+                    # Deduplication check
+                    existing_obs_stmt = select(Observation).where(
+                        Observation.asset_id == asset.id,
+                        Observation.page_title == f"Subdomain takeover: {service}",
+                    )
+                    existing_obs = await session.execute(existing_obs_stmt)
+                    if existing_obs.scalar_one_or_none() is not None:
+                        continue
+
                     # Insert Observation
                     obs = Observation(
                         asset_id=asset.id,
@@ -116,10 +136,12 @@ class SubjackTool(ReconTool):
                     await session.flush()
 
                     # Insert critical Alert
+                    msg = f"Subdomain takeover possible: {subdomain} → {service} (CNAME dangling)"
+                    log.warning(f"CRITICAL: {msg}")
                     alert = Alert(
                         target_id=target_id,
                         alert_type="critical",
-                        message=f"Subdomain takeover possible: {subdomain} → {service} (CNAME dangling)",
+                        message=msg,
                     )
                     session.add(alert)
                     await session.commit()
@@ -129,9 +151,27 @@ class SubjackTool(ReconTool):
                 await push_task(f"events:{target_id}", {
                     "event": "critical_alert",
                     "alert_id": alert_id,
-                    "message": f"Subdomain takeover possible: {subdomain} → {service} (CNAME dangling)",
+                    "message": msg,
                 })
                 new_count += 1
+
+            async with get_session() as session:
+                stmt = select(JobState).where(
+                    JobState.target_id == target_id,
+                    JobState.container_name == container_name,
+                )
+                result = await session.execute(stmt)
+                job = result.scalar_one_or_none()
+                if job:
+                    job.last_tool_executed = self.name
+                    job.last_seen = datetime.now(timezone.utc)
+                    await session.commit()
+
+            log.info(f"{self.name} complete", extra={
+                "found": len(results),
+                "in_scope": new_count,
+                "new": new_count,
+            })
 
             return {
                 "found": len(results),
