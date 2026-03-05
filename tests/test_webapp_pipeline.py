@@ -179,7 +179,6 @@ async def test_base_tool_save_vulnerability_creates_alert_for_critical():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="Wired in Task 16")
 def test_webapp_stages_defined_in_order():
     """Verify the 6 stages are declared in the expected order."""
     from workers.webapp_worker.pipeline import STAGES
@@ -193,7 +192,6 @@ def test_webapp_stages_defined_in_order():
     assert STAGES[5].name == "api_probing"
 
 
-@pytest.mark.skip(reason="Wired in Task 16")
 def test_webapp_each_stage_has_tools():
     """Every stage must contain at least one tool class."""
     from workers.webapp_worker.pipeline import STAGES
@@ -202,7 +200,6 @@ def test_webapp_each_stage_has_tools():
         assert len(stage.tool_classes) > 0, f"Stage {stage.name} has no tools"
 
 
-@pytest.mark.skip(reason="Wired in Task 16")
 def test_webapp_stage_tools_are_webapp_tool_subclasses():
     """All tool_classes entries must subclass WebAppTool."""
     from workers.webapp_worker.pipeline import STAGES

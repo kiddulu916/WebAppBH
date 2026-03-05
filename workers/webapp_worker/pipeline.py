@@ -14,6 +14,16 @@ from lib_webbh.scope import ScopeManager
 
 from workers.webapp_worker.base_tool import WebAppTool
 from workers.webapp_worker.browser import BrowserManager
+from workers.webapp_worker.tools import (
+    JsCrawler,
+    LinkFinder, JsMiner, Mantra, SecretFinder,
+    PostMessage, DomSinkAnalyzer, StorageAuditor,
+    SourcemapDetector, WebSocketAnalyzer,
+    HeaderAuditor, CookieAuditor, CorsTester, FormAnalyzer,
+    SensitivePaths, RobotsSitemap, GraphqlProber,
+    OpenApiDetector, OpenRedirect,
+    NewmanProber,
+)
 
 logger = setup_logger("webapp-pipeline")
 
@@ -31,14 +41,15 @@ class Stage:
     tool_classes: list[type[WebAppTool]]
 
 
-# Populated in Task 16 when individual tools are implemented.
 STAGES: list[Stage] = [
-    Stage("js_discovery", []),
-    Stage("static_js_analysis", []),
-    Stage("browser_security", []),
-    Stage("http_security", []),
-    Stage("path_api_discovery", []),
-    Stage("api_probing", []),
+    Stage("js_discovery",       [JsCrawler]),
+    Stage("static_js_analysis", [LinkFinder, JsMiner, Mantra, SecretFinder]),
+    Stage("browser_security",   [PostMessage, DomSinkAnalyzer, StorageAuditor,
+                                 SourcemapDetector, WebSocketAnalyzer]),
+    Stage("http_security",      [HeaderAuditor, CookieAuditor, CorsTester, FormAnalyzer]),
+    Stage("path_api_discovery", [SensitivePaths, RobotsSitemap, GraphqlProber,
+                                 OpenApiDetector, OpenRedirect]),
+    Stage("api_probing",        [NewmanProber]),
 ]
 
 STAGE_INDEX: dict[str, int] = {}
