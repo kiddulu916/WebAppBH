@@ -1607,3 +1607,262 @@ async def test_version_fingerprinter_clean_response():
     save_obs.assert_awaited_once()
     obs_kwargs = save_obs.call_args[1]
     assert obs_kwargs["tech_stack"] is None
+
+
+# ---------------------------------------------------------------------------
+# CommentHarvester tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_comment_harvester_finds_html_comments():
+    """Extracts interesting HTML comments from page."""
+    from workers.webapp_worker.tools.comment_harvester import CommentHarvester
+
+    tool = CommentHarvester()
+
+    html_body = (
+        "<html><!-- TODO: remove debug endpoint -->"
+        "<body>Hello</body></html>"
+    )
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = html_body
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+    save_obs = AsyncMock(return_value=200)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+        patch.object(
+            tool, "_save_observation", save_obs,
+        ),
+        patch("workers.webapp_worker.tools.comment_harvester.JS_DIR", "/nonexistent"),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            client=mock_client,
+        )
+
+    assert result["urls_checked"] == 1
+    assert result["interesting"] >= 1
+    assert result["skipped_cooldown"] is False
+
+    # Should save at least one vulnerability for the TODO comment
+    save_vuln.assert_awaited()
+    vuln_kwargs = save_vuln.call_args[1]
+    assert vuln_kwargs["severity"] == "low"
+    assert "Dev annotation" in vuln_kwargs["title"]
+
+
+@pytest.mark.anyio
+async def test_comment_harvester_finds_credential_leak():
+    """Flags comments with password/API key patterns as medium severity."""
+    from workers.webapp_worker.tools.comment_harvester import CommentHarvester
+
+    tool = CommentHarvester()
+
+    html_body = (
+        "<html><script>// password= admin123\n"
+        "var x = 1;</script>"
+        "<!-- api_key= ABCDEF123456 --></html>"
+    )
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = html_body
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+    save_obs = AsyncMock(return_value=200)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "target.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+        patch.object(
+            tool, "_save_observation", save_obs,
+        ),
+        patch("workers.webapp_worker.tools.comment_harvester.JS_DIR", "/nonexistent"),
+    ):
+        result = await tool.execute(
+            target="target.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            client=mock_client,
+        )
+
+    assert result["interesting"] >= 2
+    assert result["skipped_cooldown"] is False
+
+    # At least one vulnerability should be medium severity (credential leak)
+    medium_calls = [
+        c for c in save_vuln.call_args_list
+        if c[1]["severity"] == "medium"
+    ]
+    assert len(medium_calls) >= 1
+    assert "Credential leak" in medium_calls[0][1]["title"]
+
+
+@pytest.mark.anyio
+async def test_comment_harvester_scans_js_files(tmp_path):
+    """Scans JS files on disk for TODO/FIXME annotations."""
+    from workers.webapp_worker.tools.comment_harvester import CommentHarvester
+
+    tool = CommentHarvester()
+
+    # Create JS file with TODO comment on disk
+    js_dir = tmp_path / "42" / "js"
+    js_dir.mkdir(parents=True)
+    js_file = js_dir / "app.js"
+    js_file.write_text(
+        "function init() {\n"
+        "    // FIXME: sanitize user input before rendering\n"
+        "    render(data);\n"
+        "}\n"
+    )
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = "<html><body>No comments here</body></html>"
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+    save_obs = AsyncMock(return_value=200)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+        patch.object(
+            tool, "_save_observation", save_obs,
+        ),
+        patch("workers.webapp_worker.tools.comment_harvester.JS_DIR", str(tmp_path)),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            client=mock_client,
+        )
+
+    assert result["files_scanned"] == 1
+    assert result["interesting"] >= 1
+    assert result["skipped_cooldown"] is False
+
+    # FIXME annotation should trigger a low-severity vulnerability
+    save_vuln.assert_awaited()
+    vuln_kwargs = save_vuln.call_args[1]
+    assert vuln_kwargs["severity"] == "low"
+    assert "Dev annotation" in vuln_kwargs["title"]
+
+
+@pytest.mark.anyio
+async def test_comment_harvester_clean_page():
+    """No findings on pages without interesting comments."""
+    from workers.webapp_worker.tools.comment_harvester import CommentHarvester
+
+    tool = CommentHarvester()
+
+    html_body = (
+        "<html><!-- Navigation menu -->"
+        "<body><p>Welcome</p></body></html>"
+    )
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = html_body
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+    save_obs = AsyncMock(return_value=200)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "clean-site.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+        patch.object(
+            tool, "_save_observation", save_obs,
+        ),
+        patch("workers.webapp_worker.tools.comment_harvester.JS_DIR", "/nonexistent"),
+    ):
+        result = await tool.execute(
+            target="clean-site.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            client=mock_client,
+        )
+
+    assert result["urls_checked"] == 1
+    assert result["comments_found"] == 1  # "Navigation menu" extracted but not interesting
+    assert result["interesting"] == 0
+    assert result["skipped_cooldown"] is False
+
+    # No vulnerabilities saved
+    save_vuln.assert_not_awaited()
