@@ -84,14 +84,9 @@ class VersionFingerprinter(WebAppTool):
                     tech_stack: dict[str, str] = {}
 
                     # -- Check headers for version info --
+                    lower_headers = {k.lower(): v for k, v in resp_headers.items()}
                     for hdr in VERSION_HEADERS:
-                        value = resp_headers.get(hdr, "")
-                        if not value:
-                            # Try case-insensitive lookup
-                            lower_headers = {
-                                k.lower(): v for k, v in resp_headers.items()
-                            }
-                            value = lower_headers.get(hdr, "")
+                        value = lower_headers.get(hdr, "")
                         if value:
                             tech_stack[hdr] = value
                             versions_found += 1

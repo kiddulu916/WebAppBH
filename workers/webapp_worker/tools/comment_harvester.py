@@ -161,9 +161,10 @@ class CommentHarvester(WebAppTool):
                         extra={"domain": domain},
                     )
 
-            # 4. Scan saved JS files on disk
+            # 4. Scan saved JS files on disk (only if we have an asset to link to)
             js_dir = os.path.join(JS_DIR, str(target_id), "js")
-            if os.path.isdir(js_dir):
+            if urls and os.path.isdir(js_dir):
+                js_asset_id = urls[0][0]
                 for filename in os.listdir(js_dir):
                     if not filename.endswith(".js"):
                         continue
@@ -187,11 +188,8 @@ class CommentHarvester(WebAppTool):
                         severity = "medium" if any(s == "medium" for s, _ in hits) else "low"
                         labels = ", ".join(label for _, label in hits)
 
-                        # Use first live URL asset_id or 0
-                        asset_id = urls[0][0] if urls else 0
-
                         await self._save_observation(
-                            asset_id=asset_id,
+                            asset_id=js_asset_id,
                             status_code=None,
                             page_title=None,
                             tech_stack={"file": filename, "comment": comment[:500], "labels": labels},
@@ -200,7 +198,7 @@ class CommentHarvester(WebAppTool):
 
                         await self._save_vulnerability(
                             target_id=target_id,
-                            asset_id=asset_id,
+                            asset_id=js_asset_id,
                             severity=severity,
                             title=f"Interesting comment in {filename}: {labels}",
                             description=(

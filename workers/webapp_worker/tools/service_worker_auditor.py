@@ -187,18 +187,18 @@ class ServiceWorkerAuditor(WebAppTool):
                             headers=None,
                         )
 
-                        await self._save_vulnerability(
-                            target_id=target_id,
-                            asset_id=asset_id,
-                            severity=severity,
-                            title=f"Service worker registered on {domain}",
-                            description=(
-                                f"Service worker at {script_url} with scope "
-                                f"{scope} detected on {domain}. "
-                                + ("; ".join(details) if details else "Informational finding.")
-                            ),
-                        )
-                        if severity != "info":
+                        if details:
+                            await self._save_vulnerability(
+                                target_id=target_id,
+                                asset_id=asset_id,
+                                severity=severity,
+                                title=f"Service worker risk on {domain}",
+                                description=(
+                                    f"Service worker at {script_url} with scope "
+                                    f"{scope} detected on {domain}. "
+                                    + "; ".join(details)
+                                ),
+                            )
                             risky_patterns += len(details)
 
                     # -------------------------------------------------

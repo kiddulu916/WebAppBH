@@ -126,7 +126,9 @@ class WafFingerprinter(WebAppTool):
                     normal_headers = dict(normal_resp.headers)
 
                     # Malicious-looking request to trigger WAF
-                    trigger_resp = await client.get(f"{base_url}{WAF_TRIGGER}")
+                    trigger_resp = await client.get(
+                        base_url, params={"test": "<script>alert(1)</script>"}
+                    )
                     trigger_headers = dict(trigger_resp.headers)
 
                     urls_checked += 1

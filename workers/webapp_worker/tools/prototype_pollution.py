@@ -154,7 +154,7 @@ class PrototypePollution(WebAppTool):
                                     "arbitrary properties into every JS object.\n\n"
                                     f"Payload: {payload}"
                                 ),
-                                poc=f"{base_url}/{payload}",
+                                poc=f"{base_url}{payload}",
                             )
                             vulns_found += 1
                             break  # one proof-of-concept is sufficient
