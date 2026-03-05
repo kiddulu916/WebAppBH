@@ -1409,3 +1409,201 @@ async def test_waf_fingerprinter_no_waf():
 
     # No observation saved when no WAF is detected
     save_obs.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# VersionFingerprinter tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_version_fingerprinter_detects_server_header():
+    """Flags version info in Server header."""
+    from workers.webapp_worker.tools.version_fingerprinter import VersionFingerprinter
+
+    tool = VersionFingerprinter()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {
+        "server": "nginx/1.21.3",
+        "x-powered-by": "PHP/8.1.2",
+        "Content-Type": "text/html",
+    }
+    mock_response.text = "<html><head><title>Test</title></head><body></body></html>"
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+    save_obs = AsyncMock(return_value=200)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+        patch.object(
+            tool, "_save_observation", save_obs,
+        ),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            client=mock_client,
+        )
+
+    assert result["urls_checked"] == 1
+    assert result["versions_found"] == 2  # server + x-powered-by
+    assert result["skipped_cooldown"] is False
+
+    # Two low-severity vulns (one per header)
+    assert save_vuln.await_count == 2
+    for c in save_vuln.call_args_list:
+        kw = c[1]
+        assert kw["severity"] == "low"
+        assert "version disclosure" in kw["title"].lower() or "disclosure" in kw["title"].lower()
+
+    # Observation saved with tech_stack containing both headers
+    save_obs.assert_awaited_once()
+    obs_kwargs = save_obs.call_args[1]
+    assert "server" in obs_kwargs["tech_stack"]
+    assert "x-powered-by" in obs_kwargs["tech_stack"]
+
+
+@pytest.mark.anyio
+async def test_version_fingerprinter_detects_meta_generator():
+    """Extracts WordPress version from meta generator tag."""
+    from workers.webapp_worker.tools.version_fingerprinter import VersionFingerprinter
+
+    tool = VersionFingerprinter()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"Content-Type": "text/html"}
+    mock_response.text = (
+        '<html><head>'
+        '<meta name="generator" content="WordPress 6.1">'
+        '</head><body></body></html>'
+    )
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+    save_obs = AsyncMock(return_value=200)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+        patch.object(
+            tool, "_save_observation", save_obs,
+        ),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            client=mock_client,
+        )
+
+    assert result["urls_checked"] == 1
+    assert result["versions_found"] == 1  # meta generator only
+    assert result["skipped_cooldown"] is False
+
+    save_vuln.assert_awaited_once()
+    call_kwargs = save_vuln.call_args[1]
+    assert call_kwargs["severity"] == "low"
+    assert "generator" in call_kwargs["title"].lower()
+    assert "WordPress 6.1" in call_kwargs["description"]
+
+    # Observation tech_stack should include generator
+    save_obs.assert_awaited_once()
+    obs_kwargs = save_obs.call_args[1]
+    assert obs_kwargs["tech_stack"]["generator"] == "WordPress 6.1"
+
+
+@pytest.mark.anyio
+async def test_version_fingerprinter_clean_response():
+    """No findings when no version info is exposed."""
+    from workers.webapp_worker.tools.version_fingerprinter import VersionFingerprinter
+
+    tool = VersionFingerprinter()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"Content-Type": "text/html"}
+    mock_response.text = "<html><head><title>Clean</title></head><body></body></html>"
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+    save_obs = AsyncMock(return_value=200)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "clean-site.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+        patch.object(
+            tool, "_save_observation", save_obs,
+        ),
+    ):
+        result = await tool.execute(
+            target="clean-site.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            client=mock_client,
+        )
+
+    assert result["urls_checked"] == 1
+    assert result["versions_found"] == 0
+    assert result["skipped_cooldown"] is False
+
+    # No vulnerabilities saved
+    save_vuln.assert_not_awaited()
+
+    # Observation still saved, but with no tech_stack
+    save_obs.assert_awaited_once()
+    obs_kwargs = save_obs.call_args[1]
+    assert obs_kwargs["tech_stack"] is None
