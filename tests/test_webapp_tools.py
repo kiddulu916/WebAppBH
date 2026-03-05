@@ -521,3 +521,62 @@ def test_websocket_analyzer_attributes():
     assert WebSocketAnalyzer.name == "websocket_analyzer"
     assert WebSocketAnalyzer.tool_type == ToolType.BROWSER
     assert WebSocketAnalyzer.weight_class == WeightClass.HEAVY
+
+
+# ---------------------------------------------------------------------------
+# HeaderAuditor tests
+# ---------------------------------------------------------------------------
+
+
+def test_header_auditor_detects_missing_headers():
+    """_check_headers should report missing security headers."""
+    from workers.webapp_worker.tools.header_auditor import HeaderAuditor
+
+    # Response with only Content-Type — missing all security headers
+    resp_headers = {"Content-Type": "text/html"}
+    missing = HeaderAuditor._check_headers(resp_headers)
+    assert len(missing) >= 2
+    assert any("HSTS" in m for m in missing)
+    assert any("CSP" in m for m in missing)
+
+
+def test_header_auditor_passes_when_present():
+    """_check_headers should return empty list when all headers present."""
+    from workers.webapp_worker.tools.header_auditor import HeaderAuditor
+
+    resp_headers = {
+        "Strict-Transport-Security": "max-age=63072000",
+        "Content-Security-Policy": "default-src 'self'",
+        "X-Frame-Options": "DENY",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin",
+        "Permissions-Policy": "camera=()",
+    }
+    missing = HeaderAuditor._check_headers(resp_headers)
+    assert missing == []
+
+
+# ---------------------------------------------------------------------------
+# CookieAuditor tests
+# ---------------------------------------------------------------------------
+
+
+def test_cookie_auditor_detects_insecure_cookies():
+    """_check_cookie should flag missing Secure, HttpOnly, SameSite."""
+    from workers.webapp_worker.tools.cookie_auditor import CookieAuditor
+
+    issues = CookieAuditor._check_cookie("session=abc; Path=/")
+    assert len(issues) == 3
+    assert any("Secure" in i for i in issues)
+    assert any("HttpOnly" in i for i in issues)
+    assert any("SameSite" in i for i in issues)
+
+
+def test_cookie_auditor_passes_secure_cookie():
+    """_check_cookie should return empty list for fully secured cookie."""
+    from workers.webapp_worker.tools.cookie_auditor import CookieAuditor
+
+    issues = CookieAuditor._check_cookie(
+        "session=abc; Path=/; Secure; HttpOnly; SameSite=Strict"
+    )
+    assert issues == []
