@@ -81,6 +81,33 @@ services:
       - webbh-net
 
   # ---------------------------------------------------------------------------
+  # Recon-Core — reconnaissance worker
+  # ---------------------------------------------------------------------------
+  recon-core:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.recon
+    container_name: webbh-recon-core
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
   # Dashboard — Next.js C2 frontend
   # ---------------------------------------------------------------------------
   dashboard:

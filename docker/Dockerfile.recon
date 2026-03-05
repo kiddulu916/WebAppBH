@@ -14,7 +14,8 @@ RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && 
     go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest && \
     go install github.com/projectdiscovery/katana/cmd/katana@latest && \
     go install github.com/hakluke/hakrawler@latest && \
-    go install github.com/bp0lr/gauplus@latest
+    go install github.com/bp0lr/gauplus@latest && \
+    go install github.com/rverton/webanalyze/cmd/webanalyze@latest
 
 # ============================================================
 # Stage 2: Python tool builder
@@ -48,6 +49,7 @@ COPY --from=go-builder /go/bin/naabu /usr/local/bin/
 COPY --from=go-builder /go/bin/katana /usr/local/bin/
 COPY --from=go-builder /go/bin/hakrawler /usr/local/bin/
 COPY --from=go-builder /go/bin/gauplus /usr/local/bin/
+COPY --from=go-builder /go/bin/webanalyze /usr/local/bin/
 
 # Python tools
 COPY --from=py-builder /py-tools /usr/local/lib/python3.10/site-packages/

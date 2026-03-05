@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 
 from lib_webbh import (
     Asset,
@@ -296,6 +297,36 @@ class ReconTool(ABC):
                     source_url=url,
                 )
                 session.add(param)
+                await session.commit()
+                return True
+
+        elif "tech" in item:
+            host = item.get("host", "")
+            new_techs = item.get("tech", [])
+            if not host or not new_techs:
+                return None
+
+            scope_result = scope_manager.is_in_scope(host)
+            if not scope_result.in_scope:
+                return None
+
+            async with get_session() as session:
+                stmt = select(Asset).where(
+                    Asset.target_id == target_id,
+                    Asset.asset_value == scope_result.normalized,
+                )
+                result = await session.execute(stmt)
+                asset = result.scalar_one_or_none()
+                if asset is None:
+                    return None
+
+                existing = set(asset.tech or [])
+                merged = existing | set(new_techs)
+                if merged == existing:
+                    return False
+
+                asset.tech = sorted(merged)
+                flag_modified(asset, "tech")
                 await session.commit()
                 return True
 

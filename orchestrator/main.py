@@ -346,6 +346,7 @@ async def list_assets(target_id: int = Query(..., description="Target ID to filt
                 "asset_type": a.asset_type,
                 "asset_value": a.asset_value,
                 "source_tool": a.source_tool,
+                "tech": a.tech,
                 "created_at": a.created_at.isoformat() if a.created_at else None,
                 "updated_at": a.updated_at.isoformat() if a.updated_at else None,
                 "locations": [

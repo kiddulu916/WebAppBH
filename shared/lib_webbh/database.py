@@ -161,6 +161,7 @@ class Asset(TimestampMixin, Base):
     asset_type: Mapped[str] = mapped_column(String(50))
     asset_value: Mapped[str] = mapped_column(String(500))
     source_tool: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    tech: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     target: Mapped["Target"] = relationship(back_populates="assets")
     locations: Mapped[list["Location"]] = relationship(back_populates="asset", cascade="all, delete-orphan")

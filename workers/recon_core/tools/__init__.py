@@ -12,11 +12,13 @@ from workers.recon_core.tools.hakrawler import Hakrawler
 from workers.recon_core.tools.waybackurls import Waybackurls
 from workers.recon_core.tools.gauplus import Gauplus
 from workers.recon_core.tools.paramspider import Paramspider
+from workers.recon_core.tools.webanalyze import Webanalyze
 
 __all__ = [
     "Subfinder", "Assetfinder", "Chaos", "AmassPassive", "AmassActive",
     "Sublist3r", "Knockpy",
     "Massdns", "HttpxTool",
+    "Webanalyze",
     "Naabu",
     "Katana", "Hakrawler", "Waybackurls", "Gauplus", "Paramspider",
 ]
