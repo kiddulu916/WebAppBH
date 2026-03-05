@@ -580,3 +580,60 @@ def test_cookie_auditor_passes_secure_cookie():
         "session=abc; Path=/; Secure; HttpOnly; SameSite=Strict"
     )
     assert issues == []
+
+
+# ---------------------------------------------------------------------------
+# CorsTester tests
+# ---------------------------------------------------------------------------
+
+
+def test_cors_tester_detects_reflection():
+    """_is_cors_misconfigured should detect reflected origin."""
+    from workers.webapp_worker.tools.cors_tester import CorsTester
+
+    headers = {
+        "access-control-allow-origin": "https://attacker.com",
+        "access-control-allow-credentials": "true",
+    }
+    assert CorsTester._is_cors_misconfigured(headers, "https://attacker.com") is True
+
+
+def test_cors_tester_detects_null_origin():
+    """_is_cors_misconfigured should detect null origin reflection."""
+    from workers.webapp_worker.tools.cors_tester import CorsTester
+
+    headers = {"access-control-allow-origin": "null"}
+    assert CorsTester._is_cors_misconfigured(headers, "null") is True
+
+
+def test_cors_tester_passes_safe_config():
+    """_is_cors_misconfigured should return False for safe CORS."""
+    from workers.webapp_worker.tools.cors_tester import CorsTester
+
+    headers = {"access-control-allow-origin": "https://trusted.com"}
+    assert CorsTester._is_cors_misconfigured(headers, "https://attacker.com") is False
+
+
+# ---------------------------------------------------------------------------
+# FormAnalyzer tests
+# ---------------------------------------------------------------------------
+
+
+def test_form_analyzer_detects_missing_csrf():
+    """_analyze_forms should flag POST forms without CSRF tokens."""
+    from workers.webapp_worker.tools.form_analyzer import FormAnalyzer
+
+    html = '<form method="post" action="/login"><input type="text" name="user"><input type="submit"></form>'
+    issues = FormAnalyzer._analyze_forms(html)
+    assert len(issues) >= 1
+    assert any("CSRF" in i for i in issues)
+
+
+def test_form_analyzer_passes_with_csrf():
+    """_analyze_forms should pass POST forms with CSRF tokens."""
+    from workers.webapp_worker.tools.form_analyzer import FormAnalyzer
+
+    html = '<form method="post" action="/login"><input type="hidden" name="csrf" value="abc123"><input type="submit"></form>'
+    issues = FormAnalyzer._analyze_forms(html)
+    csrf_issues = [i for i in issues if "CSRF" in i]
+    assert len(csrf_issues) == 0
