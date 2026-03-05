@@ -729,3 +729,29 @@ def test_open_redirect_identifies_redirect_params():
     assert "url" in REDIRECT_PARAMS
     assert "next" in REDIRECT_PARAMS
     assert "return" in REDIRECT_PARAMS
+
+
+# ---------------------------------------------------------------------------
+# NewmanProber tests
+# ---------------------------------------------------------------------------
+
+
+def test_newman_prober_generates_collection():
+    """_build_collection should produce a valid Postman collection."""
+    from workers.webapp_worker.tools.newman_prober import NewmanProber
+
+    endpoints = ["https://example.com/api/users", "https://example.com/api/items"]
+    collection = NewmanProber._build_collection(endpoints, "example.com")
+
+    assert "info" in collection
+    assert "item" in collection
+    assert collection["info"]["name"] == "WebAppBH Auto-Collection: example.com"
+
+    # 2 endpoints * 4 methods = 8 items
+    assert len(collection["item"]) == 8
+
+    for item in collection["item"]:
+        assert "request" in item
+        assert "method" in item["request"]
+        assert "url" in item["request"]
+        assert item["request"]["method"] in ("GET", "POST", "PUT", "DELETE")
