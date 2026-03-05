@@ -820,6 +820,7 @@ async def test_prototype_pollution_detects_vulnerable_page():
     assert call_kwargs["severity"] == "high"
     assert "prototype pollution" in call_kwargs["title"].lower()
     assert result["vulns_found"] == 1
+    assert result["urls_checked"] == 1
     assert result["skipped_cooldown"] is False
 
     # Browser cleanup
@@ -997,3 +998,159 @@ async def test_dom_clobbering_clean_page():
     assert result["clobbering_risks"] == 0
     assert result["urls_checked"] == 1
     assert result["skipped_cooldown"] is False
+
+
+# ---------------------------------------------------------------------------
+# ServiceWorkerAuditor tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_service_worker_auditor_detects_sw():
+    """Flags pages with service worker registrations."""
+    from workers.webapp_worker.tools.service_worker_auditor import ServiceWorkerAuditor
+
+    tool = ServiceWorkerAuditor()
+
+    # ---- Mock BrowserManager ----
+    browser_mgr = MagicMock()
+    mock_page = MagicMock()
+    mock_page.goto = AsyncMock()
+    # navigator.serviceWorker.getRegistrations() returns one registration
+    mock_page.evaluate = AsyncMock(return_value=[
+        {
+            "scriptURL": "https://example.com/sw.js",
+            "scope": "https://example.com/",
+        }
+    ])
+    browser_mgr.new_page = AsyncMock(return_value=mock_page)
+    browser_mgr.release_page = AsyncMock()
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+    save_obs = AsyncMock(return_value=200)
+
+    # Mock httpx client that returns a SW file with risky patterns
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"content-type": "application/javascript"}
+    mock_response.text = (
+        "importScripts('https://cdn.example.com/lib.js');\n"
+        "self.addEventListener('fetch', e => { e.respondWith(fetch(e.request)); });\n"
+        "caches.open('v1').then(c => c.addAll(['/index.html']));\n"
+    )
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+        patch.object(
+            tool, "_save_observation", save_obs,
+        ),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            browser=browser_mgr,
+            client=mock_client,
+        )
+
+    # Registration detected + at least one probed SW path found
+    assert result["workers_found"] >= 1
+    assert result["risky_patterns"] >= 1
+    assert result["urls_checked"] == 1
+    assert result["skipped_cooldown"] is False
+
+    # At least one vulnerability saved (registration + probed file)
+    assert save_vuln.await_count >= 2
+
+    # Observation saved for the registration
+    save_obs.assert_awaited()
+
+    # Browser cleanup
+    browser_mgr.release_page.assert_awaited()
+
+
+@pytest.mark.anyio
+async def test_service_worker_auditor_no_sw():
+    """Returns zero findings on pages without service workers."""
+    from workers.webapp_worker.tools.service_worker_auditor import ServiceWorkerAuditor
+
+    tool = ServiceWorkerAuditor()
+
+    # ---- Mock BrowserManager ----
+    browser_mgr = MagicMock()
+    mock_page = MagicMock()
+    mock_page.goto = AsyncMock()
+    # No service workers registered
+    mock_page.evaluate = AsyncMock(return_value=[])
+    browser_mgr.new_page = AsyncMock(return_value=mock_page)
+    browser_mgr.release_page = AsyncMock()
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+    save_obs = AsyncMock(return_value=200)
+
+    # Mock httpx client that returns 404 for all SW paths
+    mock_response = MagicMock()
+    mock_response.status_code = 404
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "clean-site.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+        patch.object(
+            tool, "_save_observation", save_obs,
+        ),
+    ):
+        result = await tool.execute(
+            target="clean-site.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            browser=browser_mgr,
+            client=mock_client,
+        )
+
+    # No workers, no risky patterns
+    assert result["workers_found"] == 0
+    assert result["risky_patterns"] == 0
+    assert result["urls_checked"] == 1
+    assert result["skipped_cooldown"] is False
+
+    # No vulnerabilities saved
+    save_vuln.assert_not_awaited()
+
+    # No observations saved (no registrations)
+    save_obs.assert_not_awaited()
+
+    # Browser cleanup
+    browser_mgr.release_page.assert_awaited()
