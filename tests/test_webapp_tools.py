@@ -1154,3 +1154,258 @@ async def test_service_worker_auditor_no_sw():
 
     # Browser cleanup
     browser_mgr.release_page.assert_awaited()
+
+
+# ---------------------------------------------------------------------------
+# CspAnalyzer tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_csp_analyzer_missing_csp():
+    """Flags pages without CSP header."""
+    from workers.webapp_worker.tools.csp_analyzer import CspAnalyzer
+
+    tool = CspAnalyzer()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"Content-Type": "text/html"}
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            client=mock_client,
+        )
+
+    assert result["urls_checked"] == 1
+    assert result["csp_missing"] == 1
+    assert result["csp_weak"] == 0
+    assert result["skipped_cooldown"] is False
+
+    save_vuln.assert_awaited_once()
+    call_kwargs = save_vuln.call_args[1]
+    assert call_kwargs["severity"] == "medium"
+    assert "No CSP header" in call_kwargs["title"]
+
+
+@pytest.mark.anyio
+async def test_csp_analyzer_weak_csp():
+    """Detects unsafe-inline in script-src."""
+    from workers.webapp_worker.tools.csp_analyzer import CspAnalyzer
+
+    tool = CspAnalyzer()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {
+        "Content-Type": "text/html",
+        "Content-Security-Policy": (
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "frame-ancestors 'self'; object-src 'none'"
+        ),
+    }
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    scope_mgr = MagicMock()
+    save_vuln = AsyncMock(return_value=100)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_vulnerability", save_vuln,
+        ),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            client=mock_client,
+        )
+
+    assert result["urls_checked"] == 1
+    assert result["csp_missing"] == 0
+    assert result["csp_weak"] >= 1
+    assert result["skipped_cooldown"] is False
+
+    # At least the unsafe-inline finding
+    save_vuln.assert_awaited()
+    # Find the call that flagged unsafe-inline
+    found_unsafe_inline = False
+    for c in save_vuln.call_args_list:
+        kw = c[1]
+        if "unsafe-inline" in kw.get("title", ""):
+            assert kw["severity"] == "high"
+            found_unsafe_inline = True
+    assert found_unsafe_inline
+
+
+def test_csp_parse_directives():
+    """_parse_csp correctly splits CSP header."""
+    from workers.webapp_worker.tools.csp_analyzer import CspAnalyzer
+
+    csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; img-src *"
+    parsed = CspAnalyzer._parse_csp(csp)
+
+    assert parsed["default-src"] == ["'self'"]
+    assert parsed["script-src"] == ["'self'", "'unsafe-inline'"]
+    assert parsed["img-src"] == ["*"]
+
+
+# ---------------------------------------------------------------------------
+# WafFingerprinter tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_waf_fingerprinter_detects_cloudflare():
+    """Detects Cloudflare from cf-ray header."""
+    from workers.webapp_worker.tools.waf_fingerprinter import WafFingerprinter
+
+    tool = WafFingerprinter()
+
+    # Normal response with cf-ray header (Cloudflare indicator)
+    normal_response = MagicMock()
+    normal_response.status_code = 200
+    normal_response.headers = {
+        "Content-Type": "text/html",
+        "cf-ray": "abc123-IAD",
+        "Server": "cloudflare",
+    }
+
+    # Trigger response (403 from WAF)
+    trigger_response = MagicMock()
+    trigger_response.status_code = 403
+    trigger_response.headers = {
+        "Content-Type": "text/html",
+        "cf-ray": "abc124-IAD",
+        "Server": "cloudflare",
+    }
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(side_effect=[normal_response, trigger_response])
+
+    scope_mgr = MagicMock()
+    save_obs = AsyncMock(return_value=200)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_observation", save_obs,
+        ),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            client=mock_client,
+        )
+
+    assert result["urls_checked"] == 1
+    assert result["wafs_detected"] == 1
+    assert result["skipped_cooldown"] is False
+
+    save_obs.assert_awaited_once()
+    call_kwargs = save_obs.call_args[1]
+    assert "Cloudflare" in call_kwargs["tech_stack"]["waf"]
+
+
+@pytest.mark.anyio
+async def test_waf_fingerprinter_no_waf():
+    """Returns zero detections on vanilla response."""
+    from workers.webapp_worker.tools.waf_fingerprinter import WafFingerprinter
+
+    tool = WafFingerprinter()
+
+    # Vanilla response — no WAF indicators
+    vanilla_response = MagicMock()
+    vanilla_response.status_code = 200
+    vanilla_response.headers = {
+        "Content-Type": "text/html",
+        "Server": "nginx",
+    }
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=vanilla_response)
+
+    scope_mgr = MagicMock()
+    save_obs = AsyncMock(return_value=200)
+
+    with (
+        patch.object(
+            tool, "_get_live_urls", new_callable=AsyncMock,
+            return_value=[(1, "example.com")],
+        ),
+        patch.object(
+            tool, "check_cooldown", new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch.object(
+            tool, "update_tool_state", new_callable=AsyncMock,
+        ),
+        patch.object(
+            tool, "_save_observation", save_obs,
+        ),
+    ):
+        result = await tool.execute(
+            target="example.com",
+            scope_manager=scope_mgr,
+            target_id=42,
+            container_name="webapp-worker",
+            client=mock_client,
+        )
+
+    assert result["urls_checked"] == 1
+    assert result["wafs_detected"] == 0
+    assert result["skipped_cooldown"] is False
+
+    # No observation saved when no WAF is detected
+    save_obs.assert_not_awaited()
