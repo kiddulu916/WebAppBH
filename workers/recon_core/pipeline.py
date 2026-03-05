@@ -1,4 +1,4 @@
-"""Recon pipeline: 6 sequential stages with checkpointing."""
+"""Recon pipeline: 7 sequential stages with checkpointing."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from workers.recon_core.tools import (
     AmassActive,
     Massdns,
     HttpxTool,
+    SubjackTool,
     Webanalyze,
     Naabu,
     Katana,
@@ -44,6 +45,7 @@ STAGES = [
     Stage("passive_discovery", [Subfinder, Assetfinder, Chaos, AmassPassive]),
     Stage("active_discovery", [Sublist3r, Knockpy, AmassActive]),
     Stage("liveness_dns", [Massdns, HttpxTool]),
+    Stage("subdomain_takeover", [SubjackTool]),
     Stage("fingerprinting", [Webanalyze]),
     Stage("port_mapping", [Naabu]),
     Stage("deep_recon", [Katana, Hakrawler, Waybackurls, Gauplus, Paramspider]),
@@ -53,7 +55,7 @@ STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}
 
 
 class Pipeline:
-    """Orchestrates the 6-stage recon pipeline with checkpointing."""
+    """Orchestrates the 7-stage recon pipeline with checkpointing."""
 
     def __init__(self, target_id: int, container_name: str):
         self.target_id = target_id
