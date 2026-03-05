@@ -7,6 +7,8 @@ attackers to hijack control flow or exfiltrate data.
 
 from __future__ import annotations
 
+import json
+
 from lib_webbh import setup_logger
 from lib_webbh.scope import ScopeManager
 
@@ -34,7 +36,7 @@ DETECT_EXPR = """(() => {
     if (globals.includes(val)) found.push({tag: el.tagName, attr: val});
   });
   return found;
-})()""" % CLOBBERABLE_GLOBALS  # noqa: UP031 — template is JS, not Python f-string
+})()""" % json.dumps(CLOBBERABLE_GLOBALS)
 
 
 class DomClobberingDetector(WebAppTool):

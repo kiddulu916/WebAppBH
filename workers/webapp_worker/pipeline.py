@@ -16,10 +16,12 @@ from workers.webapp_worker.base_tool import WebAppTool
 from workers.webapp_worker.browser import BrowserManager
 from workers.webapp_worker.tools import (
     JsCrawler,
-    LinkFinder, JsMiner, Mantra, SecretFinder,
+    LinkFinder, JsMiner, Mantra, SecretFinder, CommentHarvester,
     PostMessage, DomSinkAnalyzer, StorageAuditor,
     SourcemapDetector, WebSocketAnalyzer,
+    PrototypePollution, DomClobberingDetector, ServiceWorkerAuditor,
     HeaderAuditor, CookieAuditor, CorsTester, FormAnalyzer,
+    CspAnalyzer, WafFingerprinter, VersionFingerprinter,
     SensitivePaths, RobotsSitemap, GraphqlProber,
     OpenApiDetector, OpenRedirect,
     NewmanProber,
@@ -43,10 +45,14 @@ class Stage:
 
 STAGES: list[Stage] = [
     Stage("js_discovery",       [JsCrawler]),
-    Stage("static_js_analysis", [LinkFinder, JsMiner, Mantra, SecretFinder]),
+    Stage("static_js_analysis", [LinkFinder, JsMiner, Mantra, SecretFinder,
+                                 CommentHarvester]),
     Stage("browser_security",   [PostMessage, DomSinkAnalyzer, StorageAuditor,
-                                 SourcemapDetector, WebSocketAnalyzer]),
-    Stage("http_security",      [HeaderAuditor, CookieAuditor, CorsTester, FormAnalyzer]),
+                                 SourcemapDetector, WebSocketAnalyzer,
+                                 PrototypePollution, DomClobberingDetector,
+                                 ServiceWorkerAuditor]),
+    Stage("http_security",      [HeaderAuditor, CookieAuditor, CorsTester, FormAnalyzer,
+                                 CspAnalyzer, WafFingerprinter, VersionFingerprinter]),
     Stage("path_api_discovery", [SensitivePaths, RobotsSitemap, GraphqlProber,
                                  OpenApiDetector, OpenRedirect]),
     Stage("api_probing",        [NewmanProber]),

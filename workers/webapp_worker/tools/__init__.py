@@ -18,6 +18,13 @@ from workers.webapp_worker.tools.graphql_prober import GraphqlProber
 from workers.webapp_worker.tools.openapi_detector import OpenApiDetector
 from workers.webapp_worker.tools.open_redirect import OpenRedirect
 from workers.webapp_worker.tools.newman_prober import NewmanProber
+from workers.webapp_worker.tools.prototype_pollution import PrototypePollution
+from workers.webapp_worker.tools.dom_clobbering import DomClobberingDetector
+from workers.webapp_worker.tools.service_worker_auditor import ServiceWorkerAuditor
+from workers.webapp_worker.tools.csp_analyzer import CspAnalyzer
+from workers.webapp_worker.tools.waf_fingerprinter import WafFingerprinter
+from workers.webapp_worker.tools.version_fingerprinter import VersionFingerprinter
+from workers.webapp_worker.tools.comment_harvester import CommentHarvester
 
 __all__ = [
     "JsCrawler",
@@ -28,4 +35,7 @@ __all__ = [
     "SensitivePaths", "RobotsSitemap", "GraphqlProber",
     "OpenApiDetector", "OpenRedirect",
     "NewmanProber",
+    "PrototypePollution", "DomClobberingDetector", "ServiceWorkerAuditor",
+    "CspAnalyzer", "WafFingerprinter", "VersionFingerprinter",
+    "CommentHarvester",
 ]

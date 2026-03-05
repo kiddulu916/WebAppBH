@@ -136,7 +136,7 @@ class PrototypePollution(WebAppTool):
                     probe_page = None
                     try:
                         probe_page = await browser_mgr.new_page(headers=headers)
-                        probe_url = f"{base_url}/{payload}"
+                        probe_url = f"{base_url}{payload}"
                         await probe_page.goto(probe_url, wait_until="networkidle")
 
                         polluted = await probe_page.evaluate(PP_CHECK_EXPR)
