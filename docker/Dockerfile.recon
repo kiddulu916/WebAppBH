@@ -28,7 +28,7 @@ FROM python:3.10-slim-bookworm AS py-builder
 
 RUN pip install --no-cache-dir --target=/py-tools \
     sublist3r \
-    knockpy \
+    knockpy
 
 # ============================================================
 # Stage 3: Runtime
