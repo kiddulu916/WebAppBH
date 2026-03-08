@@ -39,7 +39,7 @@ WORKDIR /app
 
 RUN apt-get update && \
 apt-get install -y --no-install-recommends \
-gcc libpq-dev libpcap-dev git wget && 
+gcc libpq-dev libpcap-dev git wget
 
 RUN git clone https://github.com/blechschmidt/massdns.git && \
 cd massdns && \
