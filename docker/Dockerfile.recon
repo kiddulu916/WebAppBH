@@ -37,26 +37,26 @@ FROM python:3.10-slim-bookworm
 
 WORKDIR /app
 
-RUN echo "deb-src http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" | tee -a /etc/apt/sources.list
+RUN apt-get update && \
+apt-get install -y --no-install-recommends \
+gcc libpq-dev libpcap-dev git wget && 
+
+RUN git clone https://github.com/blechschmidt/massdns.git && \
+cd massdns && \
+make && \
+cp massdns /usr/local/bin/ && \
+cd .. && \
+rm -rf massdns
+
+RUN wget https://github.com/blechschmidt/massdns/releases/download/v1.0.0/resolvers.txt -O /usr/local/bin/resolvers.txt
+
+RUN echo "deb http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" | tee -a /etc/apt/sources.list
 
 RUN wget https://archive.kali.org/archive-keyring.gpg -O /usr/share/keyrings/kali-archive-keyring.gpg
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        gcc libpq-dev libpcap-dev git paramspider && \
+    apt-get install -y --no-install-recommends paramspider && \
     rm -rf /var/lib/apt/lists/*
-
-RUN git clone https://github.com/blechschmidt/massdns.git && \
-    cd massdns && \
-    make && \
-    cp massdns /usr/local/bin/ && \
-    cd .. && \
-    rm -rf massdns
-
-RUN wget https://github.com/blechschmidt/massdns/releases/download/v1.0.0/resolvers.txt -O /usr/local/bin/resolvers.txt
-
-
-    
 
 # Go binaries
 COPY --from=go-builder /go/bin/subfinder /usr/local/bin/
