@@ -37,7 +37,7 @@ FROM python:3.10-slim-bookworm
 
 WORKDIR /app
 
-RUN echo "deb-src http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" | sudo tee -a /etc/apt/sources.list
+RUN echo "deb-src http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" | tee -a /etc/apt/sources.list
 
 RUN wget https://archive.kali.org/archive-keyring.gpg -O /usr/share/keyrings/kali-archive-keyring.gpg
 
