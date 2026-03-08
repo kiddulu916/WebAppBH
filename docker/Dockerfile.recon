@@ -39,14 +39,16 @@ WORKDIR /app
 
 RUN apt-get update && \
 apt-get install -y --no-install-recommends \
-gcc libpq-dev libpcap-dev git wget
+gcc libpq-dev libpcap-dev git wget make build-essential
 
-RUN git clone https://github.com/blechschmidt/massdns.git && \
-cd massdns && \
-make && \
-cp massdns /usr/local/bin/ && \
-cd .. && \
-rm -rf massdns
+RUN git clone https://github.com/blechschmidt/massdns.git
+
+RUN cd massdns 
+
+RUN make && \
+    cp massdns /usr/local/bin/ && \
+    cd .. && \
+    rm -rf massdns
 
 RUN wget https://github.com/blechschmidt/massdns/releases/download/v1.0.0/resolvers.txt -O /usr/local/bin/resolvers.txt
 
