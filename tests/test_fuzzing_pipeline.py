@@ -176,3 +176,48 @@ async def test_fuzzing_pipeline_skips_completed_stages():
         await pipeline.run(target=MagicMock(), scope_manager=MagicMock())
 
     assert ran_stages == ["param_discovery", "header_fuzzing"]
+
+
+# ---------------------------------------------------------------------------
+# main.py tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_fuzzing_main_handle_message_creates_jobstate():
+    from sqlalchemy import select
+    from unittest.mock import AsyncMock, patch
+
+    from lib_webbh import JobState, Target, get_session
+    from workers.fuzzing_worker.main import handle_message
+
+    await _create_tables()
+
+    # Seed a Target
+    async with get_session() as session:
+        t = Target(company_name="Acme", base_domain="acme.com")
+        session.add(t)
+        await session.commit()
+        target_id = t.id
+
+    # Mock Pipeline.run and get_container_name
+    with patch(
+        "workers.fuzzing_worker.main.Pipeline.run",
+        new_callable=AsyncMock,
+    ), patch(
+        "workers.fuzzing_worker.main.get_container_name",
+        return_value="test-container",
+    ):
+        await handle_message("msg-1", {"target_id": target_id})
+
+    # Verify JobState created with status RUNNING
+    async with get_session() as session:
+        stmt = select(JobState).where(
+            JobState.target_id == target_id,
+            JobState.container_name == "test-container",
+        )
+        result = await session.execute(stmt)
+        job = result.scalar_one_or_none()
+
+    assert job is not None, "JobState row was not created"
+    assert job.status == "RUNNING"
