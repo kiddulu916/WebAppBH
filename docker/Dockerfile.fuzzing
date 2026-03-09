@@ -1,0 +1,82 @@
+# ============================================================
+# Stage 1: Go tool builder (ffuf)
+# ============================================================
+FROM golang:1.24-bookworm AS go-builder
+
+ENV GOPATH=/go
+ENV PATH=$GOPATH/bin:$PATH
+
+RUN go install github.com/ffuf/ffuf/v2@latest
+
+# ============================================================
+# Stage 2: Rust tool builder (feroxbuster)
+# ============================================================
+FROM rust:1.77-bookworm AS rust-builder
+
+RUN cargo install feroxbuster
+
+# ============================================================
+# Stage 3: Python tool builder
+# ============================================================
+FROM python:3.10-slim-bookworm AS py-builder
+
+RUN pip install --no-cache-dir --target=/py-tools \
+    arjun \
+    aiohttp
+
+# ============================================================
+# Stage 4: SecLists downloader
+# ============================================================
+FROM debian:bookworm-slim AS seclists
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends wget unzip && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /seclists && \
+    wget -q https://github.com/danielmiessler/SecLists/archive/refs/heads/master.zip -O /tmp/seclists.zip && \
+    unzip -q /tmp/seclists.zip -d /tmp && \
+    cp /tmp/SecLists-master/Discovery/Web-Content/common.txt /seclists/ && \
+    cp /tmp/SecLists-master/Discovery/Web-Content/directory-list-2.3-medium.txt /seclists/ && \
+    cp /tmp/SecLists-master/Discovery/DNS/subdomains-top1million-5000.txt /seclists/ && \
+    rm -rf /tmp/seclists.zip /tmp/SecLists-master
+
+# ============================================================
+# Stage 5: Runtime
+# ============================================================
+FROM python:3.10-slim-bookworm
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Go binaries
+COPY --from=go-builder /go/bin/ffuf /usr/local/bin/
+
+# Rust binaries
+COPY --from=rust-builder /usr/local/cargo/bin/feroxbuster /usr/local/bin/
+
+# Python tools
+COPY --from=py-builder /py-tools /usr/local/lib/python3.10/site-packages/
+
+# SecLists wordlists
+COPY --from=seclists /seclists /app/wordlists
+
+# Install lib_webbh
+COPY shared/lib_webbh /app/shared/lib_webbh
+RUN pip install --no-cache-dir /app/shared/lib_webbh
+
+# Shared directories
+RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs
+
+# Worker source
+COPY workers/__init__.py /app/workers/__init__.py
+COPY workers/fuzzing_worker /app/workers/fuzzing_worker
+
+# Verify import chain
+RUN python -c "from workers.fuzzing_worker.main import main; print('fuzzing-worker OK')"
+
+ENTRYPOINT ["python", "-m", "workers.fuzzing_worker.main"]
