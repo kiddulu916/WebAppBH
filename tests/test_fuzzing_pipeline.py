@@ -120,3 +120,59 @@ async def test_fuzzing_base_tool_save_vulnerability_creates_alert():
             select(Alert).where(Alert.target_id == target_id)
         )).scalars().all()
         assert len(alerts) == 1
+
+
+# ---------------------------------------------------------------------------
+# Pipeline tests
+# ---------------------------------------------------------------------------
+
+
+def test_fuzzing_stages_defined_in_order():
+    from workers.fuzzing_worker.pipeline import STAGES
+
+    expected = ["dir_fuzzing", "vhost_fuzzing", "param_discovery", "header_fuzzing"]
+    assert [s.name for s in STAGES] == expected
+
+
+def test_fuzzing_each_stage_has_tools():
+    from workers.fuzzing_worker.pipeline import STAGES
+
+    for stage in STAGES:
+        assert len(stage.tool_classes) >= 1, f"Stage {stage.name} has no tools"
+
+
+def test_fuzzing_stage_tools_are_fuzzing_tool_subclasses():
+    from workers.fuzzing_worker.base_tool import FuzzingTool
+    from workers.fuzzing_worker.pipeline import STAGES
+
+    for stage in STAGES:
+        for cls in stage.tool_classes:
+            assert issubclass(cls, FuzzingTool), (
+                f"{cls.__name__} in stage {stage.name} is not a FuzzingTool subclass"
+            )
+
+
+@pytest.mark.anyio
+async def test_fuzzing_pipeline_skips_completed_stages():
+    from workers.fuzzing_worker.pipeline import Pipeline
+
+    pipeline = Pipeline(target_id=1, container_name="fuzzing-test")
+
+    # Track which stages _run_stage is called with
+    ran_stages: list[str] = []
+    original_run_stage = pipeline._run_stage
+
+    async def mock_run_stage(stage, target, scope_manager, headers=None, **kwargs):
+        ran_stages.append(stage.name)
+        return {"found": 0, "in_scope": 0, "new": 0}
+
+    pipeline._get_completed_phase = AsyncMock(return_value="vhost_fuzzing")
+    pipeline._run_stage = mock_run_stage
+    pipeline._update_phase = AsyncMock()
+    pipeline._mark_completed = AsyncMock()
+    pipeline._run_permutation_handoff = AsyncMock()
+
+    with patch("workers.fuzzing_worker.pipeline.push_task", new_callable=AsyncMock):
+        await pipeline.run(target=MagicMock(), scope_manager=MagicMock())
+
+    assert ran_stages == ["param_discovery", "header_fuzzing"]
