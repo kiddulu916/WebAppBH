@@ -162,8 +162,8 @@ async def test_ffuf_tool_execute_saves_assets():
             target_id=1, container_name="test", headers={},
         )
 
-    assert result["found"] >= 1
-    assert tool._save_asset.await_count >= 1
+        assert result["found"] >= 1
+        assert tool._save_asset.await_count >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -236,14 +236,23 @@ async def test_feroxbuster_builds_command():
 
 @pytest.mark.anyio
 async def test_feroxbuster_execute_uses_discovered_dirs():
+    import os as _os
     from workers.fuzzing_worker.tools.feroxbuster_tool import FeroxbusterTool
     tool = FeroxbusterTool()
     scope_mgr = MagicMock()
     target = MagicMock(target_profile={"rate_limit": 50})
 
+    async def _fake_subprocess(cmd):
+        """Write sample JSONL into the output file feroxbuster would create."""
+        # The -o flag is followed by the output path in the command list
+        out_idx = cmd.index("-o") + 1
+        with open(cmd[out_idx], "w") as fh:
+            fh.write(SAMPLE_FEROX_LINES)
+        return ""
+
     with (
         patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=False),
-        patch.object(tool, "run_subprocess", new_callable=AsyncMock, return_value=SAMPLE_FEROX_LINES),
+        patch.object(tool, "run_subprocess", side_effect=_fake_subprocess),
         patch.object(tool, "_save_asset", new_callable=AsyncMock, return_value=10),
         patch.object(tool, "_save_vulnerability", new_callable=AsyncMock, return_value=1),
         patch.object(tool, "update_tool_state", new_callable=AsyncMock),
@@ -255,3 +264,123 @@ async def test_feroxbuster_execute_uses_discovered_dirs():
         )
 
     assert result["found"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# VhostFuzzTool tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_vhost_fuzz_builds_command_per_ffuf_docs():
+    from workers.fuzzing_worker.tools.vhost_fuzz_tool import VhostFuzzTool
+    tool = VhostFuzzTool()
+    cmd = tool.build_command(
+        ip="93.184.216.34", base_domain="acme.com",
+        wordlist="/tmp/vhost-wl.txt", rate_limit=50,
+        baseline_size=1234, headers={}, output_file="/tmp/vhost.json",
+    )
+    assert "ffuf" in cmd
+    assert "-H" in cmd
+    host_idx = cmd.index("-H") + 1
+    assert "FUZZ.acme.com" in cmd[host_idx]
+    assert "-fs" in cmd
+    assert "1234" in cmd
+
+
+@pytest.mark.anyio
+async def test_vhost_fuzz_builds_combined_wordlist():
+    from workers.fuzzing_worker.tools.vhost_fuzz_tool import VhostFuzzTool
+    tool = VhostFuzzTool()
+    existing_prefixes = ["dev", "staging"]
+    combined = tool.build_wordlist(existing_prefixes)
+    assert "dev" in combined
+    assert "staging" in combined
+    assert len(combined) == len(set(combined))
+
+
+# ---------------------------------------------------------------------------
+# ArjunTool tests
+# ---------------------------------------------------------------------------
+
+SAMPLE_ARJUN_OUTPUT = json.dumps({
+    "https://acme.com/api/users": {
+        "GET": ["id", "debug", "admin"],
+        "POST": ["token"],
+    }
+})
+
+HIGH_VALUE_PARAMS = {"debug", "admin", "test", "load_config", "proxy",
+                     "callback", "token", "secret"}
+
+
+@pytest.mark.anyio
+async def test_arjun_parses_json_output():
+    from workers.fuzzing_worker.tools.arjun_tool import ArjunTool
+    tool = ArjunTool()
+    results = tool.parse_output(SAMPLE_ARJUN_OUTPUT)
+    assert len(results) == 4
+    names = {r["param_name"] for r in results}
+    assert "debug" in names
+    assert "token" in names
+
+
+@pytest.mark.anyio
+async def test_arjun_builds_command():
+    from workers.fuzzing_worker.tools.arjun_tool import ArjunTool
+    tool = ArjunTool()
+    cmd = tool.build_command(
+        url="https://acme.com/api", rate_limit=100,
+        headers={"Auth": "Bearer tok"}, output_file="/tmp/arjun.json",
+    )
+    assert "arjun" in cmd
+    assert "--stable" in cmd
+    assert "--delay" in cmd
+
+
+@pytest.mark.anyio
+async def test_arjun_flags_high_value_params():
+    from workers.fuzzing_worker.tools.arjun_tool import ArjunTool
+    tool = ArjunTool()
+    results = tool.parse_output(SAMPLE_ARJUN_OUTPUT)
+    high_value = [r for r in results if r["param_name"] in HIGH_VALUE_PARAMS]
+    assert len(high_value) >= 2
+
+
+# ---------------------------------------------------------------------------
+# HeaderFuzzTool tests
+# ---------------------------------------------------------------------------
+
+def test_header_fuzz_injection_headers_defined():
+    from workers.fuzzing_worker.tools.header_fuzz_tool import INJECTION_HEADERS
+    assert len(INJECTION_HEADERS) >= 5
+    names = {h["name"] for h in INJECTION_HEADERS}
+    assert "X-Forwarded-For" in names
+    assert "X-Original-URL" in names
+
+
+def test_header_fuzz_content_types_defined():
+    from workers.fuzzing_worker.tools.header_fuzz_tool import CONTENT_TYPES
+    assert "application/xml" in CONTENT_TYPES
+    assert "text/yaml" in CONTENT_TYPES
+
+
+@pytest.mark.anyio
+async def test_header_fuzz_detects_status_change():
+    from workers.fuzzing_worker.tools.header_fuzz_tool import HeaderFuzzTool
+    tool = HeaderFuzzTool()
+    assert tool.is_significant_deviation(403, 1000, 200, 1500) is True
+    assert tool.is_significant_deviation(200, 1000, 200, 1050) is False
+    assert tool.is_significant_deviation(200, 1000, 200, 1200) is True
+
+
+@pytest.mark.anyio
+async def test_header_fuzz_skips_on_cooldown():
+    from workers.fuzzing_worker.tools.header_fuzz_tool import HeaderFuzzTool
+    tool = HeaderFuzzTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(), target_id=1,
+            container_name="test", headers={},
+        )
+    assert result.get("skipped_cooldown") is True
