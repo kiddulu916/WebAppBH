@@ -26,6 +26,6 @@ RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs
 RUN python -c "from lib_webbh import Target, push_task, setup_logger; print('lib_webbh OK')" && \
     python -c "import fastapi, docker, psutil; print('orchestrator deps OK')"
 
-EXPOSE 8000
+EXPOSE 8001
 
-CMD ["uvicorn", "orchestrator.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "orchestrator.main:app", "--host", "0.0.0.0", "--port", "8001"]

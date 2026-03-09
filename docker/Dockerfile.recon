@@ -1,7 +1,7 @@
 # ============================================================
 # Stage 1: Go tool builder
 # ============================================================
-FROM golang:1.22-bookworm AS go-builder
+FROM golang:1.24-bookworm AS go-builder
 
 ENV GOPATH=/go
 ENV PATH=$GOPATH/bin:$PATH
@@ -27,8 +27,7 @@ RUN cp $(find /go/pkg/mod/github.com/haccer/subjack@* -name fingerprints.json -p
 FROM python:3.10-slim-bookworm AS py-builder
 
 RUN pip install --no-cache-dir --target=/py-tools \
-    sublist3r \
-    knockpy
+    sublist3r 
 
 # ============================================================
 # Stage 3: Runtime
@@ -39,7 +38,7 @@ WORKDIR /app
 
 RUN apt-get update && \
 apt-get install -y --no-install-recommends \
-gcc libpq-dev libpcap-dev git wget make build-essential
+gcc libpq-dev libpcap-dev git wget make build-essential gnupg
 
 RUN git clone https://github.com/blechschmidt/massdns.git && \
     cd massdns && \ 
@@ -48,11 +47,15 @@ RUN git clone https://github.com/blechschmidt/massdns.git && \
     cd .. && \
     rm -rf massdns
 
-RUN wget https://github.com/blechschmidt/massdns/releases/download/v1.0.0/resolvers.txt -O /usr/local/bin/resolvers.txt
+COPY workers/recon_core/resolvers.txt /usr/local/bin/resolvers.txt
 
 RUN echo "deb http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" | tee -a /etc/apt/sources.list
 
-RUN wget https://archive.kali.org/archive-keyring.gpg -O /usr/share/keyrings/kali-archive-keyring.gpg
+RUN wget  https://http.kali.org/kali/pool/main/k/kali-archive-keyring/kali-archive-keyring_2025.1_all.deb
+
+RUN dpkg -i kali-archive-keyring_2025.1_all.deb
+
+RUN rm kali-archive-keyring_2025.1_all.deb
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends paramspider && \
