@@ -7,12 +7,14 @@ Task: Create the "Web-App-Testing" Dockerized worker. This container focuses on 
 
 - **Base**: Debian-slim with Node.js (latest LTS) and Python 3.10+.
 - **Headless Browser**: Install Playwright or Puppeteer with Chromium dependencies.
-- **Analysis Tools**: 
+- **Analysis Tools**:
     - **Mantra**: For finding secrets in JS files.
     - **LinkFinder**: To extract endpoints from JavaScript.
     - **SecretFinder**: For sensitive data discovery in JS.
     - **JSMiner**: For uncovering hidden endpoints and parameters in scripts.
     - **DOMPurify/Custom Scripts**: To test for DOM-based XSS sinks.
+    - **dalfox**: For reflected and stored XSS scanning with WAF bypass and PoC generation.
+    - **ppmap**: For detecting client-side and server-side prototype pollution in JS frameworks.
 
 ## 2. Integration & Intelligence
 
@@ -26,7 +28,9 @@ Implement a Python/Node orchestrator within the container that:
 - **JS Discovery**: Crawls the target and identifies every loaded `.js` file.
 - **Endpoint Extraction**: Runs LinkFinder/JSMiner on discovered scripts and saves new paths to the `endpoints` table.
 - **PostMessage Monitoring**: Uses Playwright to listen for `postMessage` events and logs listeners that lack origin validation.
-- **Sink Analysis**: Identifies dangerous sinks (e.g., `innerHTML`, `eval()`, `setTimeout()`) and attempts basic payload injection to verify DOM XSS.
+- **Sink Analysis**: Identifies dangerous sinks (e.g., `innerHTML`, `setTimeout()`) and attempts basic payload injection to verify DOM XSS.
+- **XSS Scanning (dalfox)**: After sink analysis, run dalfox against all `assets` (type='url') with discovered parameters. dalfox performs reflected and stored XSS testing with WAF bypass techniques. Writes confirmed XSS findings to `vulnerabilities` with full PoC (payload + reflected response).
+- **Prototype Pollution (ppmap)**: After JS file analysis, run ppmap against JS file URLs discovered by LinkFinder/JSMiner and all URLs where `observations.tech_stack` indicates Node.js/Express. Writes prototype pollution findings to `vulnerabilities`. Only triggered when JS frameworks are detected.
 
 ## 4. Persistence & Event Reporting
 
@@ -39,4 +43,4 @@ Implement a Python/Node orchestrator within the container that:
 - Limit the headless browser to X concurrent tabs (based on RAM) to prevent container crashes.
 - Implement a 30-second timeout per page to handle heavy React/Angular/Vue applications gracefully.
 
-Deliverables: Dockerfile, Playwright-based analysis script, Python wrapper, and updated models integration.
+Deliverables: Dockerfile, Playwright-based analysis script, Python wrapper, dalfox/ppmap integration, and updated models integration.
