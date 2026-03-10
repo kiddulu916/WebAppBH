@@ -7,6 +7,7 @@ ENV GOPATH=/go
 ENV PATH=$GOPATH/bin:$PATH
 
 RUN go install github.com/ffuf/ffuf/v2@latest
+RUN go install github.com/dwisiswant0/crlfuzz/cmd/crlfuzz@latest
 
 # ============================================================
 # Stage 2: Rust tool builder (feroxbuster)
@@ -55,6 +56,7 @@ RUN apt-get update && \
 
 # Go binaries
 COPY --from=go-builder /go/bin/ffuf /usr/local/bin/
+COPY --from=go-builder /go/bin/crlfuzz /usr/local/bin/
 
 # Rust binaries
 COPY --from=rust-builder /usr/local/cargo/bin/feroxbuster /usr/local/bin/
@@ -64,6 +66,12 @@ COPY --from=py-builder /py-tools /usr/local/lib/python3.10/site-packages/
 
 # SecLists wordlists
 COPY --from=seclists /seclists /app/wordlists
+
+# Oralyzer
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    git clone https://github.com/nicedayfor/oralyzer.git /opt/oralyzer && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install lib_webbh
 COPY shared/lib_webbh /app/shared/lib_webbh

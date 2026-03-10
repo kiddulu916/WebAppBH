@@ -1,4 +1,4 @@
-"""Fuzzing pipeline: 4 sequential stages with tool chaining and permutation handoff."""
+"""Fuzzing pipeline: 5 sequential stages with tool chaining and permutation handoff."""
 
 from __future__ import annotations
 
@@ -15,10 +15,12 @@ from workers.fuzzing_worker.base_tool import FuzzingTool
 from workers.fuzzing_worker.permutation import extract_prefix, generate_permutations
 from workers.fuzzing_worker.tools import (
     ArjunTool,
+    CrlfuzzTool,
     ExtensionFuzzTool,
     FeroxbusterTool,
     FfufTool,
     HeaderFuzzTool,
+    OralyzerTool,
     VhostFuzzTool,
 )
 
@@ -36,10 +38,11 @@ class Stage:
 
 
 STAGES: list[Stage] = [
-    Stage("dir_fuzzing",     [FfufTool, FeroxbusterTool, ExtensionFuzzTool]),
-    Stage("vhost_fuzzing",   [VhostFuzzTool]),
-    Stage("param_discovery", [ArjunTool]),
-    Stage("header_fuzzing",  [HeaderFuzzTool]),
+    Stage("dir_fuzzing",        [FfufTool, FeroxbusterTool, ExtensionFuzzTool]),
+    Stage("vhost_fuzzing",      [VhostFuzzTool]),
+    Stage("param_discovery",    [ArjunTool]),
+    Stage("header_fuzzing",     [HeaderFuzzTool]),
+    Stage("injection_fuzzing",  [CrlfuzzTool, OralyzerTool]),
 ]
 
 STAGE_INDEX: dict[str, int] = {}
@@ -63,7 +66,7 @@ PERMUTATION_BATCH_SIZE = 100
 
 
 class Pipeline:
-    """Orchestrates the 4-stage fuzzing pipeline with checkpointing."""
+    """Orchestrates the 5-stage fuzzing pipeline with checkpointing."""
 
     def __init__(self, target_id: int, container_name: str) -> None:
         self.target_id = target_id
