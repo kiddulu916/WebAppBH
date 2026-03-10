@@ -1,4 +1,4 @@
-"""Web-application analysis pipeline: 6 sequential stages with browser lifecycle."""
+"""Web-application analysis pipeline: 8 sequential stages with browser lifecycle."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from workers.webapp_worker.tools import (
     SensitivePaths, RobotsSitemap, GraphqlProber,
     OpenApiDetector, OpenRedirect,
     NewmanProber,
+    DalfoxTool, PpmapTool,
 )
 
 logger = setup_logger("webapp-pipeline")
@@ -56,6 +57,8 @@ STAGES: list[Stage] = [
     Stage("path_api_discovery", [SensitivePaths, RobotsSitemap, GraphqlProber,
                                  OpenApiDetector, OpenRedirect]),
     Stage("api_probing",        [NewmanProber]),
+    Stage("xss_scanning",       [DalfoxTool]),
+    Stage("prototype_pollution_scan", [PpmapTool]),
 ]
 
 STAGE_INDEX: dict[str, int] = {}
@@ -77,7 +80,7 @@ _rebuild_index()
 
 
 class Pipeline:
-    """Orchestrates the 6-stage web-app analysis pipeline with checkpointing."""
+    """Orchestrates the 8-stage web-app analysis pipeline with checkpointing."""
 
     def __init__(self, target_id: int, container_name: str) -> None:
         self.target_id = target_id

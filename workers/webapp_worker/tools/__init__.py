@@ -25,6 +25,8 @@ from workers.webapp_worker.tools.csp_analyzer import CspAnalyzer
 from workers.webapp_worker.tools.waf_fingerprinter import WafFingerprinter
 from workers.webapp_worker.tools.version_fingerprinter import VersionFingerprinter
 from workers.webapp_worker.tools.comment_harvester import CommentHarvester
+from workers.webapp_worker.tools.dalfox_tool import DalfoxTool
+from workers.webapp_worker.tools.ppmap_tool import PpmapTool
 
 __all__ = [
     "JsCrawler",
@@ -38,4 +40,5 @@ __all__ = [
     "PrototypePollution", "DomClobberingDetector", "ServiceWorkerAuditor",
     "CspAnalyzer", "WafFingerprinter", "VersionFingerprinter",
     "CommentHarvester",
+    "DalfoxTool", "PpmapTool",
 ]
