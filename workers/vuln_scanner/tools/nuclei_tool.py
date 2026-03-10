@@ -137,7 +137,7 @@ class NucleiTool(VulnScanTool):
 
         if await self.check_cooldown(target_id, container_name):
             log.info("Skipping nuclei -- within cooldown")
-            return {"findings": 0, "skipped_cooldown": True}
+            return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": True}
 
         # ---- 1. Sync templates ----
         await sync_templates(self.run_subprocess)
@@ -146,7 +146,7 @@ class NucleiTool(VulnScanTool):
         target_urls = await self._build_target_list(target_id)
         if not target_urls:
             log.info("No targets for nuclei scan")
-            return {"findings": 0, "skipped_cooldown": False}
+            return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
 
         log.info(f"Nuclei scan starting with {len(target_urls)} targets")
 
@@ -199,7 +199,7 @@ class NucleiTool(VulnScanTool):
                 sem.release()
 
             # ---- 5. Parse JSONL output ----
-            stats = {"findings": 0, "skipped_cooldown": False}
+            stats = {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
 
             if os.path.exists(output_file.name):
                 with open(output_file.name) as fh:
@@ -257,13 +257,10 @@ class NucleiTool(VulnScanTool):
                             or f"Nuclei template {template_id} matched at {matched_at}",
                         )
 
-                        stats["findings"] += 1
-                        log.info(
-                            "Nuclei finding: [%s] %s at %s",
-                            severity,
-                            title,
-                            matched_at,
-                        )
+                        stats["found"] += 1
+                        stats["in_scope"] += 1
+                        stats["new"] += 1
+                        log.info(f"Nuclei finding: [{severity}] {title} at {matched_at}")
 
         finally:
             # Cleanup temp files

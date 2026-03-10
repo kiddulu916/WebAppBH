@@ -265,7 +265,7 @@ class Pipeline:
 
     @staticmethod
     def _merge_stats(aggregated: dict, result: dict) -> None:
-        aggregated["found"] += result.get("found", result.get("findings", 0))
+        aggregated["found"] += result.get("found", 0)
         aggregated["in_scope"] += result.get("in_scope", 0)
         aggregated["new"] += result.get("new", 0)
 
