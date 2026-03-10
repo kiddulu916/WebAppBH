@@ -41,43 +41,40 @@ class PpmapTool(WebAppTool):
     async def _get_js_framework_urls(
         self, target_id: int
     ) -> list[tuple[int, str]]:
-        """Return ``[(asset_id, url), ...]`` for assets with JS frameworks.
+        """Return ``[(asset_id, url), ...]`` for URL assets with JS frameworks.
 
-        Joins Asset -> Observation, checks tech_stack JSON for framework
-        name indicators.  Returns only distinct (asset_id, url) pairs.
+        Joins Asset -> Observation, filters by asset_type='url', checks
+        tech_stack JSON for framework name indicators.
         """
         async with get_session() as session:
             stmt = (
-                select(Asset.id, Asset.asset_value)
+                select(Asset.id, Asset.asset_value, Observation.tech_stack)
                 .join(Observation, Observation.asset_id == Asset.id)
-                .where(Asset.target_id == target_id)
-                .distinct()
+                .where(
+                    Asset.target_id == target_id,
+                    Asset.asset_type == "url",
+                )
             )
             result = await session.execute(stmt)
             rows = result.all()
 
         matched: list[tuple[int, str]] = []
-        for asset_id, asset_value in rows:
-            # Fetch the observation tech_stack for this asset
-            async with get_session() as session:
-                obs_stmt = (
-                    select(Observation.tech_stack)
-                    .where(Observation.asset_id == asset_id)
-                )
-                obs_result = await session.execute(obs_stmt)
-                tech_stacks = [row[0] for row in obs_result.all() if row[0]]
+        seen: set[int] = set()
+        for asset_id, asset_value, tech_stack in rows:
+            if asset_id in seen:
+                continue
+            if not tech_stack:
+                continue
 
-            for tech_stack in tech_stacks:
-                # tech_stack is stored as JSON dict or string
-                stack_str = ""
-                if isinstance(tech_stack, dict):
-                    stack_str = json.dumps(tech_stack).lower()
-                elif isinstance(tech_stack, str):
-                    stack_str = tech_stack.lower()
+            stack_str = ""
+            if isinstance(tech_stack, dict):
+                stack_str = json.dumps(tech_stack).lower()
+            elif isinstance(tech_stack, str):
+                stack_str = tech_stack.lower()
 
-                if any(fw in stack_str for fw in JS_FRAMEWORK_INDICATORS):
-                    matched.append((asset_id, asset_value))
-                    break  # one match per asset is enough
+            if any(fw in stack_str for fw in JS_FRAMEWORK_INDICATORS):
+                matched.append((asset_id, asset_value))
+                seen.add(asset_id)
 
         return matched
 

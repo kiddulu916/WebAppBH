@@ -11,7 +11,9 @@ import json
 import os
 import tempfile
 
-from lib_webbh import setup_logger
+from sqlalchemy import select
+
+from lib_webbh import Asset, Parameter, get_session, setup_logger
 from lib_webbh.scope import ScopeManager
 
 from workers.webapp_worker.base_tool import ToolType, WebAppTool
@@ -32,6 +34,19 @@ class DalfoxTool(WebAppTool):
     name = "dalfox"
     tool_type = ToolType.CLI
     weight_class = WeightClass.HEAVY
+
+    # ------------------------------------------------------------------
+    # Query helper
+    # ------------------------------------------------------------------
+
+    async def _get_params_for_asset(self, target_id: int, asset_id: int) -> list[str]:
+        """Return param names discovered for this asset."""
+        async with get_session() as session:
+            stmt = select(Parameter.param_name).where(
+                Parameter.asset_id == asset_id,
+            )
+            result = await session.execute(stmt)
+            return [r[0] for r in result.all()]
 
     # ------------------------------------------------------------------
     # Output parsing
@@ -82,6 +97,7 @@ class DalfoxTool(WebAppTool):
         url: str,
         output_path: str,
         headers: dict | None = None,
+        params: list[str] | None = None,
     ) -> list[str]:
         """Build the dalfox CLI command list."""
         cmd = [
@@ -97,6 +113,10 @@ class DalfoxTool(WebAppTool):
         if headers:
             for key, value in headers.items():
                 cmd.extend(["--header", f"{key}: {value}"])
+
+        if params:
+            for param in params:
+                cmd.extend(["--param", param])
 
         return cmd
 
@@ -147,7 +167,9 @@ class DalfoxTool(WebAppTool):
                 os.close(tmp_fd)
 
                 try:
-                    cmd = self._build_cmd(scan_url, tmp_path, headers)
+                    # Feed known parameters from earlier discovery phases
+                    params = await self._get_params_for_asset(target_id, asset_id)
+                    cmd = self._build_cmd(scan_url, tmp_path, headers, params or None)
                     log.info(
                         f"Running dalfox against {domain}",
                         extra={"domain": domain},
