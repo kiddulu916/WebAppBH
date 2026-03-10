@@ -130,7 +130,7 @@ async def test_fuzzing_base_tool_save_vulnerability_creates_alert():
 def test_fuzzing_stages_defined_in_order():
     from workers.fuzzing_worker.pipeline import STAGES
 
-    expected = ["dir_fuzzing", "vhost_fuzzing", "param_discovery", "header_fuzzing"]
+    expected = ["dir_fuzzing", "vhost_fuzzing", "param_discovery", "header_fuzzing", "injection_fuzzing"]
     assert [s.name for s in STAGES] == expected
 
 
@@ -175,7 +175,7 @@ async def test_fuzzing_pipeline_skips_completed_stages():
     with patch("workers.fuzzing_worker.pipeline.push_task", new_callable=AsyncMock):
         await pipeline.run(target=MagicMock(), scope_manager=MagicMock())
 
-    assert ran_stages == ["param_discovery", "header_fuzzing"]
+    assert ran_stages == ["param_discovery", "header_fuzzing", "injection_fuzzing"]
 
 
 # ---------------------------------------------------------------------------

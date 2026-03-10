@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 
 import aiohttp
+from sqlalchemy import select
 
-from lib_webbh import setup_logger
+from lib_webbh import Asset, setup_logger
 from lib_webbh.scope import ScopeManager
 
 from workers.vuln_scanner.base_tool import VulnScanTool
@@ -180,14 +181,29 @@ class HostHeaderTool(VulnScanTool):
                     urls_to_test.append((asset_id, target_url))
 
         elif scan_all:
-            # -- Stage 3: test all live URLs --
+            # -- Stage 3: test all live URLs + Phase 6 vhosts --
             live_urls = await self._get_live_urls(target_id)
-            for asset_id, domain in live_urls:
-                url = f"https://{domain}"
+            for asset_id, asset_value in live_urls:
+                url = asset_value if asset_value.startswith("http") else f"https://{asset_value}"
                 if await self._has_confirmed_vuln(target_id, asset_id, "host header"):
-                    log.debug("Skipping %s -- already confirmed host header vuln", url)
+                    log.debug(f"Skipping {url} -- already confirmed host header vuln")
                     continue
                 urls_to_test.append((asset_id, url))
+
+            # Include Phase 6 vhost discoveries
+            from lib_webbh import get_session
+            async with get_session() as session:
+                stmt = select(Asset.id, Asset.asset_value).where(
+                    Asset.target_id == target_id,
+                    Asset.asset_type == "domain",
+                    Asset.source_tool.like("%vhost%"),
+                )
+                result = await session.execute(stmt)
+                for vhost_id, vhost_domain in result.all():
+                    vhost_url = f"https://{vhost_domain}"
+                    if await self._has_confirmed_vuln(target_id, vhost_id, "host header"):
+                        continue
+                    urls_to_test.append((vhost_id, vhost_url))
         else:
             log.info("No triaged findings or scan_all -- skipping")
             return stats
@@ -239,7 +255,7 @@ class HostHeaderTool(VulnScanTool):
                                 poc=poc_text,
                             )
                             stats["new"] += 1
-                    log.info("host_header found %d issues at %s", len(results), url)
+                    log.info(f"host_header found {len(results)} issues at {url}")
 
         await self.update_tool_state(target_id, container_name)
         log.info("host_header complete", extra=stats)

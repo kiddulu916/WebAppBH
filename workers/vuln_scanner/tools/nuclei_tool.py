@@ -148,7 +148,7 @@ class NucleiTool(VulnScanTool):
             log.info("No targets for nuclei scan")
             return {"findings": 0, "skipped_cooldown": False}
 
-        log.info("Nuclei scan starting with %d targets", len(target_urls))
+        log.info(f"Nuclei scan starting with {len(target_urls)} targets")
 
         # Write targets to temp file
         targets_file = tempfile.NamedTemporaryFile(
@@ -194,7 +194,7 @@ class NucleiTool(VulnScanTool):
                 try:
                     await self.run_subprocess(cmd, timeout=NUCLEI_TIMEOUT)
                 except Exception as exc:
-                    log.error("Nuclei process failed: %s", exc)
+                    log.error(f"Nuclei process failed: {exc}")
             finally:
                 sem.release()
 

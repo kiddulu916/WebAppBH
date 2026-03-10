@@ -80,6 +80,11 @@ class TplmapTool(VulnScanTool):
         stats = {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
         sem = get_semaphore(self.weight_class)
 
+        # Rate-limit delay from target profile
+        profile = target.target_profile or {}
+        rate_limit = profile.get("rate_limit", 0)
+        delay = max(rate_limit / 1000.0, 0) if rate_limit else 0
+
         if triaged_findings:
             # -- Stage 2: confirm specific SSTI findings --
             for vuln_id, asset_id, severity, title, poc in triaged_findings:
@@ -94,12 +99,14 @@ class TplmapTool(VulnScanTool):
                 engine = self._detect_engine(tech_stack)
                 if engine:
                     cmd.extend(["--engine", engine])
+                if delay > 0:
+                    cmd.extend(["--delay", str(delay)])
 
                 async with sem:
                     try:
                         stdout = await self.run_subprocess(cmd, timeout=TPLMAP_TIMEOUT)
                     except Exception as exc:
-                        log.error("tplmap failed for %s: %s", target_url, exc)
+                        log.error(f"tplmap failed for {target_url}: {exc}")
                         continue
 
                 if self._is_ssti_indicator(stdout):
@@ -113,7 +120,7 @@ class TplmapTool(VulnScanTool):
                         source_tool="tplmap",
                         description=f"tplmap confirmed Server-Side Template Injection: {title}",
                     )
-                    log.info("tplmap confirmed SSTI at %s", target_url)
+                    log.info(f"tplmap confirmed SSTI at {target_url}")
 
         elif scan_all:
             # -- Stage 3: broad SSTI sweep --
@@ -130,7 +137,7 @@ class TplmapTool(VulnScanTool):
                     continue
 
                 if await self._has_confirmed_vuln(target_id, asset_id, "template injection"):
-                    log.debug("Skipping %s -- already confirmed SSTI", url)
+                    log.debug(f"Skipping {url} -- already confirmed SSTI")
                     continue
 
                 # Build URL with params if available
@@ -144,12 +151,14 @@ class TplmapTool(VulnScanTool):
                     scan_url = urlunparse(parsed._replace(query=urlencode(qs, doseq=True)))
 
                 cmd = ["tplmap", "-u", scan_url, "--engine", engine]
+                if delay > 0:
+                    cmd.extend(["--delay", str(delay)])
 
                 async with sem:
                     try:
                         stdout = await self.run_subprocess(cmd, timeout=TPLMAP_TIMEOUT)
                     except Exception as exc:
-                        log.error("tplmap failed for %s: %s", url, exc)
+                        log.error(f"tplmap failed for {url}: {exc}")
                         continue
 
                 if self._is_ssti_indicator(stdout):
@@ -164,7 +173,7 @@ class TplmapTool(VulnScanTool):
                         description=f"tplmap detected SSTI via {engine} engine at {url}",
                         poc=stdout[:500],
                     )
-                    log.info("tplmap found SSTI at %s (engine=%s)", url, engine)
+                    log.info(f"tplmap found SSTI at {url} (engine={engine})")
         else:
             log.info("No triaged findings or scan_all -- skipping")
             return stats

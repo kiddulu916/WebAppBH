@@ -183,7 +183,7 @@ class PhpggcTool(VulnScanTool):
                 if not self._has_php_tech(tech_stack):
                     continue
                 if await self._has_confirmed_vuln(target_id, asset_id, "deserialization"):
-                    log.debug("Skipping %s -- already confirmed PHP deser", url)
+                    log.debug(f"Skipping {url} -- already confirmed PHP deser")
                     continue
                 chains = self._get_chains_for_tech(tech_stack)
                 urls_to_test.append((asset_id, url, chains))
@@ -209,7 +209,7 @@ class PhpggcTool(VulnScanTool):
                             chain, "system", CANARY_CMD
                         )
                         if not payload:
-                            log.debug("Failed to generate %s payload", chain)
+                            log.debug(f"Failed to generate {chain} payload")
                             continue
 
                         is_vuln, detail = await self._send_payload(
@@ -248,9 +248,7 @@ class PhpggcTool(VulnScanTool):
                                 description=f"phpggc detected PHP deserialization via {chain} at {url}",
                                 poc=poc_text,
                             )
-                        log.info(
-                            "phpggc found deserialization at %s (chain=%s)", url, chain
-                        )
+                        log.info(f"phpggc found deserialization at {url} (chain={chain})")
 
         await self.update_tool_state(target_id, container_name)
         log.info("phpggc complete", extra=stats)

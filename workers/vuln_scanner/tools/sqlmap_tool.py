@@ -135,7 +135,7 @@ class SqlmapTool(VulnScanTool):
                         try:
                             stdout = await self.run_subprocess(cmd, timeout=SQLMAP_TIMEOUT)
                         except Exception as exc:
-                            log.error("sqlmap failed for %s: %s", target_url, exc)
+                            log.error(f"sqlmap failed for {target_url}: {exc}")
                             continue
 
                     found_lines = self._parse_log_dir(tmpdir) + self._parse_stdout(stdout)
@@ -151,7 +151,7 @@ class SqlmapTool(VulnScanTool):
                             source_tool="sqlmap",
                             description=f"sqlmap confirmed SQL injection: {title}",
                         )
-                        log.info("sqlmap confirmed SQLi at %s", target_url)
+                        log.info(f"sqlmap confirmed SQLi at {target_url}")
                 finally:
                     _cleanup_dir(tmpdir)
 
@@ -170,7 +170,7 @@ class SqlmapTool(VulnScanTool):
                     continue
 
                 if await self._has_confirmed_vuln(target_id, asset_id, "sql injection"):
-                    log.debug("Skipping %s -- already confirmed SQLi", source_url)
+                    log.debug(f"Skipping {source_url} -- already confirmed SQLi")
                     continue
 
                 scan_url = self._build_url_with_params(source_url, params)
@@ -195,7 +195,7 @@ class SqlmapTool(VulnScanTool):
                         try:
                             stdout = await self.run_subprocess(cmd, timeout=SQLMAP_TIMEOUT)
                         except Exception as exc:
-                            log.error("sqlmap failed for %s: %s", source_url, exc)
+                            log.error(f"sqlmap failed for {source_url}: {exc}")
                             continue
 
                     found_lines = self._parse_log_dir(tmpdir) + self._parse_stdout(stdout)
@@ -212,7 +212,7 @@ class SqlmapTool(VulnScanTool):
                             description=f"sqlmap detected SQL injection at {source_url}",
                             poc=poc_text,
                         )
-                        log.info("sqlmap found SQLi at %s", source_url)
+                        log.info(f"sqlmap found SQLi at {source_url}")
                 finally:
                     _cleanup_dir(tmpdir)
         else:

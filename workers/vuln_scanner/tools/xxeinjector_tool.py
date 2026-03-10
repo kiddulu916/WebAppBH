@@ -86,7 +86,7 @@ class XXEinjectorTool(VulnScanTool):
                     try:
                         stdout = await self.run_subprocess(cmd, timeout=XXE_TIMEOUT)
                     except Exception as exc:
-                        log.error("XXEinjector failed for %s: %s", target_url, exc)
+                        log.error(f"XXEinjector failed for {target_url}: {exc}")
                         continue
 
                 if self._is_xxe_indicator(stdout):
@@ -100,7 +100,7 @@ class XXEinjectorTool(VulnScanTool):
                         source_tool="xxeinjector",
                         description=f"XXEinjector confirmed XXE vulnerability: {title}",
                     )
-                    log.info("XXEinjector confirmed XXE at %s", target_url)
+                    log.info(f"XXEinjector confirmed XXE at {target_url}")
 
         elif scan_all:
             # -- Stage 3: broad XXE sweep --
@@ -116,7 +116,7 @@ class XXEinjectorTool(VulnScanTool):
                     continue
 
                 if await self._has_confirmed_vuln(target_id, asset_id, "xxe"):
-                    log.debug("Skipping %s -- already confirmed XXE", url)
+                    log.debug(f"Skipping {url} -- already confirmed XXE")
                     continue
 
                 cmd = [
@@ -130,7 +130,7 @@ class XXEinjectorTool(VulnScanTool):
                     try:
                         stdout = await self.run_subprocess(cmd, timeout=XXE_TIMEOUT)
                     except Exception as exc:
-                        log.error("XXEinjector failed for %s: %s", url, exc)
+                        log.error(f"XXEinjector failed for {url}: {exc}")
                         continue
 
                 if self._is_xxe_indicator(stdout):
@@ -145,7 +145,7 @@ class XXEinjectorTool(VulnScanTool):
                         description=f"XXEinjector detected XXE at {url}",
                         poc=stdout[:500],
                     )
-                    log.info("XXEinjector found XXE at %s", url)
+                    log.info(f"XXEinjector found XXE at {url}")
         else:
             log.info("No triaged findings or scan_all -- skipping")
             return stats

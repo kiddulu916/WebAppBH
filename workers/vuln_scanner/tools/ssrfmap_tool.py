@@ -132,7 +132,7 @@ class SSRFmapTool(VulnScanTool):
                         try:
                             stdout = await self.run_subprocess(cmd, timeout=SSRF_TIMEOUT)
                         except Exception as exc:
-                            log.error("SSRFmap failed for %s: %s", target_url, exc)
+                            log.error(f"SSRFmap failed for {target_url}: {exc}")
                             continue
 
                     if self._is_ssrf_indicator(stdout):
@@ -146,7 +146,7 @@ class SSRFmapTool(VulnScanTool):
                             source_tool="ssrfmap",
                             description=f"SSRFmap confirmed SSRF vulnerability: {title}",
                         )
-                        log.info("SSRFmap confirmed SSRF at %s", target_url)
+                        log.info(f"SSRFmap confirmed SSRF at {target_url}")
                 finally:
                     try:
                         os.unlink(req_file)
@@ -168,7 +168,7 @@ class SSRFmapTool(VulnScanTool):
                     continue
 
                 if await self._has_confirmed_vuln(target_id, asset_id, "ssrf"):
-                    log.debug("Skipping %s -- already confirmed SSRF", source_url)
+                    log.debug(f"Skipping {source_url} -- already confirmed SSRF")
                     continue
 
                 req_file = self._build_request_file(source_url, param_name, headers)
@@ -184,7 +184,7 @@ class SSRFmapTool(VulnScanTool):
                         try:
                             stdout = await self.run_subprocess(cmd, timeout=SSRF_TIMEOUT)
                         except Exception as exc:
-                            log.error("SSRFmap failed for %s param=%s: %s", source_url, param_name, exc)
+                            log.error(f"SSRFmap failed for {source_url} param={param_name}: {exc}")
                             continue
 
                     if self._is_ssrf_indicator(stdout):
@@ -199,7 +199,7 @@ class SSRFmapTool(VulnScanTool):
                             description=f"SSRFmap detected SSRF via param '{param_name}' at {source_url}",
                             poc=stdout[:500],
                         )
-                        log.info("SSRFmap found SSRF at %s param=%s", source_url, param_name)
+                        log.info(f"SSRFmap found SSRF at {source_url} param={param_name}")
                 finally:
                     try:
                         os.unlink(req_file)

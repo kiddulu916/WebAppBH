@@ -107,7 +107,7 @@ class CommixTool(VulnScanTool):
                         try:
                             stdout = await self.run_subprocess(cmd, timeout=COMMIX_TIMEOUT)
                         except Exception as exc:
-                            log.error("commix failed for %s: %s", target_url, exc)
+                            log.error(f"commix failed for {target_url}: {exc}")
                             continue
 
                     found_lines = self._is_vuln_indicator(stdout) + self._parse_output_dir(tmpdir)
@@ -123,7 +123,7 @@ class CommixTool(VulnScanTool):
                             source_tool="commix",
                             description=f"commix confirmed command injection: {title}",
                         )
-                        log.info("commix confirmed command injection at %s", target_url)
+                        log.info(f"commix confirmed command injection at {target_url}")
                 finally:
                     shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -142,7 +142,7 @@ class CommixTool(VulnScanTool):
                     continue
 
                 if await self._has_confirmed_vuln(target_id, asset_id, "command injection"):
-                    log.debug("Skipping %s -- already confirmed cmdi", source_url)
+                    log.debug(f"Skipping {source_url} -- already confirmed cmdi")
                     continue
 
                 # Build URL with params
@@ -168,7 +168,7 @@ class CommixTool(VulnScanTool):
                         try:
                             stdout = await self.run_subprocess(cmd, timeout=COMMIX_TIMEOUT)
                         except Exception as exc:
-                            log.error("commix failed for %s: %s", source_url, exc)
+                            log.error(f"commix failed for {source_url}: {exc}")
                             continue
 
                     found_lines = self._is_vuln_indicator(stdout) + self._parse_output_dir(tmpdir)
@@ -185,7 +185,7 @@ class CommixTool(VulnScanTool):
                             description=f"commix detected command injection at {source_url}",
                             poc=poc_text,
                         )
-                        log.info("commix found command injection at %s", source_url)
+                        log.info(f"commix found command injection at {source_url}")
                 finally:
                     shutil.rmtree(tmpdir, ignore_errors=True)
         else:

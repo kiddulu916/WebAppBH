@@ -157,7 +157,7 @@ class YsoserialTool(VulnScanTool):
                 if not self._has_java_tech(tech_stack):
                     continue
                 if await self._has_confirmed_vuln(target_id, asset_id, "deserialization"):
-                    log.debug("Skipping %s -- already confirmed deserialization", url)
+                    log.debug(f"Skipping {url} -- already confirmed deserialization")
                     continue
                 urls_to_test.append((asset_id, url))
         else:
@@ -180,7 +180,7 @@ class YsoserialTool(VulnScanTool):
                     async with sem:
                         payload = await self._generate_payload(gadget, CANARY_CMD)
                         if not payload:
-                            log.debug("Failed to generate %s payload", gadget)
+                            log.debug(f"Failed to generate {gadget} payload")
                             continue
 
                         is_vuln, detail = await self._send_payload(
@@ -219,9 +219,7 @@ class YsoserialTool(VulnScanTool):
                                 description=f"ysoserial detected Java deserialization via {gadget} at {url}",
                                 poc=poc_text,
                             )
-                        log.info(
-                            "ysoserial found deserialization at %s (gadget=%s)", url, gadget
-                        )
+                        log.info(f"ysoserial found deserialization at {url} (gadget={gadget})")
 
         await self.update_tool_state(target_id, container_name)
         log.info("ysoserial complete", extra=stats)

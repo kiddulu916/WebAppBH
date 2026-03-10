@@ -72,10 +72,10 @@ class SmugglerTool(VulnScanTool):
         elif scan_all:
             # -- Stage 3: test all live URLs --
             live_urls = await self._get_live_urls(target_id)
-            for asset_id, domain in live_urls:
-                url = f"https://{domain}"
+            for asset_id, asset_value in live_urls:
+                url = asset_value if asset_value.startswith("http") else f"https://{asset_value}"
                 if await self._has_confirmed_vuln(target_id, asset_id, "request smuggling"):
-                    log.debug("Skipping %s -- already confirmed smuggling", url)
+                    log.debug(f"Skipping {url} -- already confirmed smuggling")
                     continue
                 urls_to_test.append((asset_id, url))
         else:
@@ -93,7 +93,7 @@ class SmugglerTool(VulnScanTool):
                 try:
                     stdout = await self.run_subprocess(cmd, timeout=SMUGGLER_TIMEOUT)
                 except Exception as exc:
-                    log.error("smuggler failed for %s: %s", url, exc)
+                    log.error(f"smuggler failed for {url}: {exc}")
                     continue
 
             found_lines = self._is_smuggling_indicator(stdout)
@@ -124,7 +124,7 @@ class SmugglerTool(VulnScanTool):
                         description=f"smuggler detected request smuggling at {url}",
                         poc=poc_text,
                     )
-                log.info("smuggler found request smuggling at %s", url)
+                log.info(f"smuggler found request smuggling at {url}")
 
         await self.update_tool_state(target_id, container_name)
         log.info("smuggler complete", extra=stats)
