@@ -11,6 +11,7 @@ from lib_webbh.database import (
     Vulnerability,
     JobState,
     Alert,
+    ApiSchema,
 )
 
 # Scope
@@ -36,6 +37,7 @@ __all__ = [
     "Vulnerability",
     "JobState",
     "Alert",
+    "ApiSchema",
     "ScopeManager",
     "ScopeResult",
     "push_task",

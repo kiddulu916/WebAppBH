@@ -117,3 +117,45 @@ async def test_job_state_status_values():
         await session.refresh(job)
         assert job.status == "RUNNING"
         assert job.container_name == "recon-core-01"
+
+
+def test_api_schema_model_importable():
+    from lib_webbh import ApiSchema
+    assert ApiSchema.__tablename__ == "api_schemas"
+
+
+@pytest.mark.asyncio
+async def test_api_schema_crud():
+    from lib_webbh import ApiSchema
+
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with get_session() as session:
+        t = Target(company_name="Acme", base_domain="acme.com")
+        session.add(t)
+        await session.flush()
+
+        schema_row = ApiSchema(
+            target_id=t.id,
+            method="GET",
+            path="/api/v1/users",
+            params={"query": ["id", "page"]},
+            auth_required=True,
+            content_type="application/json",
+            source_tool="openapi_parser",
+            spec_type="openapi",
+        )
+        session.add(schema_row)
+        await session.commit()
+
+        from sqlalchemy import select
+        stmt = select(ApiSchema).where(ApiSchema.target_id == t.id)
+        result = await session.execute(stmt)
+        row = result.scalar_one()
+        assert row.method == "GET"
+        assert row.path == "/api/v1/users"
+        assert row.params == {"query": ["id", "page"]}
+        assert row.auth_required is True
+        assert row.spec_type == "openapi"

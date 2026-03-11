@@ -146,6 +146,7 @@ class Target(TimestampMixin, Base):
     vulnerabilities: Mapped[list["Vulnerability"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     jobs: Mapped[list["JobState"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+    api_schemas: Mapped[list["ApiSchema"]] = relationship(back_populates="target", cascade="all, delete-orphan")
 
 
 class Asset(TimestampMixin, Base):
@@ -168,6 +169,7 @@ class Asset(TimestampMixin, Base):
     observations: Mapped[list["Observation"]] = relationship(back_populates="asset", cascade="all, delete-orphan")
     parameters: Mapped[list["Parameter"]] = relationship(back_populates="asset", cascade="all, delete-orphan")
     vulnerabilities: Mapped[list["Vulnerability"]] = relationship(back_populates="asset")
+    api_schemas: Mapped[list["ApiSchema"]] = relationship(back_populates="asset")
 
 
 class Identity(TimestampMixin, Base):
@@ -305,3 +307,31 @@ class Alert(TimestampMixin, Base):
 
     target: Mapped["Target"] = relationship(back_populates="alerts")
     vulnerability: Mapped[Optional["Vulnerability"]] = relationship(back_populates="alerts")
+
+
+class ApiSchema(TimestampMixin, Base):
+    """Discovered API endpoint (path + method + params) for a target."""
+
+    __tablename__ = "api_schemas"
+    __table_args__ = (
+        UniqueConstraint(
+            "target_id", "asset_id", "method", "path",
+            name="uq_api_schemas_target_asset_method_path",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    asset_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("assets.id"), nullable=True
+    )
+    method: Mapped[str] = mapped_column(String(10))
+    path: Mapped[str] = mapped_column(String(2000))
+    params: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    auth_required: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    source_tool: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    spec_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    target: Mapped["Target"] = relationship(back_populates="api_schemas")
+    asset: Mapped[Optional["Asset"]] = relationship(back_populates="api_schemas")
