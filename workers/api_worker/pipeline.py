@@ -12,6 +12,12 @@ from lib_webbh import JobState, get_session, push_task, setup_logger
 from lib_webbh.scope import ScopeManager
 
 from workers.api_worker.base_tool import ApiTestTool
+from workers.api_worker.tools import (
+    FfufApiTool,
+    GraphqlIntrospectTool,
+    OpenapiParserTool,
+    TrufflehogTool,
+)
 
 logger = setup_logger("api-pipeline")
 
@@ -27,7 +33,7 @@ class Stage:
 
 
 STAGES: list[Stage] = [
-    Stage("api_discovery", []),
+    Stage("api_discovery", [FfufApiTool, OpenapiParserTool, GraphqlIntrospectTool, TrufflehogTool]),
     Stage("auth_testing", []),
     Stage("injection_testing", []),
     Stage("abuse_testing", []),
