@@ -171,3 +171,42 @@ async def test_pipeline_aggregate_results():
     assert agg["found"] == 15
     assert agg["in_scope"] == 11
     assert agg["new"] == 8
+
+
+# ---------------------------------------------------------------------------
+# main.py tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_main_handle_message_creates_job_state():
+    await _create_tables()
+    from lib_webbh import Target, JobState, get_session
+    from workers.api_worker.main import handle_message
+    async with get_session() as session:
+        t = Target(company_name="Acme", base_domain="acme.com",
+                   target_profile={"scope": ["*.acme.com"]})
+        session.add(t)
+        await session.commit()
+        tid = t.id
+    with (
+        patch("workers.api_worker.main.Pipeline") as MockPipeline,
+        patch("workers.api_worker.main.get_container_name", return_value="test-api"),
+    ):
+        mock_pipeline = MagicMock()
+        mock_pipeline.run = AsyncMock()
+        MockPipeline.return_value = mock_pipeline
+        await handle_message("msg-1", {"target_id": tid})
+    async with get_session() as session:
+        from sqlalchemy import select
+        stmt = select(JobState).where(JobState.target_id == tid, JobState.container_name == "test-api")
+        result = await session.execute(stmt)
+        job = result.scalar_one_or_none()
+        assert job is not None
+
+
+@pytest.mark.anyio
+async def test_main_handle_message_skips_missing_target():
+    await _create_tables()
+    from workers.api_worker.main import handle_message
+    await handle_message("msg-2", {"target_id": 99999})
