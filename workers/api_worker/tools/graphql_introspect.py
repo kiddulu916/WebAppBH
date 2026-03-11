@@ -94,6 +94,43 @@ class GraphqlIntrospectTool(ApiTestTool):
         return endpoints
 
     # ------------------------------------------------------------------
+    # InQL fallback for disabled introspection
+    # ------------------------------------------------------------------
+
+    async def _run_inql_fallback(
+        self,
+        endpoint: str,
+        target_id: int,
+        asset_id: int,
+        log,
+        stats: dict,
+    ) -> None:
+        """Run InQL to extract schema when introspection is disabled."""
+        try:
+            raw = await self.run_subprocess(
+                ["python3", "/opt/inql/inql", "--target", endpoint, "-o", "/tmp/inql-output"],
+                timeout=120,
+            )
+            if not raw:
+                return
+
+            log.info(f"InQL fallback succeeded for {endpoint}")
+            # Save the endpoint as discovered via InQL
+            await self._save_api_schema(
+                target_id=target_id,
+                asset_id=asset_id,
+                method="QUERY",
+                path=endpoint,
+                source_tool="graphql_introspect",
+                spec_type="graphql",
+            )
+            stats["found"] += 1
+            stats["in_scope"] += 1
+            stats["new"] += 1
+        except Exception as exc:
+            log.debug(f"InQL fallback also failed for {endpoint}: {exc}")
+
+    # ------------------------------------------------------------------
     # Execute
     # ------------------------------------------------------------------
 
@@ -133,6 +170,7 @@ class GraphqlIntrospectTool(ApiTestTool):
 
                 for gql_path in GRAPHQL_PATHS:
                     endpoint = f"{base_url}{gql_path}"
+                    introspection_ok = False
                     try:
                         resp = await client.post(
                             endpoint,
@@ -141,17 +179,27 @@ class GraphqlIntrospectTool(ApiTestTool):
                         )
 
                         if resp.status_code != 200:
+                            await self._run_inql_fallback(
+                                endpoint, target_id, asset_id, log, stats
+                            )
                             continue
 
                         body = resp.text
                         if "__schema" not in body:
+                            await self._run_inql_fallback(
+                                endpoint, target_id, asset_id, log, stats
+                            )
                             continue
 
                         try:
                             data = resp.json()
                         except (json.JSONDecodeError, ValueError):
+                            await self._run_inql_fallback(
+                                endpoint, target_id, asset_id, log, stats
+                            )
                             continue
 
+                        introspection_ok = True
                         log.info(
                             f"GraphQL introspection enabled at {endpoint}"
                         )
@@ -196,6 +244,10 @@ class GraphqlIntrospectTool(ApiTestTool):
                             f"GraphQL introspection probe failed for "
                             f"{endpoint}: {exc}"
                         )
+                        if not introspection_ok:
+                            await self._run_inql_fallback(
+                                endpoint, target_id, asset_id, log, stats
+                            )
 
         finally:
             await client.aclose()

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from urllib.parse import urlparse
 
 from lib_webbh import setup_logger
 from lib_webbh.scope import ScopeManager
@@ -155,9 +156,6 @@ class FfufApiTool(ApiTestTool):
                     stats["new"] += 1
 
                     auth_required = status in (401, 403)
-
-                    # Extract the path portion for api_schemas
-                    from urllib.parse import urlparse
 
                     parsed = urlparse(url)
                     path = parsed.path or "/"

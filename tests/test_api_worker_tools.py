@@ -292,6 +292,38 @@ async def test_graphql_introspect_skips_on_cooldown():
     assert result.get("skipped_cooldown") is True
 
 
+@pytest.mark.anyio
+async def test_graphql_introspect_inql_fallback():
+    """InQL fallback is called when introspection returns non-200."""
+    from workers.api_worker.tools.graphql_introspect import GraphqlIntrospectTool
+
+    tool = GraphqlIntrospectTool()
+    with (
+        patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=False),
+        patch.object(tool, "_get_live_urls", new_callable=AsyncMock, return_value=[(1, "https://acme.com")]),
+        patch.object(tool, "_run_inql_fallback", new_callable=AsyncMock) as mock_inql,
+        patch.object(tool, "update_tool_state", new_callable=AsyncMock),
+        patch("workers.api_worker.tools.graphql_introspect.httpx.AsyncClient") as mock_client_cls,
+    ):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 403  # introspection disabled
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_resp
+        mock_client.aclose = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(),
+            target_id=1,
+            container_name="test",
+            headers={},
+        )
+
+    # InQL fallback should be called for each GRAPHQL_PATHS entry
+    assert mock_inql.call_count > 0
+
+
 # ===================================================================
 # TrufflehogTool tests
 # ===================================================================
