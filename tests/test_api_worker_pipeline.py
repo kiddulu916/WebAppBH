@@ -121,3 +121,53 @@ async def test_api_base_tool_get_api_urls():
     assert "https://acme.com/api/v1/users" in values
     assert "https://acme.com/graphql" in values
     assert "https://acme.com/about" not in values
+
+
+# ---------------------------------------------------------------------------
+# Pipeline tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_pipeline_stages_defined():
+    from workers.api_worker.pipeline import STAGES, STAGE_INDEX
+    assert len(STAGES) == 4
+    assert STAGES[0].name == "api_discovery"
+    assert STAGES[1].name == "auth_testing"
+    assert STAGES[2].name == "injection_testing"
+    assert STAGES[3].name == "abuse_testing"
+    assert STAGE_INDEX["api_discovery"] == 0
+
+
+@pytest.mark.anyio
+async def test_pipeline_resumes_from_checkpoint():
+    await _create_tables()
+    from lib_webbh import Target, JobState, get_session
+    from workers.api_worker.pipeline import Pipeline
+    async with get_session() as session:
+        t = Target(company_name="Acme", base_domain="acme.com")
+        session.add(t)
+        await session.flush()
+        job = JobState(target_id=t.id, container_name="test-api",
+                       current_phase="api_discovery", status="COMPLETED")
+        session.add(job)
+        await session.commit()
+        tid = t.id
+    pipeline = Pipeline(target_id=tid, container_name="test-api")
+    phase = await pipeline._get_completed_phase()
+    assert phase == "api_discovery"
+
+
+@pytest.mark.anyio
+async def test_pipeline_aggregate_results():
+    from workers.api_worker.pipeline import Pipeline
+    p = Pipeline(target_id=1, container_name="test")
+    results = [
+        {"found": 5, "in_scope": 3, "new": 2},
+        {"found": 10, "in_scope": 8, "new": 6},
+        ValueError("tool failed"),
+    ]
+    agg = p._aggregate_results("test_stage", results)
+    assert agg["found"] == 15
+    assert agg["in_scope"] == 11
+    assert agg["new"] == 8
