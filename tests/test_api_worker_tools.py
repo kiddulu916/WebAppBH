@@ -500,3 +500,107 @@ async def test_cors_scanner_skips_on_cooldown():
             container_name="test", headers={},
         )
     assert result.get("skipped_cooldown") is True
+
+
+# ===================================================================
+# Stage 3: injection_testing
+# ===================================================================
+
+
+# ---------------------------------------------------------------------------
+# IdorTesterTool tests
+# ---------------------------------------------------------------------------
+
+def test_idor_tester_detects_path_params():
+    from workers.api_worker.tools.idor_tester import IdorTesterTool
+    tool = IdorTesterTool()
+    assert tool.has_path_params("/api/v1/users/:id") is True
+    assert tool.has_path_params("/api/v1/users/{userId}") is True
+    assert tool.has_path_params("/api/v1/users") is False
+
+
+def test_idor_tester_generates_test_ids():
+    from workers.api_worker.tools.idor_tester import IdorTesterTool
+    tool = IdorTesterTool()
+    ids = tool.generate_test_ids()
+    assert 1 in ids
+    assert len(ids) >= 5
+
+
+@pytest.mark.anyio
+async def test_idor_tester_skips_on_cooldown():
+    from workers.api_worker.tools.idor_tester import IdorTesterTool
+    tool = IdorTesterTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(), target_id=1,
+            container_name="test", headers={},
+        )
+    assert result.get("skipped_cooldown") is True
+
+
+# ---------------------------------------------------------------------------
+# MassAssignTesterTool tests
+# ---------------------------------------------------------------------------
+
+def test_mass_assign_sensitive_fields():
+    from workers.api_worker.tools.mass_assign_tester import SENSITIVE_FIELDS
+    assert "role" in SENSITIVE_FIELDS
+    assert "is_admin" in SENSITIVE_FIELDS
+    assert "permissions" in SENSITIVE_FIELDS
+    assert "balance" in SENSITIVE_FIELDS
+
+
+def test_mass_assign_severity_for_field():
+    from workers.api_worker.tools.mass_assign_tester import MassAssignTesterTool
+    tool = MassAssignTesterTool()
+    assert tool.severity_for_field("role") == "critical"
+    assert tool.severity_for_field("is_admin") == "critical"
+    assert tool.severity_for_field("balance") == "high"
+    assert tool.severity_for_field("verified") == "high"
+
+
+@pytest.mark.anyio
+async def test_mass_assign_skips_on_cooldown():
+    from workers.api_worker.tools.mass_assign_tester import MassAssignTesterTool
+    tool = MassAssignTesterTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(), target_id=1,
+            container_name="test", headers={},
+        )
+    assert result.get("skipped_cooldown") is True
+
+
+# ---------------------------------------------------------------------------
+# NosqlmapTool tests
+# ---------------------------------------------------------------------------
+
+SAMPLE_NOSQLMAP_OUTPUT = """
+[+] MongoDB detected
+[+] $ne injection successful on parameter: username
+[+] Authentication bypass confirmed
+"""
+
+
+def test_nosqlmap_parse_output():
+    from workers.api_worker.tools.nosqlmap_tool import NosqlmapTool
+    tool = NosqlmapTool()
+    findings = tool.parse_output(SAMPLE_NOSQLMAP_OUTPUT)
+    assert len(findings) >= 2
+    assert any("injection" in f.lower() for f in findings)
+
+
+@pytest.mark.anyio
+async def test_nosqlmap_skips_on_cooldown():
+    from workers.api_worker.tools.nosqlmap_tool import NosqlmapTool
+    tool = NosqlmapTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(), target_id=1,
+            container_name="test", headers={},
+        )
+    assert result.get("skipped_cooldown") is True

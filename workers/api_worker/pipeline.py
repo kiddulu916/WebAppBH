@@ -21,6 +21,10 @@ from workers.api_worker.tools import (
     JwtTool,
     OauthTesterTool,
     CorsScannerTool,
+    # Stage 3
+    IdorTesterTool,
+    MassAssignTesterTool,
+    NosqlmapTool,
 )
 
 logger = setup_logger("api-pipeline")
@@ -39,7 +43,7 @@ class Stage:
 STAGES: list[Stage] = [
     Stage("api_discovery", [FfufApiTool, OpenapiParserTool, GraphqlIntrospectTool, TrufflehogTool]),
     Stage("auth_testing", [JwtTool, OauthTesterTool, CorsScannerTool]),
-    Stage("injection_testing", []),
+    Stage("injection_testing", [IdorTesterTool, MassAssignTesterTool, NosqlmapTool]),
     Stage("abuse_testing", []),
 ]
 
