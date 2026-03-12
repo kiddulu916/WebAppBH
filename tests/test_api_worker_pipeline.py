@@ -210,3 +210,64 @@ async def test_main_handle_message_skips_missing_target():
     await _create_tables()
     from workers.api_worker.main import handle_message
     await handle_message("msg-2", {"target_id": 99999})
+
+
+# ---------------------------------------------------------------------------
+# Final integration tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_pipeline_all_tools_wired():
+    """Verify all 12 tools are registered in their correct stages."""
+    from workers.api_worker.pipeline import STAGES
+
+    stage_names = {s.name: [cls.name for cls in s.tool_classes] for s in STAGES}
+
+    # Stage 1: api_discovery
+    assert "ffuf_api" in stage_names["api_discovery"]
+    assert "openapi_parser" in stage_names["api_discovery"]
+    assert "graphql_introspect" in stage_names["api_discovery"]
+    assert "trufflehog" in stage_names["api_discovery"]
+
+    # Stage 2: auth_testing
+    assert "jwt_tool" in stage_names["auth_testing"]
+    assert "oauth_tester" in stage_names["auth_testing"]
+    assert "cors_scanner" in stage_names["auth_testing"]
+
+    # Stage 3: injection_testing
+    assert "idor_tester" in stage_names["injection_testing"]
+    assert "mass_assign_tester" in stage_names["injection_testing"]
+    assert "nosqlmap" in stage_names["injection_testing"]
+
+    # Stage 4: abuse_testing
+    assert "rate_limit_tester" in stage_names["abuse_testing"]
+    assert "graphql_cop" in stage_names["abuse_testing"]
+
+
+@pytest.mark.anyio
+async def test_pipeline_tool_count():
+    from workers.api_worker.pipeline import STAGES
+    total = sum(len(s.tool_classes) for s in STAGES)
+    assert total == 12
+
+
+@pytest.mark.anyio
+async def test_all_tools_importable():
+    from workers.api_worker.tools import (
+        FfufApiTool, OpenapiParserTool, GraphqlIntrospectTool, TrufflehogTool,
+        JwtTool, OauthTesterTool, CorsScannerTool,
+        IdorTesterTool, MassAssignTesterTool, NosqlmapTool,
+        RateLimitTesterTool, GraphqlCopTool,
+    )
+    tools = [
+        FfufApiTool, OpenapiParserTool, GraphqlIntrospectTool, TrufflehogTool,
+        JwtTool, OauthTesterTool, CorsScannerTool,
+        IdorTesterTool, MassAssignTesterTool, NosqlmapTool,
+        RateLimitTesterTool, GraphqlCopTool,
+    ]
+    for tool_cls in tools:
+        t = tool_cls()
+        assert hasattr(t, "name")
+        assert hasattr(t, "weight_class")
+        assert hasattr(t, "execute")
