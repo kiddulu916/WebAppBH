@@ -1,0 +1,79 @@
+# ============================================================
+# Stage 1: Go tool builder (ffuf + trufflehog)
+# ============================================================
+FROM golang:1.24-bookworm AS go-builder
+
+ENV GOPATH=/go
+ENV PATH=$GOPATH/bin:$PATH
+
+RUN go install github.com/ffuf/ffuf/v2@latest
+
+# Download trufflehog release binary
+RUN ARCH=$(dpkg --print-architecture) && \
+    wget -q https://github.com/trufflesecurity/trufflehog/releases/latest/download/trufflehog_linux_${ARCH}.tar.gz && \
+    tar xzf trufflehog_linux_${ARCH}.tar.gz -C /usr/local/bin trufflehog
+
+# ============================================================
+# Stage 2: Python pip builder (httpx[http2])
+# ============================================================
+FROM python:3.10-slim-bookworm AS py-builder
+
+RUN pip install --no-cache-dir --target=/py-tools \
+    "httpx[http2]"
+
+# ============================================================
+# Stage 3: Runtime
+# ============================================================
+FROM python:3.10-slim-bookworm
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc libpq-dev git wget && \
+    rm -rf /var/lib/apt/lists/*
+
+# Go binaries
+COPY --from=go-builder /go/bin/ffuf /usr/local/bin/
+COPY --from=go-builder /usr/local/bin/trufflehog /usr/local/bin/
+
+# Python tools
+COPY --from=py-builder /py-tools /usr/local/lib/python3.10/site-packages/
+
+# Clone security tools
+RUN git clone --depth 1 https://github.com/ticarpi/jwt_tool.git /opt/jwt_tool && \
+    git clone --depth 1 https://github.com/codingo/NoSQLMap.git /opt/nosqlmap && \
+    git clone --depth 1 https://github.com/chenjj/CORScanner.git /opt/CORScanner && \
+    git clone --depth 1 https://github.com/dolevf/graphql-cop.git /opt/graphql-cop && \
+    git clone --depth 1 https://github.com/doyensec/inql.git /opt/inql
+
+# Install tool dependencies
+RUN pip install --no-cache-dir -r /opt/jwt_tool/requirements.txt || true && \
+    pip install --no-cache-dir -r /opt/CORScanner/requirements.txt || true && \
+    pip install --no-cache-dir -r /opt/graphql-cop/requirements.txt || true && \
+    pip install --no-cache-dir -r /opt/nosqlmap/requirements.txt || true
+
+# API wordlists (SecLists API paths)
+RUN mkdir -p /app/wordlists && \
+    wget -q https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/api/api-endpoints.txt \
+         -O /app/wordlists/api-endpoints.txt || \
+    echo "# fallback empty wordlist" > /app/wordlists/api-endpoints.txt
+
+# Temp directories for tool output
+RUN mkdir -p /tmp/api-specs /tmp/inql-output /tmp/cors-out
+
+# Install lib_webbh
+COPY shared/lib_webbh /app/shared/lib_webbh
+RUN pip install --no-cache-dir /app/shared/lib_webbh
+
+# Shared directories
+RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs
+
+# Worker source
+COPY workers/__init__.py /app/workers/__init__.py
+COPY workers/api_worker /app/workers/api_worker
+
+# Verify import chain
+RUN python -c "from workers.api_worker.main import main; print('api-worker OK')"
+
+ENTRYPOINT ["python", "-m", "workers.api_worker.main"]
