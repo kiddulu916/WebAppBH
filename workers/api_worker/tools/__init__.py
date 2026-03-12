@@ -13,6 +13,10 @@ from workers.api_worker.tools.idor_tester import IdorTesterTool
 from workers.api_worker.tools.mass_assign_tester import MassAssignTesterTool
 from workers.api_worker.tools.nosqlmap_tool import NosqlmapTool
 
+# Stage 4: abuse_testing
+from workers.api_worker.tools.rate_limit_tester import RateLimitTesterTool
+from workers.api_worker.tools.graphql_cop_tool import GraphqlCopTool
+
 __all__ = [
     # Stage 1: api_discovery
     "FfufApiTool",
@@ -27,4 +31,7 @@ __all__ = [
     "IdorTesterTool",
     "MassAssignTesterTool",
     "NosqlmapTool",
+    # Stage 4: abuse_testing
+    "RateLimitTesterTool",
+    "GraphqlCopTool",
 ]

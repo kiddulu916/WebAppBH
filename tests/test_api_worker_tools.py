@@ -604,3 +604,83 @@ async def test_nosqlmap_skips_on_cooldown():
             container_name="test", headers={},
         )
     assert result.get("skipped_cooldown") is True
+
+
+# ===================================================================
+# Stage 4: abuse_testing
+# ===================================================================
+
+
+# ---------------------------------------------------------------------------
+# RateLimitTesterTool tests
+# ---------------------------------------------------------------------------
+
+def test_rate_limit_tester_identifies_sensitive_endpoints():
+    from workers.api_worker.tools.rate_limit_tester import RateLimitTesterTool
+    tool = RateLimitTesterTool()
+    assert tool.is_sensitive_endpoint("/api/v1/login") is True
+    assert tool.is_sensitive_endpoint("/api/v1/reset-password") is True
+    assert tool.is_sensitive_endpoint("/api/v1/otp/verify") is True
+    assert tool.is_sensitive_endpoint("/api/v1/users") is False
+
+
+def test_rate_limit_tester_respects_oos():
+    from workers.api_worker.tools.rate_limit_tester import RateLimitTesterTool
+    tool = RateLimitTesterTool()
+    assert tool.should_skip_dos(["No DoS"]) is True
+    assert tool.should_skip_dos(["No Brute Force"]) is False
+    assert tool.should_skip_dos([]) is False
+
+
+@pytest.mark.anyio
+async def test_rate_limit_tester_skips_on_cooldown():
+    from workers.api_worker.tools.rate_limit_tester import RateLimitTesterTool
+    tool = RateLimitTesterTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(), target_id=1,
+            container_name="test", headers={},
+        )
+    assert result.get("skipped_cooldown") is True
+
+
+# ---------------------------------------------------------------------------
+# GraphqlCopTool tests
+# ---------------------------------------------------------------------------
+
+SAMPLE_GRAPHQLCOP_OUTPUT = json.dumps([
+    {"title": "Introspection Enabled", "severity": "LOW", "description": "Introspection is enabled"},
+    {"title": "Batch Query Attack", "severity": "HIGH", "description": "Batch queries are allowed without limit"},
+    {"title": "Field Suggestions", "severity": "INFO", "description": "Field suggestions expose schema"},
+])
+
+
+def test_graphql_cop_parse_output():
+    from workers.api_worker.tools.graphql_cop_tool import GraphqlCopTool
+    tool = GraphqlCopTool()
+    findings = tool.parse_output(SAMPLE_GRAPHQLCOP_OUTPUT)
+    assert len(findings) == 3
+    assert findings[0]["title"] == "Introspection Enabled"
+
+
+def test_graphql_cop_severity_mapping():
+    from workers.api_worker.tools.graphql_cop_tool import GraphqlCopTool
+    tool = GraphqlCopTool()
+    assert tool.map_severity("HIGH") == "high"
+    assert tool.map_severity("LOW") == "low"
+    assert tool.map_severity("INFO") == "info"
+    assert tool.map_severity("MEDIUM") == "medium"
+
+
+@pytest.mark.anyio
+async def test_graphql_cop_skips_on_cooldown():
+    from workers.api_worker.tools.graphql_cop_tool import GraphqlCopTool
+    tool = GraphqlCopTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(), target_id=1,
+            container_name="test", headers={},
+        )
+    assert result.get("skipped_cooldown") is True
