@@ -1,4 +1,4 @@
-"""Tests for api_worker Stage 1 tools."""
+"""Tests for api_worker Stage 1-4 tools."""
 
 import json
 import os
@@ -389,5 +389,114 @@ async def test_trufflehog_skips_on_cooldown():
             target_id=1,
             container_name="test",
             headers={},
+        )
+    assert result.get("skipped_cooldown") is True
+
+
+# ===================================================================
+# Stage 2: auth_testing
+# ===================================================================
+
+
+# ---------------------------------------------------------------------------
+# JwtTool tests
+# ---------------------------------------------------------------------------
+
+SAMPLE_JWT_TOOL_OUTPUT = """
+[+] Algorithm confusion vulnerability found!
+[+] Token accepted with "none" algorithm
+[+] kid path traversal accepted: ../../../../dev/null
+"""
+
+
+def test_jwt_tool_parse_output():
+    from workers.api_worker.tools.jwt_tool import JwtTool
+    tool = JwtTool()
+    findings = tool.parse_output(SAMPLE_JWT_TOOL_OUTPUT)
+    assert len(findings) >= 2
+    assert any("none" in f.lower() for f in findings)
+
+
+def test_jwt_tool_build_command():
+    from workers.api_worker.tools.jwt_tool import JwtTool
+    tool = JwtTool()
+    cmd = tool.build_command(
+        token="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig",
+        mode="at",
+    )
+    assert "python3" in cmd or "jwt_tool" in " ".join(cmd)
+    assert "-t" in cmd
+
+
+@pytest.mark.anyio
+async def test_jwt_tool_skips_on_cooldown():
+    from workers.api_worker.tools.jwt_tool import JwtTool
+    tool = JwtTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(), target_id=1,
+            container_name="test", headers={},
+        )
+    assert result.get("skipped_cooldown") is True
+
+
+# ---------------------------------------------------------------------------
+# OauthTesterTool tests
+# ---------------------------------------------------------------------------
+
+def test_oauth_tester_generates_redirect_variants():
+    from workers.api_worker.tools.oauth_tester import OauthTesterTool
+    tool = OauthTesterTool()
+    variants = tool.generate_redirect_uri_variants("https://acme.com/callback")
+    assert any("attacker.com" in v for v in variants)
+    assert any("/../" in v for v in variants)
+    assert len(variants) >= 3
+
+
+@pytest.mark.anyio
+async def test_oauth_tester_skips_on_cooldown():
+    from workers.api_worker.tools.oauth_tester import OauthTesterTool
+    tool = OauthTesterTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(), target_id=1,
+            container_name="test", headers={},
+        )
+    assert result.get("skipped_cooldown") is True
+
+
+# ---------------------------------------------------------------------------
+# CorsScannerTool tests
+# ---------------------------------------------------------------------------
+
+SAMPLE_CORSCANNER_OUTPUT = json.dumps({
+    "results": [
+        {"url": "https://acme.com/api/v1/users", "type": "reflect_origin",
+         "origin": "https://evil.com", "credentials": True},
+        {"url": "https://acme.com/api/v1/data", "type": "null_origin",
+         "origin": "null", "credentials": False},
+    ]
+})
+
+
+def test_cors_scanner_parse_output():
+    from workers.api_worker.tools.cors_scanner import CorsScannerTool
+    tool = CorsScannerTool()
+    findings = tool.parse_output(SAMPLE_CORSCANNER_OUTPUT)
+    assert len(findings) == 2
+    assert findings[0]["type"] == "reflect_origin"
+
+
+@pytest.mark.anyio
+async def test_cors_scanner_skips_on_cooldown():
+    from workers.api_worker.tools.cors_scanner import CorsScannerTool
+    tool = CorsScannerTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(), target_id=1,
+            container_name="test", headers={},
         )
     assert result.get("skipped_cooldown") is True
