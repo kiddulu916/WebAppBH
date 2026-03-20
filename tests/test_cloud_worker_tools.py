@@ -145,3 +145,58 @@ async def test_cloud_enum_skips_on_cooldown():
             container_name="test",
         )
     assert result.get("skipped_cooldown") is True
+
+
+# ===================================================================
+# BucketProberTool tests
+# ===================================================================
+
+def test_bucket_prober_extract_s3_bucket_name():
+    from workers.cloud_worker.tools.bucket_prober import BucketProberTool
+
+    tool = BucketProberTool()
+    assert tool.extract_bucket_name("https://mybucket.s3.amazonaws.com", "aws") == "mybucket"
+    assert tool.extract_bucket_name("https://s3.amazonaws.com/mybucket", "aws") == "mybucket"
+    assert tool.extract_bucket_name("https://mybucket.s3.us-west-2.amazonaws.com", "aws") == "mybucket"
+
+
+def test_bucket_prober_extract_azure_container():
+    from workers.cloud_worker.tools.bucket_prober import BucketProberTool
+
+    tool = BucketProberTool()
+    name = tool.extract_bucket_name(
+        "https://myaccount.blob.core.windows.net/mycontainer", "azure"
+    )
+    assert name == "mycontainer"
+
+
+def test_bucket_prober_extract_gcs_bucket_name():
+    from workers.cloud_worker.tools.bucket_prober import BucketProberTool
+
+    tool = BucketProberTool()
+    assert tool.extract_bucket_name("https://storage.googleapis.com/mybucket", "gcp") == "mybucket"
+
+
+def test_bucket_prober_severity_for_permissions():
+    from workers.cloud_worker.tools.bucket_prober import BucketProberTool
+
+    tool = BucketProberTool()
+    assert tool.severity_for_access("write") == "critical"
+    assert tool.severity_for_access("read") == "high"
+    assert tool.severity_for_access("list") == "high"
+    assert tool.severity_for_access("none") == "info"
+
+
+@pytest.mark.anyio
+async def test_bucket_prober_skips_on_cooldown():
+    from workers.cloud_worker.tools.bucket_prober import BucketProberTool
+
+    tool = BucketProberTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(),
+            target_id=1,
+            container_name="test",
+        )
+    assert result.get("skipped_cooldown") is True
