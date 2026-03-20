@@ -235,6 +235,38 @@ services:
       - webbh-net
 
   # ---------------------------------------------------------------------------
+  # Chain Worker — multi-tool exploit chaining
+  # ---------------------------------------------------------------------------
+  chain-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.chain
+    container_name: webbh-chain-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MSFRPC_PASS: msf_internal
+      CHAIN_STEP_DELAY_MS: "500"
+      TOOL_TIMEOUT: "600"
+      COOLDOWN_HOURS: "24"
+    volumes:
+      - ./shared/config:/app/shared/config
+    mem_limit: 4g
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
   # Dashboard — Next.js C2 frontend
   # ---------------------------------------------------------------------------
   dashboard:
