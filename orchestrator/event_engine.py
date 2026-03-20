@@ -16,6 +16,7 @@ import json
 import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from uuid import uuid4
 
 from sqlalchemy import func, select, update
 
@@ -56,6 +57,9 @@ WORKER_IMAGES = {
 
 # Statuses that indicate a job is active and should not be re-triggered
 ACTIVE_STATUSES = ["RUNNING", "QUEUED", "PAUSED", "STOPPED"]
+
+# Worker keys whose completion should trigger the chain worker (phases 4-11)
+CHAIN_TRIGGER_WORKERS = {"recon", "cloud_testing", "fuzzing", "webapp_testing", "api_testing"}
 
 # Shared volume mount passed to every worker
 SHARED_VOLUME = {
@@ -319,6 +323,73 @@ async def _check_api_trigger() -> None:
         await _trigger_worker(tid, "api_testing", "api_testing")
 
 
+async def _trigger_chain_worker(target_id: int, completed_phase: str) -> None:
+    """Push a task to chain_queue so the chain worker evaluates new findings."""
+    await push_task("chain_queue", {
+        "target_id": target_id,
+        "trigger_phase": completed_phase,
+        "run_id": uuid4().hex,
+    })
+    logger.info(
+        "Chain trigger fired",
+        extra={"target_id": target_id, "trigger_phase": completed_phase},
+    )
+
+
+async def _check_chain_trigger() -> None:
+    """Trigger chain worker when a phase 4-11 worker completes."""
+    async with get_session() as session:
+        # Find COMPLETED jobs from chain-trigger workers that haven't been followed
+        # by a chain run yet (no active chain job for that target).
+        active_chain_sub = (
+            select(JobState.target_id)
+            .where(
+                JobState.container_name.like("webbh-chain_%"),
+                JobState.status.in_(ACTIVE_STATUSES),
+            )
+        ).subquery()
+
+        # Latest chain job completion per target
+        chain_done_sub = (
+            select(
+                JobState.target_id,
+                func.max(JobState.last_seen).label("done_at"),
+            )
+            .where(
+                JobState.container_name.like("webbh-chain_%"),
+                JobState.status.in_(["COMPLETED", "FAILED"]),
+            )
+            .group_by(JobState.target_id)
+        ).subquery()
+
+        # Find worker completions newer than the last chain run
+        stmt = (
+            select(
+                JobState.target_id,
+                JobState.container_name,
+            )
+            .outerjoin(chain_done_sub, chain_done_sub.c.target_id == JobState.target_id)
+            .where(
+                JobState.status == "COMPLETED",
+                JobState.target_id.notin_(select(active_chain_sub.c.target_id)),
+                JobState.last_seen > func.coalesce(
+                    chain_done_sub.c.done_at,
+                    datetime(1970, 1, 1, tzinfo=timezone.utc),
+                ),
+            )
+            .group_by(JobState.target_id, JobState.container_name)
+        )
+        result = await session.execute(stmt)
+        rows = result.all()
+
+    triggered: set[int] = set()
+    for target_id, container_name in rows:
+        worker_key = container_name.replace("webbh-", "").rsplit("-t", 1)[0]
+        if worker_key in CHAIN_TRIGGER_WORKERS and target_id not in triggered:
+            triggered.add(target_id)
+            await _trigger_chain_worker(target_id, worker_key)
+
+
 # ---------------------------------------------------------------------------
 # Main event loop
 # ---------------------------------------------------------------------------
@@ -335,6 +406,7 @@ async def run_event_loop() -> None:
             await _check_cloud_trigger()
             await _check_web_trigger()
             await _check_api_trigger()
+            await _check_chain_trigger()
         except Exception:
             logger.exception("Error in event loop cycle")
 
