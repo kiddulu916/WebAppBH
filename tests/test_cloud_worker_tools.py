@@ -248,3 +248,93 @@ async def test_file_lister_skips_on_cooldown():
             container_name="test",
         )
     assert result.get("skipped_cooldown") is True
+
+
+# ===================================================================
+# TrufflehogCloudTool tests
+# ===================================================================
+
+import json as _json
+
+SAMPLE_TRUFFLEHOG_CLOUD_OUTPUT = "\n".join([
+    _json.dumps({
+        "SourceMetadata": {
+            "Data": {"S3": {"bucket": "acme-backup", "file": "config/.env"}}
+        },
+        "DetectorName": "AWS",
+        "Raw": "AKIAIOSFODNN7EXAMPLE",
+        "Verified": True,
+    }),
+    _json.dumps({
+        "SourceMetadata": {
+            "Data": {"S3": {"bucket": "acme-backup", "file": "dump.sql"}}
+        },
+        "DetectorName": "Generic",
+        "Raw": "sk_live_abc123def456",
+        "Verified": False,
+    }),
+])
+
+
+def test_trufflehog_cloud_parse_output():
+    from workers.cloud_worker.tools.trufflehog_cloud import TrufflehogCloudTool
+
+    tool = TrufflehogCloudTool()
+    findings = tool.parse_output(SAMPLE_TRUFFLEHOG_CLOUD_OUTPUT)
+    assert len(findings) == 2
+    assert findings[0]["detector"] == "AWS"
+    assert findings[0]["verified"] is True
+    assert findings[1]["detector"] == "Generic"
+    assert findings[1]["verified"] is False
+
+
+def test_trufflehog_cloud_parse_output_empty():
+    from workers.cloud_worker.tools.trufflehog_cloud import TrufflehogCloudTool
+
+    tool = TrufflehogCloudTool()
+    findings = tool.parse_output("")
+    assert findings == []
+
+
+def test_trufflehog_cloud_build_s3_command():
+    from workers.cloud_worker.tools.trufflehog_cloud import TrufflehogCloudTool
+
+    tool = TrufflehogCloudTool()
+    cmd = tool.build_command("acme-backup", "aws")
+    assert "trufflehog" in cmd
+    assert "s3" in cmd
+    assert "--bucket=acme-backup" in cmd
+
+
+def test_trufflehog_cloud_build_gcs_command():
+    from workers.cloud_worker.tools.trufflehog_cloud import TrufflehogCloudTool
+
+    tool = TrufflehogCloudTool()
+    cmd = tool.build_command("acme-data", "gcp")
+    assert "gcs" in cmd
+
+
+def test_trufflehog_cloud_is_credential_type():
+    from workers.cloud_worker.tools.trufflehog_cloud import TrufflehogCloudTool
+
+    tool = TrufflehogCloudTool()
+    assert tool.is_credential_type("AWS") is True
+    assert tool.is_credential_type("Azure") is True
+    assert tool.is_credential_type("GCP") is True
+    assert tool.is_credential_type("PrivateKey") is True
+    assert tool.is_credential_type("Generic") is False
+
+
+@pytest.mark.anyio
+async def test_trufflehog_cloud_skips_on_cooldown():
+    from workers.cloud_worker.tools.trufflehog_cloud import TrufflehogCloudTool
+
+    tool = TrufflehogCloudTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(),
+            target_id=1,
+            container_name="test",
+        )
+    assert result.get("skipped_cooldown") is True
