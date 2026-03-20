@@ -42,3 +42,32 @@ def test_pipeline_aggregate_results():
     assert agg["found"] == 15
     assert agg["in_scope"] == 11
     assert agg["new"] == 8
+
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+
+@pytest.mark.anyio
+async def test_handle_message_missing_target_id():
+    from workers.cloud_worker.main import handle_message
+
+    # Should return without error when target_id is missing
+    await handle_message("msg-1", {})
+
+
+@pytest.mark.anyio
+async def test_handle_message_target_not_found():
+    from workers.cloud_worker.main import handle_message
+
+    with patch("workers.cloud_worker.main.get_session") as mock_gs:
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        mock_gs.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_gs.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        # Should return without error when target not found
+        await handle_message("msg-2", {"target_id": 999})
