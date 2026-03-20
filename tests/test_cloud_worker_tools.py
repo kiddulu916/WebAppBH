@@ -338,3 +338,46 @@ async def test_trufflehog_cloud_skips_on_cooldown():
             container_name="test",
         )
     assert result.get("skipped_cooldown") is True
+
+
+# ===================================================================
+# CloudFeedbackerTool tests
+# ===================================================================
+
+def test_feedbacker_extract_domains_from_urls():
+    from workers.cloud_worker.tools.cloud_feedbacker import CloudFeedbackerTool
+
+    tool = CloudFeedbackerTool()
+    urls = [
+        "https://acme-backup.s3.amazonaws.com",
+        "https://myaccount.blob.core.windows.net/container",
+        "https://storage.googleapis.com/acme-data",
+    ]
+    domains = tool.extract_domains(urls)
+    assert "acme-backup.s3.amazonaws.com" in domains
+    assert "myaccount.blob.core.windows.net" in domains
+    assert "storage.googleapis.com" in domains
+
+
+def test_feedbacker_is_credential_vuln():
+    from workers.cloud_worker.tools.cloud_feedbacker import CloudFeedbackerTool
+
+    tool = CloudFeedbackerTool()
+    assert tool.is_credential_vuln("Verified secret (AWS) in AWS bucket") is True
+    assert tool.is_credential_vuln("Verified secret (Azure) in AZURE bucket") is True
+    assert tool.is_credential_vuln("Public S3 bucket: read access") is False
+
+
+@pytest.mark.anyio
+async def test_feedbacker_skips_on_cooldown():
+    from workers.cloud_worker.tools.cloud_feedbacker import CloudFeedbackerTool
+
+    tool = CloudFeedbackerTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(),
+            target_id=1,
+            container_name="test",
+        )
+    assert result.get("skipped_cooldown") is True
