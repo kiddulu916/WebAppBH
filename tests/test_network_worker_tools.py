@@ -109,3 +109,53 @@ def test_cve_to_msf_yaml_loads():
         assert "service" in info
         assert "ports" in info
         assert isinstance(info["ports"], list)
+
+
+# ===================================================================
+# NaabuTool tests
+# ===================================================================
+
+def test_naabu_tool_attributes():
+    from workers.network_worker.tools.naabu_tool import NaabuTool
+    from workers.network_worker.concurrency import WeightClass
+
+    tool = NaabuTool()
+    assert tool.name == "naabu"
+    assert tool.weight_class == WeightClass.LIGHT
+
+
+def test_naabu_tool_build_command():
+    from workers.network_worker.tools.naabu_tool import NaabuTool
+
+    tool = NaabuTool()
+    cmd = tool.build_command("192.168.1.1")
+    assert "naabu" in cmd
+    assert "-host" in cmd
+    assert "192.168.1.1" in cmd
+    assert "-json" in cmd
+
+
+def test_naabu_tool_parse_output():
+    import json
+    from workers.network_worker.tools.naabu_tool import NaabuTool
+
+    tool = NaabuTool()
+    lines = [
+        json.dumps({"host": "192.168.1.1", "port": 22}),
+        json.dumps({"host": "192.168.1.1", "port": 3306}),
+        "",
+        "some random log line",
+    ]
+    raw = "\n".join(lines)
+    results = tool.parse_output(raw)
+    assert len(results) == 2
+    assert {"host": "192.168.1.1", "port": 22} in results
+    assert {"host": "192.168.1.1", "port": 3306} in results
+
+
+def test_naabu_tool_parse_output_empty():
+    from workers.network_worker.tools.naabu_tool import NaabuTool
+
+    tool = NaabuTool()
+    assert tool.parse_output("") == []
+    assert tool.parse_output("   ") == []
