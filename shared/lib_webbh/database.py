@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.types import JSON
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
@@ -147,6 +147,7 @@ class Target(TimestampMixin, Base):
     jobs: Mapped[list["JobState"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     api_schemas: Mapped[list["ApiSchema"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+    mobile_apps: Mapped[list["MobileApp"]] = relationship(back_populates="target", cascade="all, delete-orphan")
 
 
 class Asset(TimestampMixin, Base):
@@ -170,6 +171,7 @@ class Asset(TimestampMixin, Base):
     parameters: Mapped[list["Parameter"]] = relationship(back_populates="asset", cascade="all, delete-orphan")
     vulnerabilities: Mapped[list["Vulnerability"]] = relationship(back_populates="asset")
     api_schemas: Mapped[list["ApiSchema"]] = relationship(back_populates="asset")
+    mobile_apps: Mapped[list["MobileApp"]] = relationship(back_populates="asset")
 
 
 class Identity(TimestampMixin, Base):
@@ -335,3 +337,33 @@ class ApiSchema(TimestampMixin, Base):
 
     target: Mapped["Target"] = relationship(back_populates="api_schemas")
     asset: Mapped[Optional["Asset"]] = relationship(back_populates="api_schemas")
+
+
+class MobileApp(TimestampMixin, Base):
+    """Mobile application binary (APK/IPA) linked to a target."""
+
+    __tablename__ = "mobile_apps"
+    __table_args__ = (
+        UniqueConstraint(
+            "target_id", "platform", "package_name",
+            name="uq_mobile_apps_target_platform_pkg",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    asset_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("assets.id"), nullable=True
+    )
+    platform: Mapped[str] = mapped_column(String(10))
+    package_name: Mapped[str] = mapped_column(String(500))
+    version: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    permissions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    signing_info: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    mobsf_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    decompiled_path: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    source_tool: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    target: Mapped["Target"] = relationship(back_populates="mobile_apps")
+    asset: Mapped[Optional["Asset"]] = relationship(back_populates="mobile_apps")

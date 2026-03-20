@@ -159,3 +159,88 @@ async def test_api_schema_crud():
         assert row.params == {"query": ["id", "page"]}
         assert row.auth_required is True
         assert row.spec_type == "openapi"
+
+
+# ---------------------------------------------------------------------------
+# MobileApp model tests
+# ---------------------------------------------------------------------------
+
+
+def test_mobile_app_model_importable():
+    from lib_webbh import MobileApp
+    assert MobileApp.__tablename__ == "mobile_apps"
+
+
+@pytest.mark.asyncio
+async def test_mobile_app_crud():
+    from lib_webbh import MobileApp
+
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with get_session() as session:
+        t = Target(company_name="MobileCorp", base_domain="mobilecorp.com")
+        session.add(t)
+        await session.flush()
+
+        app = MobileApp(
+            target_id=t.id,
+            platform="android",
+            package_name="com.mobilecorp.app",
+            version="1.2.3",
+            permissions=["android.permission.INTERNET", "android.permission.CAMERA"],
+            signing_info={"cn": "MobileCorp Inc"},
+            mobsf_score=72.5,
+            decompiled_path="/app/shared/mobile_analysis/1/com.mobilecorp.app",
+            source_url="https://example.com/app.apk",
+            source_tool="binary_downloader",
+        )
+        session.add(app)
+        await session.commit()
+
+        from sqlalchemy import select
+        stmt = select(MobileApp).where(MobileApp.target_id == t.id)
+        result = await session.execute(stmt)
+        row = result.scalar_one()
+        assert row.platform == "android"
+        assert row.package_name == "com.mobilecorp.app"
+        assert row.version == "1.2.3"
+        assert row.mobsf_score == 72.5
+        assert row.source_tool == "binary_downloader"
+
+
+@pytest.mark.asyncio
+async def test_mobile_app_unique_constraint():
+    from lib_webbh import MobileApp
+    from sqlalchemy.exc import IntegrityError
+
+    engine = get_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+
+    async with get_session() as session:
+        t = Target(company_name="DupCorp", base_domain="dupcorp.com")
+        session.add(t)
+        await session.flush()
+
+        app1 = MobileApp(
+            target_id=t.id, platform="android",
+            package_name="com.dupcorp.app", source_tool="test",
+        )
+        session.add(app1)
+        await session.commit()
+
+    with pytest.raises(IntegrityError):
+        async with get_session() as session:
+            from sqlalchemy import select
+            t_row = (await session.execute(
+                select(Target).where(Target.base_domain == "dupcorp.com")
+            )).scalar_one()
+            app2 = MobileApp(
+                target_id=t_row.id, platform="android",
+                package_name="com.dupcorp.app", source_tool="test",
+            )
+            session.add(app2)
+            await session.commit()

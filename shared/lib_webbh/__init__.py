@@ -12,6 +12,7 @@ from lib_webbh.database import (
     JobState,
     Alert,
     ApiSchema,
+    MobileApp,
 )
 
 # Scope
@@ -38,6 +39,7 @@ __all__ = [
     "JobState",
     "Alert",
     "ApiSchema",
+    "MobileApp",
     "ScopeManager",
     "ScopeResult",
     "push_task",

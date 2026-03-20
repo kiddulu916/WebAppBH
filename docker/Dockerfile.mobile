@@ -1,0 +1,77 @@
+# ============================================================
+# Stage 1: Builder — install mobile tooling
+# ============================================================
+FROM python:3.11-slim-bookworm AS builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        wget unzip default-jdk-headless git && \
+    rm -rf /var/lib/apt/lists/*
+
+# apktool
+RUN wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool \
+        -O /usr/local/bin/apktool && \
+    chmod +x /usr/local/bin/apktool && \
+    wget -q https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar \
+        -O /usr/local/bin/apktool.jar
+
+# jadx
+RUN wget -q https://github.com/skylot/jadx/releases/download/v1.5.0/jadx-1.5.0.zip \
+        -O /tmp/jadx.zip && \
+    unzip -q /tmp/jadx.zip -d /opt/jadx && \
+    chmod +x /opt/jadx/bin/jadx && \
+    rm /tmp/jadx.zip
+
+# apkeep (Rust binary — use prebuilt release)
+RUN ARCH=$(dpkg --print-architecture) && \
+    wget -q https://github.com/nickatnight/apkeep/releases/latest/download/apkeep-x86_64-unknown-linux-gnu \
+        -O /usr/local/bin/apkeep && \
+    chmod +x /usr/local/bin/apkeep || \
+    echo "apkeep install skipped (best-effort)"
+
+# frida-tools
+RUN pip install --no-cache-dir --target=/py-tools \
+    frida-tools httpx
+
+# ============================================================
+# Stage 2: Runtime
+# ============================================================
+FROM python:3.11-slim-bookworm
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc libpq-dev default-jre-headless android-tools-adb && \
+    rm -rf /var/lib/apt/lists/*
+
+# apktool
+COPY --from=builder /usr/local/bin/apktool /usr/local/bin/
+COPY --from=builder /usr/local/bin/apktool.jar /usr/local/bin/
+
+# jadx
+COPY --from=builder /opt/jadx /opt/jadx
+RUN ln -s /opt/jadx/bin/jadx /usr/local/bin/jadx
+
+# apkeep (best-effort)
+COPY --from=builder /usr/local/bin/apkeep /usr/local/bin/apkeep
+
+# Python tools (frida-tools, httpx)
+COPY --from=builder /py-tools /usr/local/lib/python3.11/site-packages/
+
+# Install lib_webbh
+COPY shared/lib_webbh /app/shared/lib_webbh
+RUN pip install --no-cache-dir /app/shared/lib_webbh
+
+# Shared directories
+RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs \
+    /app/shared/mobile_analysis /app/shared/mobile_binaries
+
+# Worker source
+COPY workers/__init__.py /app/workers/__init__.py
+COPY workers/mobile_worker /app/workers/mobile_worker
+
+# Verify import chain
+RUN python -c "from workers.mobile_worker.main import main; print('mobile-worker OK')"
+
+ENTRYPOINT ["python", "-m", "workers.mobile_worker.main"]

@@ -136,6 +136,77 @@ services:
       - webbh-net
 
   # ---------------------------------------------------------------------------
+  # Mobile Worker — mobile app SAST + Frida DAST
+  # ---------------------------------------------------------------------------
+  mobile-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mobile
+    container_name: webbh-mobile-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mobsf:
+        condition: service_started
+      docker-android:
+        condition: service_started
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MOBSF_URL: http://mobsf:8000
+      MOBSF_API_KEY: ${MOBSF_API_KEY:-}
+      ADB_HOST: docker-android
+      ADB_PORT: "5555"
+    volumes:
+      - ./shared:/app/shared
+      - mobile_analysis:/app/shared/mobile_analysis
+      - mobile_binaries:/app/shared/mobile_binaries
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # MobSF — Mobile Security Framework (static analysis sidecar)
+  # ---------------------------------------------------------------------------
+  mobsf:
+    image: opensecurity/mobile-security-framework-mobsf:latest
+    container_name: webbh-mobsf
+    restart: unless-stopped
+    environment:
+      MOBSF_API_KEY: ${MOBSF_API_KEY:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - mobile_analysis:/app/shared/mobile_analysis
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Docker-Android — headless Android emulator (Frida DAST sidecar)
+  # ---------------------------------------------------------------------------
+  docker-android:
+    image: budtmo/docker-android:latest
+    container_name: webbh-docker-android
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kvm:/dev/kvm
+    ports:
+      - "5555:5555"
+    volumes:
+      - mobile_analysis:/app/shared/mobile_analysis
+      - mobile_binaries:/app/shared/mobile_binaries
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
   # Dashboard — Next.js C2 frontend
   # ---------------------------------------------------------------------------
   dashboard:
@@ -170,6 +241,10 @@ volumes:
   pgdata:
     driver: local
   redisdata:
+    driver: local
+  mobile_analysis:
+    driver: local
+  mobile_binaries:
     driver: local
 
 # ---------------------------------------------------------------------------
