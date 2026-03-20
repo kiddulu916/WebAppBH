@@ -6,7 +6,7 @@ import pytest
 from workers.chain_worker.tools.chain_evaluator import ChainEvaluator
 from workers.chain_worker.concurrency import WeightClass
 from workers.chain_worker.models import ChainViability, EvaluationResult, ChainResult, TargetFindings
-from workers.chain_worker.registry import BaseChainTemplate, register_chain, clear_registry
+from workers.chain_worker.registry import BaseChainTemplate, register_chain, clear_registry, save_registry, restore_registry
 
 
 def test_tool_attributes():
@@ -17,6 +17,7 @@ def test_tool_attributes():
 
 @pytest.mark.anyio
 async def test_evaluate_buckets():
+    saved = save_registry()
     clear_registry()
 
     @register_chain
@@ -61,4 +62,4 @@ async def test_evaluate_buckets():
     assert len(buckets["viable"]) == 1
     assert len(buckets["partial"]) == 1
     assert len(buckets["not_viable"]) == 1
-    clear_registry()
+    restore_registry(saved)

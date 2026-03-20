@@ -43,3 +43,7 @@ def get_registry() -> dict[str, BaseChainTemplate]: return _REGISTRY
 def get_chains_by_category(category: str) -> list[BaseChainTemplate]:
     return [c for c in _REGISTRY.values() if c.category == category]
 def clear_registry() -> None: _REGISTRY.clear()
+def save_registry() -> dict[str, BaseChainTemplate]: return dict(_REGISTRY)
+def restore_registry(saved: dict[str, BaseChainTemplate]) -> None:
+    _REGISTRY.clear()
+    _REGISTRY.update(saved)

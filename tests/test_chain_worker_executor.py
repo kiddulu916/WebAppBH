@@ -9,7 +9,7 @@ from datetime import datetime
 from workers.chain_worker.tools.chain_executor import ChainExecutor
 from workers.chain_worker.concurrency import WeightClass
 from workers.chain_worker.models import ChainViability, ChainResult, ChainStep, EvaluationResult, TargetFindings
-from workers.chain_worker.registry import BaseChainTemplate, ChainContext, register_chain, clear_registry
+from workers.chain_worker.registry import BaseChainTemplate, ChainContext, register_chain, clear_registry, save_registry, restore_registry
 
 
 def test_tool_attributes():
@@ -20,6 +20,7 @@ def test_tool_attributes():
 
 @pytest.mark.anyio
 async def test_run_viable_chains(tmp_path):
+    saved = save_registry()
     clear_registry()
 
     @register_chain
@@ -49,11 +50,12 @@ async def test_run_viable_chains(tmp_path):
     )
     assert len(results) == 1
     assert results[0].success is True
-    clear_registry()
+    restore_registry(saved)
 
 
 @pytest.mark.anyio
 async def test_failed_chain_continues(tmp_path):
+    saved = save_registry()
     clear_registry()
 
     @register_chain
@@ -94,4 +96,4 @@ async def test_failed_chain_continues(tmp_path):
     assert len(results) == 2
     assert results[0].success is False
     assert results[1].success is True
-    clear_registry()
+    restore_registry(saved)

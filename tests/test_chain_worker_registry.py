@@ -20,7 +20,9 @@ def test_base_chain_template_attributes():
 def test_register_chain_decorator():
     from workers.chain_worker.registry import (
         BaseChainTemplate, register_chain, get_registry, clear_registry,
+        save_registry, restore_registry,
     )
+    saved = save_registry()
     clear_registry()
 
     @register_chain
@@ -37,13 +39,15 @@ def test_register_chain_decorator():
     registry = get_registry()
     assert "fake_chain" in registry
     assert isinstance(registry["fake_chain"], FakeChain)
-    clear_registry()
+    restore_registry(saved)
 
 
 def test_register_multiple_chains():
     from workers.chain_worker.registry import (
         BaseChainTemplate, register_chain, get_registry, clear_registry,
+        save_registry, restore_registry,
     )
+    saved = save_registry()
     clear_registry()
 
     @register_chain
@@ -71,13 +75,15 @@ def test_register_multiple_chains():
     registry = get_registry()
     assert len(registry) == 2
     assert registry["chain_2"].requires_accounts is True
-    clear_registry()
+    restore_registry(saved)
 
 
 def test_get_chains_by_category():
     from workers.chain_worker.registry import (
         BaseChainTemplate, register_chain, get_chains_by_category, clear_registry,
+        save_registry, restore_registry,
     )
+    saved = save_registry()
     clear_registry()
 
     @register_chain
@@ -117,13 +123,15 @@ def test_get_chains_by_category():
     assert len(ssrf_chains) == 2
     xss_chains = get_chains_by_category("xss")
     assert len(xss_chains) == 1
-    clear_registry()
+    restore_registry(saved)
 
 
 def test_duplicate_name_raises():
     from workers.chain_worker.registry import (
         BaseChainTemplate, register_chain, clear_registry,
+        save_registry, restore_registry,
     )
+    saved = save_registry()
     clear_registry()
 
     @register_chain
@@ -149,4 +157,4 @@ def test_duplicate_name_raises():
             async def execute(self, context):
                 return ChainResult(success=False, steps=[], poc=None, chain_name=self.name)
 
-    clear_registry()
+    restore_registry(saved)
