@@ -1,0 +1,48 @@
+# docker/Dockerfile.network
+# -------------------------------------------------------
+# Network Testing Worker — Kali Linux with MSF + Nmap
+# -------------------------------------------------------
+
+FROM kalilinux/kali-rolling AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# System tools + network testing suite
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nmap \
+    metasploit-framework \
+    medusa \
+    socat \
+    ldap-utils \
+    python3 \
+    python3-pip \
+    python3-dev \
+    ca-certificates \
+    curl \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install naabu binary
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -sSfL \
+    "https://github.com/projectdiscovery/naabu/releases/latest/download/naabu_linux_${ARCH}.zip" \
+    -o /tmp/naabu.zip && \
+    unzip /tmp/naabu.zip -d /usr/local/bin/ && \
+    chmod +x /usr/local/bin/naabu && \
+    rm /tmp/naabu.zip
+
+# Python dependencies
+RUN pip install --no-cache-dir --break-system-packages \
+    pymetasploit3 \
+    pyyaml \
+    httpx
+
+# Copy shared lib and worker code
+COPY shared/ /app/shared/
+RUN pip install --break-system-packages -e /app/shared/lib_webbh
+
+COPY workers/ /app/workers/
+
+WORKDIR /app
+
+ENTRYPOINT ["python3", "-m", "workers.network_worker.main"]
