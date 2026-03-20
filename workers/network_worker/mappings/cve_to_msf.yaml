@@ -1,0 +1,79 @@
+CVE-2017-0144:
+  module: exploit/windows/smb/ms17_010_eternalblue
+  service: smb
+  ports: [445]
+
+CVE-2019-0708:
+  module: exploit/windows/rdp/cve_2019_0708_bluekeep_rce
+  service: rdp
+  ports: [3389]
+
+CVE-2014-0160:
+  module: auxiliary/scanner/ssl/openssl_heartbleed
+  service: ssl
+  ports: [443, 8443, 993, 995]
+
+CVE-2014-3566:
+  module: auxiliary/scanner/ssl/poodle
+  service: ssl
+  ports: [443, 8443]
+
+CVE-2015-3306:
+  module: exploit/unix/ftp/proftpd_modcopy_exec
+  service: ftp
+  ports: [21]
+
+CVE-2011-2523:
+  module: exploit/unix/ftp/vsftpd_234_backdoor
+  service: ftp
+  ports: [21]
+
+CVE-2017-7494:
+  module: exploit/linux/samba/is_known_pipename
+  service: smb
+  ports: [445]
+
+CVE-2020-1938:
+  module: auxiliary/admin/http/tomcat_ghostcat
+  service: ajp
+  ports: [8009]
+
+CVE-2015-1635:
+  module: auxiliary/dos/http/ms15_034_ulonglongadd
+  service: http
+  ports: [80, 443]
+
+CVE-2016-2183:
+  module: auxiliary/scanner/ssl/sweet32
+  service: ssl
+  ports: [443]
+
+CVE-2021-44228:
+  module: exploit/multi/http/log4shell_header_injection
+  service: java
+  ports: [8080, 8443]
+
+CVE-2019-11510:
+  module: auxiliary/scanner/http/pulse_ssl_vpn_fread_check
+  service: vpn
+  ports: [443]
+
+CVE-2020-0796:
+  module: auxiliary/scanner/smb/smb_ms17_010
+  service: smb
+  ports: [445]
+
+CVE-2018-15473:
+  module: auxiliary/scanner/ssh/ssh_enumusers
+  service: ssh
+  ports: [22]
+
+CVE-2021-41773:
+  module: auxiliary/scanner/http/apache_normalize_path
+  service: http
+  ports: [80, 443]
+
+CVE-2017-12617:
+  module: exploit/multi/http/tomcat_jsp_upload_bypass
+  service: http
+  ports: [8080, 8443]

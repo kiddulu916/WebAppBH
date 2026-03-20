@@ -74,3 +74,38 @@ def test_load_oos_attacks_reads_profile(tmp_path):
     tool = DummyTool()
     result = tool._load_oos_attacks_sync(str(profile))
     assert result == ["dos", "exploit/multi/handler"]
+
+
+def test_default_creds_yaml_loads():
+    import yaml
+    from pathlib import Path
+
+    creds_path = Path(__file__).resolve().parent.parent / "workers" / "network_worker" / "wordlists" / "default_creds.yaml"
+    with open(creds_path) as f:
+        creds = yaml.safe_load(f)
+
+    assert isinstance(creds, dict)
+    assert "ssh" in creds
+    assert "mysql" in creds
+    assert "ftp" in creds
+    for service, pairs in creds.items():
+        assert isinstance(pairs, list)
+        for pair in pairs:
+            assert len(pair) == 2
+
+
+def test_cve_to_msf_yaml_loads():
+    import yaml
+    from pathlib import Path
+
+    map_path = Path(__file__).resolve().parent.parent / "workers" / "network_worker" / "mappings" / "cve_to_msf.yaml"
+    with open(map_path) as f:
+        mappings = yaml.safe_load(f)
+
+    assert isinstance(mappings, dict)
+    assert "CVE-2017-0144" in mappings
+    for cve_id, info in mappings.items():
+        assert "module" in info
+        assert "service" in info
+        assert "ports" in info
+        assert isinstance(info["ports"], list)
