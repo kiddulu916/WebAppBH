@@ -393,3 +393,48 @@ def test_ldap_injection_classify_finding():
     assert tool.classify_severity("auth_bypass") == "high"
     assert tool.classify_severity("data_extraction") == "medium"
     assert tool.classify_severity("filter_manipulation") == "medium"
+
+
+# ===================================================================
+# MsfCheckTool tests
+# ===================================================================
+
+def test_msf_check_tool_attributes():
+    from workers.network_worker.tools.msf_check_tool import MsfCheckTool
+    from workers.network_worker.concurrency import WeightClass
+
+    tool = MsfCheckTool()
+    assert tool.name == "msf_check"
+    assert tool.weight_class == WeightClass.HEAVY
+
+
+def test_msf_check_tool_load_mappings():
+    from workers.network_worker.tools.msf_check_tool import MsfCheckTool
+
+    tool = MsfCheckTool()
+    mappings = tool._load_mappings()
+    assert isinstance(mappings, dict)
+    assert "CVE-2017-0144" in mappings
+    assert mappings["CVE-2017-0144"]["module"] == "exploit/windows/smb/ms17_010_eternalblue"
+
+
+def test_msf_check_tool_find_modules_for_cves():
+    from workers.network_worker.tools.msf_check_tool import MsfCheckTool
+
+    tool = MsfCheckTool()
+    cves = ["CVE-2017-0144", "CVE-9999-0000", "CVE-2019-0708"]
+    matches = tool.find_modules_for_cves(cves)
+    assert len(matches) == 2
+    assert any(m["cve"] == "CVE-2017-0144" for m in matches)
+    assert any(m["cve"] == "CVE-2019-0708" for m in matches)
+
+
+def test_msf_check_tool_respects_oos():
+    from workers.network_worker.tools.msf_check_tool import MsfCheckTool
+
+    tool = MsfCheckTool()
+    cves = ["CVE-2017-0144", "CVE-2019-0708"]
+    oos = ["exploit/windows/smb/ms17_010_eternalblue"]
+    matches = tool.find_modules_for_cves(cves, oos_attacks=oos)
+    assert len(matches) == 1
+    assert matches[0]["cve"] == "CVE-2019-0708"
