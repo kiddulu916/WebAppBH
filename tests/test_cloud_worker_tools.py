@@ -52,3 +52,32 @@ def test_cloud_url_patterns_exported():
 
     for pattern in CLOUD_URL_PATTERNS_FOR_TEST:
         assert any(pattern in p for p in CLOUD_URL_PATTERNS)
+
+
+# ===================================================================
+# AssetScraperTool tests
+# ===================================================================
+
+def test_asset_scraper_classify_url():
+    from workers.cloud_worker.tools.asset_scraper import AssetScraperTool
+
+    tool = AssetScraperTool()
+    assert tool.classify_url("https://mybucket.s3.amazonaws.com") == ("aws", "s3_bucket")
+    assert tool.classify_url("https://myaccount.blob.core.windows.net/container") == ("azure", "blob_container")
+    assert tool.classify_url("https://storage.googleapis.com/mybucket") == ("gcp", "gcs_bucket")
+    assert tool.classify_url("https://myapp.firebaseio.com") == ("gcp", "firebase_db")
+    assert tool.classify_url("https://myapp.appspot.com") == ("gcp", "appspot")
+    assert tool.classify_url("https://example.com") is None
+
+
+def test_asset_scraper_dedup_urls():
+    from workers.cloud_worker.tools.asset_scraper import AssetScraperTool
+
+    tool = AssetScraperTool()
+    urls = [
+        "https://mybucket.s3.amazonaws.com",
+        "https://mybucket.s3.amazonaws.com",  # duplicate
+        "https://other.s3.amazonaws.com",
+    ]
+    deduped = tool.deduplicate(urls)
+    assert len(deduped) == 2
