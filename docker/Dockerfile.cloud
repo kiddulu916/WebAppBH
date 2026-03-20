@@ -1,0 +1,43 @@
+# docker/Dockerfile.cloud
+# -------------------------------------------------------
+# Cloud Testing Worker
+# -------------------------------------------------------
+
+# Stage 1: Builder — install Go tools and Python packages
+FROM webbh-base AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git golang-go ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install cloud_enum
+RUN pip install --no-cache-dir cloud_enum
+
+# Install trufflehog binary
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+
+# Stage 2: Runtime
+FROM webbh-base AS runtime
+
+# Python cloud SDK dependencies
+RUN pip install --no-cache-dir \
+    boto3 \
+    botocore \
+    azure-storage-blob \
+    google-cloud-storage \
+    httpx
+
+# Copy tools from builder
+COPY --from=builder /usr/local/bin/trufflehog /usr/local/bin/trufflehog
+COPY --from=builder /usr/local/bin/cloud_enum /usr/local/bin/cloud_enum
+
+# Copy shared lib and worker code
+COPY shared/ /app/shared/
+RUN pip install -e /app/shared/lib_webbh
+
+COPY workers/ /app/workers/
+
+WORKDIR /app
+
+ENTRYPOINT ["python", "-m", "workers.cloud_worker.main"]
