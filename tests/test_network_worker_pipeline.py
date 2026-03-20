@@ -60,3 +60,30 @@ def test_tools_init_exports():
     assert MedusaTool is not None
     assert LdapInjectionTool is not None
     assert MsfCheckTool is not None
+
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+
+@pytest.mark.anyio
+async def test_handle_message_missing_target_id():
+    from workers.network_worker.main import handle_message
+
+    await handle_message("msg-1", {})
+
+
+@pytest.mark.anyio
+async def test_handle_message_target_not_found():
+    from workers.network_worker.main import handle_message
+
+    with patch("workers.network_worker.main.get_session") as mock_gs:
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+        mock_gs.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_gs.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await handle_message("msg-2", {"target_id": 999})
