@@ -200,3 +200,51 @@ async def test_bucket_prober_skips_on_cooldown():
             container_name="test",
         )
     assert result.get("skipped_cooldown") is True
+
+
+# ===================================================================
+# FileListerTool tests
+# ===================================================================
+
+def test_file_lister_sensitive_patterns():
+    from workers.cloud_worker.tools.file_lister import FileListerTool
+
+    tool = FileListerTool()
+    assert tool.is_sensitive("backup.sql") is True
+    assert tool.is_sensitive(".env") is True
+    assert tool.is_sensitive("id_rsa.pem") is True
+    assert tool.is_sensitive("credentials.json") is True
+    assert tool.is_sensitive("server.key") is True
+    assert tool.is_sensitive(".htpasswd") is True
+    assert tool.is_sensitive("db_dump.bak") is True
+    assert tool.is_sensitive("index.html") is False
+    assert tool.is_sensitive("logo.png") is False
+
+
+def test_file_lister_severity_for_file():
+    from workers.cloud_worker.tools.file_lister import FileListerTool
+
+    tool = FileListerTool()
+    assert tool.severity_for_file("private.pem") == "critical"
+    assert tool.severity_for_file("server.key") == "critical"
+    assert tool.severity_for_file("id_rsa") == "critical"
+    assert tool.severity_for_file(".env") == "high"
+    assert tool.severity_for_file("credentials.json") == "high"
+    assert tool.severity_for_file("dump.sql") == "high"
+    assert tool.severity_for_file("config.yml") == "medium"
+    assert tool.severity_for_file("export.csv") == "medium"
+
+
+@pytest.mark.anyio
+async def test_file_lister_skips_on_cooldown():
+    from workers.cloud_worker.tools.file_lister import FileListerTool
+
+    tool = FileListerTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(),
+            target_id=1,
+            container_name="test",
+        )
+    assert result.get("skipped_cooldown") is True
