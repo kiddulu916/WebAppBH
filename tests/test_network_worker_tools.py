@@ -250,3 +250,44 @@ def test_nmap_tool_extract_cves():
     cves = tool.extract_cves(script_output)
     assert "CVE-2017-0144" in cves
     assert "CVE-2014-0160" in cves
+
+
+# ===================================================================
+# BannerGrabTool tests
+# ===================================================================
+
+def test_banner_grab_tool_attributes():
+    from workers.network_worker.tools.banner_grab_tool import BannerGrabTool
+    from workers.network_worker.concurrency import WeightClass
+
+    tool = BannerGrabTool()
+    assert tool.name == "banner_grab"
+    assert tool.weight_class == WeightClass.LIGHT
+
+
+def test_banner_grab_tool_detect_ldap():
+    from workers.network_worker.tools.banner_grab_tool import BannerGrabTool
+
+    tool = BannerGrabTool()
+    assert tool.detect_service("0\x84") == "ldap"
+    assert tool.detect_service("objectClass: top") == "ldap"
+    assert tool.detect_service("LDAP") == "ldap"
+
+
+def test_banner_grab_tool_detect_other_services():
+    from workers.network_worker.tools.banner_grab_tool import BannerGrabTool
+
+    tool = BannerGrabTool()
+    assert tool.detect_service("SSH-2.0-OpenSSH_7.2p2") == "ssh"
+    assert tool.detect_service("220 ProFTPD 1.3.5") == "ftp"
+    assert tool.detect_service("+OK POP3 server ready") == "pop3"
+    assert tool.detect_service("* OK IMAP server ready") == "imap"
+    assert tool.detect_service("220 mail.example.com ESMTP") == "smtp"
+
+
+def test_banner_grab_tool_detect_unknown():
+    from workers.network_worker.tools.banner_grab_tool import BannerGrabTool
+
+    tool = BannerGrabTool()
+    assert tool.detect_service("") is None
+    assert tool.detect_service("some random binary data") is None
