@@ -159,3 +159,94 @@ def test_naabu_tool_parse_output_empty():
     tool = NaabuTool()
     assert tool.parse_output("") == []
     assert tool.parse_output("   ") == []
+
+
+# ===================================================================
+# NmapTool tests
+# ===================================================================
+
+def test_nmap_tool_attributes():
+    from workers.network_worker.tools.nmap_tool import NmapTool
+    from workers.network_worker.concurrency import WeightClass
+
+    tool = NmapTool()
+    assert tool.name == "nmap"
+    assert tool.weight_class == WeightClass.MEDIUM
+
+
+def test_nmap_tool_build_command():
+    from workers.network_worker.tools.nmap_tool import NmapTool
+
+    tool = NmapTool()
+    cmd = tool.build_command("192.168.1.1", [22, 80, 445])
+    assert "nmap" in cmd
+    assert "-sV" in cmd
+    assert "-sC" in cmd
+    assert "--script=vuln" in cmd
+    assert "-oX" in cmd
+    assert "-p" in cmd
+    assert "22,80,445" in cmd
+
+
+def test_nmap_tool_build_command_excludes_oos_scripts():
+    from workers.network_worker.tools.nmap_tool import NmapTool
+
+    tool = NmapTool()
+    cmd = tool.build_command("10.0.0.1", [445], oos_attacks=["smb-vuln-ms17-010", "dos"])
+    cmd_str = " ".join(cmd)
+    assert "exclude" in cmd_str.lower()
+
+
+def test_nmap_tool_parse_xml_basic():
+    from workers.network_worker.tools.nmap_tool import NmapTool
+
+    tool = NmapTool()
+    xml = """<?xml version="1.0"?>
+    <nmaprun>
+      <host>
+        <address addr="192.168.1.1" addrtype="ipv4"/>
+        <ports>
+          <port protocol="tcp" portid="22">
+            <state state="open"/>
+            <service name="ssh" product="OpenSSH" version="7.2p2"/>
+          </port>
+          <port protocol="tcp" portid="445">
+            <state state="open"/>
+            <service name="microsoft-ds" product="Samba"/>
+          </port>
+        </ports>
+        <os>
+          <osmatch name="Linux 3.10 - 4.11" accuracy="98"/>
+        </os>
+      </host>
+    </nmaprun>"""
+    results = tool.parse_xml(xml)
+    assert len(results) == 1
+    host = results[0]
+    assert host["addr"] == "192.168.1.1"
+    assert len(host["ports"]) == 2
+    assert host["ports"][0]["port"] == 22
+    assert host["ports"][0]["service"] == "ssh"
+    assert host["ports"][0]["product"] == "OpenSSH"
+    assert host["ports"][0]["version"] == "7.2p2"
+    assert host["os_match"] == "Linux 3.10 - 4.11"
+
+
+def test_nmap_tool_extract_cves():
+    from workers.network_worker.tools.nmap_tool import NmapTool
+
+    tool = NmapTool()
+    script_output = """
+    smb-vuln-ms17-010:
+      VULNERABLE:
+      Remote Code Execution vulnerability in Microsoft SMBv1
+        State: VULNERABLE
+        IDs:  CVE:CVE-2017-0144
+        Risk factor: HIGH
+    heartbleed:
+      VULNERABLE:
+        IDs:  CVE:CVE-2014-0160
+    """
+    cves = tool.extract_cves(script_output)
+    assert "CVE-2017-0144" in cves
+    assert "CVE-2014-0160" in cves
