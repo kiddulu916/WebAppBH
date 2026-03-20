@@ -438,3 +438,45 @@ def test_msf_check_tool_respects_oos():
     matches = tool.find_modules_for_cves(cves, oos_attacks=oos)
     assert len(matches) == 1
     assert matches[0]["cve"] == "CVE-2019-0708"
+
+
+def test_msf_check_tool_filters_dos_modules():
+    from workers.network_worker.tools.msf_check_tool import MsfCheckTool
+
+    tool = MsfCheckTool()
+    # Inject a DOS module to verify it's filtered regardless of oos_attacks
+    original = tool._load_mappings
+    def _patched():
+        m = original()
+        m["CVE-TEST-DOS"] = {
+            "module": "auxiliary/dos/http/fake_dos",
+            "service": "http",
+            "ports": [80],
+        }
+        return m
+    tool._load_mappings = _patched
+
+    matches = tool.find_modules_for_cves(["CVE-TEST-DOS"])
+    assert len(matches) == 0
+
+
+@pytest.mark.anyio
+async def test_load_oos_attacks_standalone(tmp_path):
+    import json
+    from workers.network_worker.base_tool import load_oos_attacks
+
+    target_dir = tmp_path / "42"
+    target_dir.mkdir()
+    profile = target_dir / "profile.json"
+    profile.write_text(json.dumps({"oos_attacks": ["dos", "exploit/multi/handler"]}))
+
+    old = os.environ.get("CONFIG_DIR")
+    os.environ["CONFIG_DIR"] = str(tmp_path)
+    try:
+        result = await load_oos_attacks(42)
+        assert result == ["dos", "exploit/multi/handler"]
+    finally:
+        if old is None:
+            del os.environ["CONFIG_DIR"]
+        else:
+            os.environ["CONFIG_DIR"] = old

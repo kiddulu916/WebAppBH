@@ -13,7 +13,6 @@ from sqlalchemy import select
 from lib_webbh import (
     Alert,
     Asset,
-    Identity,
     JobState,
     Location,
     Observation,
@@ -33,6 +32,21 @@ COOLDOWN_HOURS = int(os.environ.get("COOLDOWN_HOURS", "24"))
 
 # Ports typically served by HTTP — excluded from network worker scope
 HTTP_PORTS = {80, 443, 8080, 8443}
+
+
+async def load_oos_attacks(target_id: int) -> list[str]:
+    """Load oos_attacks from shared/config/{target_id}/profile.json.
+
+    Standalone function so callers don't need to instantiate a tool.
+    """
+    config_dir = os.environ.get("CONFIG_DIR", "shared/config")
+    profile_path = os.path.join(config_dir, str(target_id), "profile.json")
+    try:
+        with open(profile_path, "r") as f:
+            data = json.load(f)
+        return data.get("oos_attacks", [])
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return []
 
 
 class NetworkTestTool(ABC):
@@ -125,9 +139,7 @@ class NetworkTestTool(ABC):
 
     async def _load_oos_attacks(self, target_id: int) -> list[str]:
         """Load oos_attacks from shared/config/{target_id}/profile.json."""
-        config_dir = os.environ.get("CONFIG_DIR", "shared/config")
-        profile_path = os.path.join(config_dir, str(target_id), "profile.json")
-        return self._load_oos_attacks_sync(profile_path)
+        return await load_oos_attacks(target_id)
 
     async def _get_non_http_locations(self, target_id: int) -> list[Location]:
         """Fetch Location rows for non-HTTP ports."""
@@ -166,8 +178,8 @@ class NetworkTestTool(ABC):
         protocol: str = "tcp",
         service: str | None = None,
         state: str = "open",
-    ) -> int:
-        """Upsert a Location row. Returns location id."""
+    ) -> tuple[int, bool]:
+        """Upsert a Location row. Returns (location_id, is_new)."""
         async with get_session() as session:
             stmt = select(Location).where(
                 Location.asset_id == asset_id,
@@ -182,7 +194,7 @@ class NetworkTestTool(ABC):
                     existing.service = service
                 existing.state = state
                 await session.commit()
-                return existing.id
+                return existing.id, False
 
             loc = Location(
                 asset_id=asset_id,
@@ -195,7 +207,7 @@ class NetworkTestTool(ABC):
             await session.flush()
             loc_id = loc.id
             await session.commit()
-            return loc_id
+            return loc_id, True
 
     async def _save_observation_tech_stack(
         self,
@@ -275,8 +287,9 @@ class NetworkTestTool(ABC):
                 message=message,
             )
             session.add(alert)
-            await session.commit()
+            await session.flush()
             alert_id = alert.id
+            await session.commit()
 
         await push_task(f"events:{target_id}", {
             "event": "critical_alert",

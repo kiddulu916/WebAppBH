@@ -103,6 +103,7 @@ class MedusaTool(NetworkTestTool):
             return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": True}
 
         stats = {"found": 0, "in_scope": 0, "new": 0}
+        oos_attacks = kwargs.get("oos_attacks", [])
 
         locations = await self._get_non_http_locations(target_id)
         if not locations:
@@ -115,8 +116,18 @@ class MedusaTool(NetworkTestTool):
             if not medusa_module:
                 continue
 
+            # Skip services excluded by oos_attacks
+            if service in oos_attacks or medusa_module in oos_attacks:
+                log.debug(f"Skipping excluded service: {service}")
+                continue
+
             host = await self._get_asset_ip(loc.asset_id)
             if not host:
+                continue
+
+            scope_result = scope_manager.is_in_scope(host)
+            if not scope_result.in_scope:
+                log.debug(f"Skipping out-of-scope host: {host}")
                 continue
 
             creds = self._load_creds(service)

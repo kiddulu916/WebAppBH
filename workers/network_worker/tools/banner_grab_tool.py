@@ -93,6 +93,11 @@ class BannerGrabTool(NetworkTestTool):
             if not host:
                 continue
 
+            scope_result = scope_manager.is_in_scope(host)
+            if not scope_result.in_scope:
+                log.debug(f"Skipping out-of-scope host: {host}")
+                continue
+
             cmd = self.build_command(host, loc.port)
             try:
                 banner = await self.run_subprocess(cmd, timeout=SOCAT_TIMEOUT + 5)
@@ -103,14 +108,15 @@ class BannerGrabTool(NetworkTestTool):
             if detected:
                 stats["found"] += 1
                 stats["in_scope"] += 1
-                await self._save_location(
+                _, is_new = await self._save_location(
                     asset_id=loc.asset_id,
                     port=loc.port,
                     protocol=loc.protocol or "tcp",
                     service=detected,
                     state="open",
                 )
-                stats["new"] += 1
+                if is_new:
+                    stats["new"] += 1
 
         await self.update_tool_state(target_id, container_name)
         log.info("banner_grab complete", extra=stats)

@@ -99,13 +99,14 @@ class NaabuTool(NetworkTestTool):
 
             for entry in entries:
                 port = entry["port"]
-                await self._save_location(
+                _, is_new = await self._save_location(
                     asset_id=asset.id,
                     port=port,
                     protocol="tcp",
                     state="open",
                 )
-                stats["new"] += 1
+                if is_new:
+                    stats["new"] += 1
 
         await self.update_tool_state(target_id, container_name)
         log.info("naabu complete", extra=stats)

@@ -12,7 +12,8 @@ from sqlalchemy import select
 from lib_webbh import JobState, get_session, push_task, setup_logger
 from lib_webbh.scope import ScopeManager
 
-from workers.network_worker.base_tool import NetworkTestTool
+from workers.network_worker.base_tool import NetworkTestTool, load_oos_attacks
+from workers.network_worker.concurrency import get_semaphore
 from workers.network_worker.tools import (
     NaabuTool,
     NmapTool,
@@ -66,10 +67,7 @@ class Pipeline:
         _rebuild_index()
 
         # Load oos_attacks once for the whole pipeline
-        from workers.network_worker.tools.naabu_tool import NaabuTool
-
-        loader = NaabuTool()
-        oos_attacks = await loader._load_oos_attacks(self.target_id)
+        oos_attacks = await load_oos_attacks(self.target_id)
 
         completed_phase = await self._get_completed_phase()
         start_index = 0
@@ -111,20 +109,21 @@ class Pipeline:
         scope_manager: ScopeManager,
         **kwargs,
     ) -> dict:
-        """Run all tools in a stage concurrently."""
+        """Run all tools in a stage concurrently with semaphore control."""
         tools = [cls() for cls in stage.tool_classes]
 
-        tasks = [
-            tool.execute(
-                target=target,
-                scope_manager=scope_manager,
-                target_id=self.target_id,
-                container_name=self.container_name,
-                **kwargs,
-            )
-            for tool in tools
-        ]
+        async def _run_with_sem(tool: NetworkTestTool) -> dict:
+            sem = get_semaphore(tool.weight_class)
+            async with sem:
+                return await tool.execute(
+                    target=target,
+                    scope_manager=scope_manager,
+                    target_id=self.target_id,
+                    container_name=self.container_name,
+                    **kwargs,
+                )
 
+        tasks = [_run_with_sem(tool) for tool in tools]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return self._aggregate_results(stage.name, results)
 

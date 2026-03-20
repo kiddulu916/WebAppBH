@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from pathlib import Path
@@ -47,14 +48,21 @@ class MsfCheckTool(NetworkTestTool):
         cves: list[str],
         oos_attacks: list[str] | None = None,
     ) -> list[dict]:
-        """Match CVEs to MSF modules, filtering out excluded modules."""
+        """Match CVEs to MSF modules, filtering out excluded and DoS modules."""
         mappings = self._load_mappings()
         oos = set(oos_attacks or [])
         matches = []
         for cve in cves:
             info = mappings.get(cve)
-            if info and info["module"] not in oos:
-                matches.append({"cve": cve, **info})
+            if not info:
+                continue
+            module_path = info["module"]
+            # Never run DoS modules regardless of oos_attacks config
+            if "/dos/" in module_path:
+                continue
+            if module_path in oos:
+                continue
+            matches.append({"cve": cve, **info})
         return matches
 
     def _get_msf_client(self):
@@ -109,9 +117,9 @@ class MsfCheckTool(NetworkTestTool):
             log.info("No matching MSF modules for discovered CVEs")
             return stats
 
-        # Connect to msfrpcd
+        # Connect to msfrpcd (blocking call — run in thread)
         try:
-            client = self._get_msf_client()
+            client = await asyncio.to_thread(self._get_msf_client)
         except Exception as exc:
             log.error(f"Failed to connect to msfrpcd: {exc}")
             return stats
@@ -125,16 +133,23 @@ class MsfCheckTool(NetworkTestTool):
             if not host:
                 continue
 
+            scope_result = scope_manager.is_in_scope(host)
+            if not scope_result.in_scope:
+                log.debug(f"Skipping out-of-scope host: {host}")
+                continue
+
             module_path = mod_info["module"]
             ports = mod_info.get("ports", [])
 
             try:
-                exploit = client.modules.use("exploit", module_path)
-                exploit["RHOSTS"] = host
-                if ports:
-                    exploit["RPORT"] = ports[0]
+                def _run_check():
+                    exploit = client.modules.use("exploit", module_path)
+                    exploit["RHOSTS"] = host
+                    if ports:
+                        exploit["RPORT"] = ports[0]
+                    return exploit.check()
 
-                check_result = exploit.check()
+                check_result = await asyncio.to_thread(_run_check)
                 result_str = str(check_result) if check_result else ""
 
                 if "vulnerable" in result_str.lower():

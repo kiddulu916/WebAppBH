@@ -150,6 +150,11 @@ class LdapInjectionTool(NetworkTestTool):
             if not host:
                 continue
 
+            scope_result = scope_manager.is_in_scope(host)
+            if not scope_result.in_scope:
+                log.debug(f"Skipping out-of-scope host: {host}")
+                continue
+
             for payload in LDAP_PAYLOADS:
                 cmd = self._build_ldapsearch_command(
                     host, loc.port, payload["filter"],

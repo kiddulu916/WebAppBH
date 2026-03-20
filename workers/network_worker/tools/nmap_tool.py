@@ -190,14 +190,15 @@ class NmapTool(NetworkTestTool):
                         if port_data["version"]:
                             service_str += f" {port_data['version']}"
 
-                    await self._save_location(
+                    _, is_new = await self._save_location(
                         asset_id=asset_id,
                         port=port_data["port"],
                         protocol=port_data["protocol"],
                         service=service_str,
                         state=port_data["state"],
                     )
-                    stats["new"] += 1
+                    if is_new:
+                        stats["new"] += 1
 
                     all_scripts = port_data.get("scripts", "")
                     cves = self.extract_cves(all_scripts)
