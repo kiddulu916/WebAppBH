@@ -2,6 +2,8 @@
 
 import os
 
+import pytest
+
 os.environ.setdefault("DB_DRIVER", "sqlite+aiosqlite")
 os.environ.setdefault("DB_NAME", ":memory:")
 
@@ -81,3 +83,65 @@ def test_asset_scraper_dedup_urls():
     ]
     deduped = tool.deduplicate(urls)
     assert len(deduped) == 2
+
+
+# ===================================================================
+# CloudEnumTool tests
+# ===================================================================
+
+SAMPLE_CLOUD_ENUM_OUTPUT = """
+[+] Checking for S3 Buckets
+[+] Found open S3 bucket: acme-backup.s3.amazonaws.com
+[+] Found open S3 bucket: acme-assets.s3.amazonaws.com
+[+] Checking for Azure Blobs
+[+] Found open Azure container: acme.blob.core.windows.net/public
+[+] Checking for GCP Buckets
+[+] Found open GCP bucket: storage.googleapis.com/acme-data
+"""
+
+
+def test_cloud_enum_parse_output():
+    from workers.cloud_worker.tools.cloud_enum import CloudEnumTool
+
+    tool = CloudEnumTool()
+    results = tool.parse_output(SAMPLE_CLOUD_ENUM_OUTPUT)
+    assert len(results) == 4
+    assert any("acme-backup.s3.amazonaws.com" in r for r in results)
+    assert any("blob.core.windows.net" in r for r in results)
+    assert any("storage.googleapis.com" in r for r in results)
+
+
+def test_cloud_enum_parse_output_empty():
+    from workers.cloud_worker.tools.cloud_enum import CloudEnumTool
+
+    tool = CloudEnumTool()
+    results = tool.parse_output("")
+    assert results == []
+
+
+def test_cloud_enum_build_command():
+    from workers.cloud_worker.tools.cloud_enum import CloudEnumTool
+
+    tool = CloudEnumTool()
+    cmd = tool.build_command("acme.com", mutations=["corp", "dev"])
+    assert "cloud_enum" in cmd[0] or "cloud_enum" in " ".join(cmd)
+    assert "-k" in cmd
+    assert "acme.com" in cmd
+
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+
+@pytest.mark.anyio
+async def test_cloud_enum_skips_on_cooldown():
+    from workers.cloud_worker.tools.cloud_enum import CloudEnumTool
+
+    tool = CloudEnumTool()
+    with patch.object(tool, "check_cooldown", new_callable=AsyncMock, return_value=True):
+        result = await tool.execute(
+            target=MagicMock(target_profile={}),
+            scope_manager=MagicMock(),
+            target_id=1,
+            container_name="test",
+        )
+    assert result.get("skipped_cooldown") is True
