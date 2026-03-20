@@ -352,3 +352,44 @@ def test_medusa_tool_service_mapping():
     assert "ssh" in SERVICE_TO_MEDUSA_MODULE
     assert "ftp" in SERVICE_TO_MEDUSA_MODULE
     assert "mysql" in SERVICE_TO_MEDUSA_MODULE
+
+
+# ===================================================================
+# LdapInjectionTool tests
+# ===================================================================
+
+def test_ldap_injection_tool_attributes():
+    from workers.network_worker.tools.ldap_injection_tool import LdapInjectionTool
+    from workers.network_worker.concurrency import WeightClass
+
+    tool = LdapInjectionTool()
+    assert tool.name == "ldap_injection"
+    assert tool.weight_class == WeightClass.MEDIUM
+
+
+def test_ldap_injection_payloads_exist():
+    from workers.network_worker.tools.ldap_injection_tool import LDAP_PAYLOADS
+
+    assert len(LDAP_PAYLOADS) > 0
+    for payload in LDAP_PAYLOADS:
+        assert "name" in payload
+        assert "filter" in payload
+        assert "category" in payload
+
+
+def test_ldap_injection_categories():
+    from workers.network_worker.tools.ldap_injection_tool import LDAP_PAYLOADS
+
+    categories = {p["category"] for p in LDAP_PAYLOADS}
+    assert "filter_manipulation" in categories
+    assert "auth_bypass" in categories
+    assert "data_extraction" in categories
+
+
+def test_ldap_injection_classify_finding():
+    from workers.network_worker.tools.ldap_injection_tool import LdapInjectionTool
+
+    tool = LdapInjectionTool()
+    assert tool.classify_severity("auth_bypass") == "high"
+    assert tool.classify_severity("data_extraction") == "medium"
+    assert tool.classify_severity("filter_manipulation") == "medium"
