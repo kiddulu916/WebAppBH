@@ -291,3 +291,64 @@ def test_banner_grab_tool_detect_unknown():
     tool = BannerGrabTool()
     assert tool.detect_service("") is None
     assert tool.detect_service("some random binary data") is None
+
+
+# ===================================================================
+# MedusaTool tests
+# ===================================================================
+
+def test_medusa_tool_attributes():
+    from workers.network_worker.tools.medusa_tool import MedusaTool
+    from workers.network_worker.concurrency import WeightClass
+
+    tool = MedusaTool()
+    assert tool.name == "medusa"
+    assert tool.weight_class == WeightClass.MEDIUM
+
+
+def test_medusa_tool_build_command():
+    from workers.network_worker.tools.medusa_tool import MedusaTool
+
+    tool = MedusaTool()
+    cmd = tool.build_command("10.0.0.1", 22, "ssh", "admin", "admin")
+    assert "medusa" in cmd
+    assert "-h" in cmd
+    assert "10.0.0.1" in cmd
+    assert "-n" in cmd
+    assert "22" in cmd
+    # Rate limiting flags
+    assert "-t" in cmd
+    assert "-w" in cmd
+
+
+def test_medusa_tool_parse_output_success():
+    from workers.network_worker.tools.medusa_tool import MedusaTool
+
+    tool = MedusaTool()
+    raw = """
+    ACCOUNT CHECK: [ssh] Host: 10.0.0.1 (1 of 1) User: admin Password: admin
+    ACCOUNT FOUND: [ssh] Host: 10.0.0.1 User: admin Password: admin [SUCCESS]
+    """
+    results = tool.parse_output(raw)
+    assert len(results) == 1
+    assert results[0]["user"] == "admin"
+    assert results[0]["password"] == "admin"
+
+
+def test_medusa_tool_parse_output_no_success():
+    from workers.network_worker.tools.medusa_tool import MedusaTool
+
+    tool = MedusaTool()
+    raw = """
+    ACCOUNT CHECK: [ssh] Host: 10.0.0.1 User: admin Password: admin
+    """
+    results = tool.parse_output(raw)
+    assert results == []
+
+
+def test_medusa_tool_service_mapping():
+    from workers.network_worker.tools.medusa_tool import SERVICE_TO_MEDUSA_MODULE
+
+    assert "ssh" in SERVICE_TO_MEDUSA_MODULE
+    assert "ftp" in SERVICE_TO_MEDUSA_MODULE
+    assert "mysql" in SERVICE_TO_MEDUSA_MODULE
