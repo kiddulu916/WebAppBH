@@ -7,7 +7,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from workers.reporting_worker.base_renderer import BaseRenderer
-from workers.reporting_worker.models import ReportData
+from workers.reporting_worker.models import ReportData, sanitize_filename
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -29,7 +29,7 @@ class ExecutiveRenderer(BaseRenderer):
 
         html_str = self.render_html(data)
         os.makedirs(output_dir, exist_ok=True)
-        filename = f"{data.company_name}_{data.generation_date}_executive.pdf"
+        filename = f"{sanitize_filename(data.company_name)}_{data.generation_date}_executive.pdf"
         filepath = os.path.join(output_dir, filename)
         css_path = str(_TEMPLATES_DIR / "executive.css")
         HTML(string=html_str, base_url=str(_TEMPLATES_DIR)).write_pdf(filepath, stylesheets=[css_path])

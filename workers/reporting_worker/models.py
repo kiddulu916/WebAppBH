@@ -1,8 +1,14 @@
 """Dataclasses for the reporting pipeline."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
+
+
+def sanitize_filename(name: str) -> str:
+    """Strip unsafe characters from a string for use in filenames."""
+    return re.sub(r'[^\w\-.]', '_', name)
 
 
 @dataclass

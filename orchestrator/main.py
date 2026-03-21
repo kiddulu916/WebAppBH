@@ -26,10 +26,11 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Literal, Optional
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
@@ -105,8 +106,8 @@ class TargetProfileUpdate(BaseModel):
 
 
 class ReportCreate(BaseModel):
-    formats: list[str] = Field(description="Report formats to generate: hackerone_md, bugcrowd_md, executive_pdf, technical_pdf")
-    platform: str = Field(default="hackerone", description="Target platform: hackerone or bugcrowd")
+    formats: list[Literal["hackerone_md", "bugcrowd_md", "executive_pdf", "technical_pdf"]] = Field(description="Report formats to generate")
+    platform: Literal["hackerone", "bugcrowd"] = Field(default="hackerone", description="Target platform")
 
 
 # ---------------------------------------------------------------------------
@@ -541,10 +542,10 @@ async def create_report(target_id: int, body: ReportCreate):
         if target is None:
             raise HTTPException(status_code=404, detail="Target not found")
 
-        vuln_count = (await session.execute(
-            select(Vulnerability).where(Vulnerability.target_id == target_id)
-        )).scalars().all()
-        if not vuln_count:
+        has_vulns = (await session.execute(
+            select(Vulnerability.id).where(Vulnerability.target_id == target_id).limit(1)
+        )).scalar_one_or_none()
+        if has_vulns is None:
             raise HTTPException(status_code=400, detail="No vulnerabilities found for this target")
 
     msg_id = await push_task("report_queue", {
@@ -586,13 +587,11 @@ async def list_reports(target_id: int):
 # ---------------------------------------------------------------------------
 @app.get("/api/v1/targets/{target_id}/reports/{filename}")
 async def download_report(target_id: int, filename: str):
-    from fastapi.responses import FileResponse
-
     # Prevent path traversal
-    if ".." in filename or "/" in filename:
+    filepath = (SHARED_REPORTS / str(target_id) / filename).resolve()
+    base_dir = (SHARED_REPORTS / str(target_id)).resolve()
+    if not str(filepath).startswith(str(base_dir)):
         raise HTTPException(status_code=400, detail="Invalid filename")
-
-    filepath = SHARED_REPORTS / str(target_id) / filename
     if not filepath.is_file():
         raise HTTPException(status_code=404, detail="Report not found")
 
@@ -601,7 +600,6 @@ async def download_report(target_id: int, filename: str):
         path=str(filepath),
         media_type=media_type,
         filename=filename,
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
