@@ -27,6 +27,15 @@ from lib_webbh.logger import setup_logger
 # Diffing
 from lib_webbh.diffing import compute_diff, DiffResult
 
+# Correlation
+from lib_webbh.correlation import correlate_findings, CorrelationGroup
+
+# Shared Infrastructure
+from lib_webbh.shared_infra import is_shared_infra, InfraClassification
+
+# Queue monitoring
+from lib_webbh.queue_monitor import QueueHealth, assess_queue_health
+
 __all__ = [
     "get_engine",
     "get_session",
@@ -51,4 +60,10 @@ __all__ = [
     "setup_logger",
     "compute_diff",
     "DiffResult",
+    "correlate_findings",
+    "CorrelationGroup",
+    "is_shared_infra",
+    "InfraClassification",
+    "QueueHealth",
+    "assess_queue_health",
 ]
