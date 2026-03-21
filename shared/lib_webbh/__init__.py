@@ -24,6 +24,9 @@ from lib_webbh.messaging import push_task, listen_queue, get_pending
 # Logger
 from lib_webbh.logger import setup_logger
 
+# Diffing
+from lib_webbh.diffing import compute_diff, DiffResult
+
 __all__ = [
     "get_engine",
     "get_session",
@@ -46,4 +49,6 @@ __all__ = [
     "listen_queue",
     "get_pending",
     "setup_logger",
+    "compute_diff",
+    "DiffResult",
 ]
