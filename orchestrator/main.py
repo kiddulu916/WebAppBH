@@ -16,6 +16,7 @@ GET   /api/v1/stream/{id}          – SSE event stream per target
 POST  /api/v1/targets/{id}/reports – trigger report generation
 GET   /api/v1/targets/{id}/reports – list generated reports
 GET   /api/v1/targets/{id}/reports/{filename} – download a report
+POST  /api/v1/targets/{id}/rescan  – snapshot assets and queue rescan
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ from fastapi.responses import FileResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import attributes, selectinload
 
 from lib_webbh import (
@@ -613,6 +614,45 @@ async def download_report(target_id: int, filename: str):
         media_type=media_type,
         filename=filename,
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/targets/{target_id}/rescan — snapshot & queue rescan
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/targets/{target_id}/rescan", status_code=201)
+async def trigger_rescan(target_id: int):
+    """Snapshot current assets and queue a rescan for delta detection."""
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+        from lib_webbh.database import AssetSnapshot
+
+        max_scan = (await session.execute(
+            select(func.coalesce(func.max(AssetSnapshot.scan_number), 0))
+            .where(AssetSnapshot.target_id == target_id)
+        )).scalar()
+        next_scan = max_scan + 1
+
+        assets = (await session.execute(
+            select(Asset).where(Asset.target_id == target_id)
+        )).scalars().all()
+        asset_hashes = {a.asset_value: f"{a.asset_type}:{a.source_tool}" for a in assets}
+
+        snapshot = AssetSnapshot(
+            target_id=target_id, scan_number=next_scan,
+            asset_count=len(assets), asset_hashes=asset_hashes,
+        )
+        session.add(snapshot)
+        await session.commit()
+
+    await push_task("recon_queue", {
+        "target_id": target_id, "rescan": True, "snapshot_scan_number": next_scan,
+    })
+    return {"target_id": target_id, "status": "queued", "scan_number": next_scan}
 
 
 # ---------------------------------------------------------------------------
