@@ -89,6 +89,10 @@ class TargetCreate(BaseModel):
         default=None,
         description="Scope rules, rate limits, custom headers",
     )
+    playbook: str = Field(
+        default="wide_recon",
+        description="Playbook name: wide_recon, deep_webapp, api_focused, cloud_first",
+    )
 
 
 class ControlAction(BaseModel):
@@ -178,6 +182,13 @@ async def create_target(body: TargetCreate):
         "target_profile": body.target_profile or {},
     }, indent=2))
 
+    # Write playbook.json
+    from lib_webbh.playbooks import get_playbook
+    playbook_config = get_playbook(body.playbook)
+    (profile_dir / "playbook.json").write_text(
+        json.dumps(playbook_config.to_dict(), indent=2)
+    )
+
     # Generate tool-specific configs from target profile
     _generate_tool_configs(target.id, body.target_profile or {})
 
@@ -191,6 +202,7 @@ async def create_target(body: TargetCreate):
         "company_name": target.company_name,
         "base_domain": target.base_domain,
         "profile_path": str(profile_path),
+        "playbook": playbook_config.name,
     }
 
 
