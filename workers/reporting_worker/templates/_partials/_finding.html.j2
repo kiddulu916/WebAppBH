@@ -1,0 +1,30 @@
+<section class="finding severity-{{ group.severity | lower }}">
+    <h3>{{ group.title }}</h3>
+    <table class="finding-meta">
+        <tr><td><strong>Severity</strong></td><td class="sev-{{ group.severity | lower }}">{{ group.severity | upper }}</td></tr>
+        <tr><td><strong>CVSS Score</strong></td><td>{{ group.cvss_score }}</td></tr>
+        <tr><td><strong>Source Tool</strong></td><td>{{ group.source_tool or "Manual" }}</td></tr>
+        <tr><td><strong>Affected Assets</strong></td><td>{{ group.affected_assets | length }}</td></tr>
+    </table>
+
+    <h4>Description</h4>
+    <p>{{ group.description or "No description available." }}</p>
+
+    {% if show_poc %}
+    <h4>Proof of Concept</h4>
+    {% for asset in group.affected_assets %}
+    <div class="poc-block">
+        <p class="asset-label"><strong>{{ asset.asset_value }}</strong>{% if asset.port %} ({{ asset.protocol }}://{{ asset.asset_value }}:{{ asset.port }}){% endif %}</p>
+        {% if asset.poc %}
+        <pre class="poc">{{ asset.poc | e }}</pre>
+        {% endif %}
+        {% for img_path in asset.screenshot_paths %}
+        <img src="{{ img_path }}" alt="Screenshot for {{ asset.asset_value }}" class="screenshot" />
+        {% endfor %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <h4>Remediation</h4>
+    <p>{{ group.remediation or "No specific remediation advice available." }}</p>
+</section>

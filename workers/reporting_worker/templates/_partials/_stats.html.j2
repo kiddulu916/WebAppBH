@@ -1,0 +1,21 @@
+<section class="severity-summary">
+    <h2>Severity Distribution</h2>
+    <div class="stats-bar">
+        {% if summary_stats.critical > 0 %}
+        <div class="bar-segment critical" style="flex: {{ summary_stats.critical }};">{{ summary_stats.critical }} Critical</div>
+        {% endif %}
+        {% if summary_stats.high > 0 %}
+        <div class="bar-segment high" style="flex: {{ summary_stats.high }};">{{ summary_stats.high }} High</div>
+        {% endif %}
+        {% if summary_stats.medium > 0 %}
+        <div class="bar-segment medium" style="flex: {{ summary_stats.medium }};">{{ summary_stats.medium }} Medium</div>
+        {% endif %}
+        {% if summary_stats.low > 0 %}
+        <div class="bar-segment low" style="flex: {{ summary_stats.low }};">{{ summary_stats.low }} Low</div>
+        {% endif %}
+        {% if summary_stats.info > 0 %}
+        <div class="bar-segment info" style="flex: {{ summary_stats.info }};">{{ summary_stats.info }} Info</div>
+        {% endif %}
+    </div>
+    <p class="total">Total Findings: {{ summary_stats.total_findings }}</p>
+</section>

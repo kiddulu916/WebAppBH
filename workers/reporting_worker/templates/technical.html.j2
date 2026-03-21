@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="technical.css">
+    <title>Technical Security Report — {{ company_name }}</title>
+</head>
+<body>
+    <div class="cover">
+        <h1>Security Assessment</h1>
+        <h2>Full Technical Report</h2>
+        <p class="target">{{ company_name }} — {{ base_domain }}</p>
+        <p class="date">{{ generation_date }}</p>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>Table of Contents</h2>
+    <ol class="toc">
+        <li><a href="#summary">Executive Summary</a></li>
+        <li><a href="#findings">Detailed Findings</a></li>
+        {% for group in finding_groups %}
+        <li class="toc-finding"><a href="#finding-{{ loop.index }}">{{ group.title }} [{{ group.severity | upper }}]</a></li>
+        {% endfor %}
+        <li><a href="#appendix">Appendices</a></li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <section id="summary">
+        <h2>Executive Summary</h2>
+        {% include '_partials/_stats.html.j2' %}
+    </section>
+
+    <div class="page-break"></div>
+
+    <section id="findings">
+        <h2>Detailed Findings</h2>
+        {% for group in finding_groups %}
+        <div id="finding-{{ loop.index }}">
+            {% with show_poc=true %}
+            {% include '_partials/_finding.html.j2' %}
+            {% endwith %}
+        </div>
+        {% if not loop.last %}<div class="page-break"></div>{% endif %}
+        {% endfor %}
+    </section>
+
+    <div class="page-break"></div>
+
+    <section id="appendix">
+        <h2>Appendices</h2>
+
+        <h3>A. Asset Inventory</h3>
+        {% if assets %}
+        <table>
+            <thead><tr><th>Asset</th><th>Type</th><th>Source</th></tr></thead>
+            <tbody>
+                {% for a in assets %}
+                <tr><td>{{ a.asset_value }}</td><td>{{ a.asset_type }}</td><td>{{ a.source_tool or "-" }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No assets recorded.</p>
+        {% endif %}
+
+        <h3>B. Cloud Assets</h3>
+        {% if cloud_assets %}
+        <table>
+            <thead><tr><th>Provider</th><th>Type</th><th>URL</th><th>Public</th></tr></thead>
+            <tbody>
+                {% for ca in cloud_assets %}
+                <tr><td>{{ ca.provider }}</td><td>{{ ca.asset_type }}</td><td>{{ ca.url or "-" }}</td><td>{{ "Yes" if ca.is_public else "No" }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No cloud assets recorded.</p>
+        {% endif %}
+
+        <h3>C. API Schemas</h3>
+        {% if api_schemas %}
+        <table>
+            <thead><tr><th>Method</th><th>Path</th><th>Auth Required</th></tr></thead>
+            <tbody>
+                {% for s in api_schemas %}
+                <tr><td>{{ s.method }}</td><td>{{ s.path }}</td><td>{{ "Yes" if s.auth_required else "No" }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No API schemas recorded.</p>
+        {% endif %}
+    </section>
+</body>
+</html>

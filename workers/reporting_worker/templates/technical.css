@@ -1,0 +1,42 @@
+@page { size: A4; margin: 2cm; @bottom-center { content: "Page " counter(page) " of " counter(pages); font-size: 9pt; color: #888; } }
+body { font-family: "Helvetica Neue", Arial, sans-serif; color: #333; line-height: 1.5; }
+.cover { text-align: center; padding-top: 30%; }
+.cover h1 { font-size: 32pt; color: #1a1a2e; margin-bottom: 10px; }
+.cover h2 { font-size: 20pt; color: #555; margin-bottom: 40px; }
+.cover .target { font-size: 14pt; }
+.cover .date { font-size: 12pt; color: #888; }
+.page-break { page-break-after: always; }
+h2 { color: #1a1a2e; border-bottom: 2px solid #1a1a2e; padding-bottom: 5px; margin-top: 20px; }
+h3 { color: #333; margin-top: 15px; }
+h4 { color: #555; margin-top: 10px; }
+.toc { font-size: 12pt; }
+.toc li { margin: 4px 0; }
+.toc-finding { margin-left: 20px; }
+.stats-bar { display: flex; height: 40px; border-radius: 4px; overflow: hidden; margin: 15px 0; }
+.bar-segment { color: white; display: flex; align-items: center; justify-content: center; font-size: 10pt; font-weight: bold; }
+.bar-segment.critical { background: #dc3545; }
+.bar-segment.high { background: #fd7e14; }
+.bar-segment.medium { background: #ffc107; color: #333; }
+.bar-segment.low { background: #28a745; }
+.bar-segment.info { background: #6c757d; }
+.total { font-size: 14pt; font-weight: bold; }
+table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+th { background: #1a1a2e; color: white; padding: 6px 10px; text-align: left; font-size: 10pt; }
+td { padding: 6px 10px; border-bottom: 1px solid #ddd; font-size: 10pt; }
+.finding { margin-bottom: 20px; padding: 15px; border-radius: 4px; border-left: 4px solid #ccc; }
+.finding.severity-critical { border-left-color: #dc3545; background: #fff5f5; }
+.finding.severity-high { border-left-color: #fd7e14; background: #fff8f0; }
+.finding.severity-medium { border-left-color: #ffc107; background: #fffdf0; }
+.finding.severity-low { border-left-color: #28a745; background: #f0fff0; }
+.finding.severity-info { border-left-color: #6c757d; background: #f8f9fa; }
+.finding-meta { width: auto; margin-bottom: 10px; }
+.finding-meta td { border: none; padding: 3px 10px; }
+.sev-critical { color: #dc3545; font-weight: bold; }
+.sev-high { color: #fd7e14; font-weight: bold; }
+.sev-medium { color: #d4a017; font-weight: bold; }
+.sev-low { color: #28a745; }
+.sev-info { color: #6c757d; }
+pre.poc { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 4px; font-size: 9pt; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
+.poc-block { margin: 10px 0; }
+.asset-label { font-size: 10pt; color: #555; }
+.screenshot { max-width: 100%; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }

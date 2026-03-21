@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="executive.css">
+    <title>Executive Summary — {{ company_name }}</title>
+</head>
+<body>
+    <div class="cover">
+        <h1>Security Assessment</h1>
+        <h2>Executive Summary</h2>
+        <p class="target">{{ company_name }} — {{ base_domain }}</p>
+        <p class="date">{{ generation_date }}</p>
+    </div>
+
+    <div class="page-break"></div>
+
+    {% include '_partials/_stats.html.j2' %}
+
+    <section class="findings-table">
+        <h2>Findings Overview</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Title</th>
+                    <th>Severity</th>
+                    <th>CVSS</th>
+                    <th>Affected Assets</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for group in finding_groups %}
+                <tr class="sev-row-{{ group.severity | lower }}">
+                    <td>{{ loop.index }}</td>
+                    <td>{{ group.title }}</td>
+                    <td class="sev-{{ group.severity | lower }}">{{ group.severity | upper }}</td>
+                    <td>{{ group.cvss_score }}</td>
+                    <td>{{ group.affected_assets | length }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</body>
+</html>
