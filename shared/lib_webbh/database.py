@@ -148,6 +148,7 @@ class Target(TimestampMixin, Base):
     alerts: Mapped[list["Alert"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     api_schemas: Mapped[list["ApiSchema"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     mobile_apps: Mapped[list["MobileApp"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+    snapshots: Mapped[list["AssetSnapshot"]] = relationship(back_populates="target", cascade="all, delete-orphan")
 
 
 class Asset(TimestampMixin, Base):
@@ -369,3 +370,21 @@ class MobileApp(TimestampMixin, Base):
 
     target: Mapped["Target"] = relationship(back_populates="mobile_apps")
     asset: Mapped[Optional["Asset"]] = relationship(back_populates="mobile_apps")
+
+
+class AssetSnapshot(TimestampMixin, Base):
+    """Point-in-time snapshot of all assets for a target (recon diffing)."""
+
+    __tablename__ = "asset_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(ForeignKey("targets.id", ondelete="CASCADE"))
+    scan_number: Mapped[int] = mapped_column(Integer)
+    asset_count: Mapped[int] = mapped_column(Integer, default=0)
+    asset_hashes: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    target: Mapped["Target"] = relationship(back_populates="snapshots")
+
+    __table_args__ = (
+        UniqueConstraint("target_id", "scan_number", name="uq_snapshot_target_scan"),
+    )
