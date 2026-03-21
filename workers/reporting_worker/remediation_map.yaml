@@ -1,0 +1,55 @@
+xss:
+  keywords: ["xss", "cross-site scripting", "cross site scripting"]
+  fix: "Sanitize all user input and apply context-aware output encoding. Use Content-Security-Policy headers to restrict inline scripts. Prefer frameworks with auto-escaping (React, Jinja2 with autoescape)."
+
+sqli:
+  keywords: ["sql injection", "sqli", "sql inject"]
+  fix: "Use parameterized queries or prepared statements for all database interactions. Apply an ORM where possible. Validate and sanitize all user-supplied input before using it in queries."
+
+ssrf:
+  keywords: ["ssrf", "server-side request forgery", "server side request forgery"]
+  fix: "Restrict outbound requests to an allowlist of trusted hosts and schemes. Block access to internal/private IP ranges (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 169.254.169.254). Validate and sanitize all user-supplied URLs before making server-side requests."
+
+rce:
+  keywords: ["rce", "remote code execution", "command injection", "os command", "code execution"]
+  fix: "Avoid passing user input to system commands or code evaluation functions. Use safe APIs instead of shell invocations. If shell commands are unavoidable, use strict allowlists and parameterized interfaces (e.g., subprocess with argument lists, not shell=True)."
+
+idor:
+  keywords: ["idor", "insecure direct object reference", "broken access control", "authorization bypass"]
+  fix: "Enforce server-side authorization checks on every request that accesses a resource. Do not rely on client-supplied IDs alone; verify the authenticated user has permission to access the requested object. Use indirect reference maps or UUIDs where feasible."
+
+lfi:
+  keywords: ["lfi", "local file inclusion", "path traversal", "directory traversal", "file inclusion"]
+  fix: "Never use user-supplied input directly in file paths. Maintain an allowlist of permitted files or use indirect references. Normalize paths and reject any input containing traversal sequences (../, %2e%2e). Restrict filesystem access to the application's document root."
+
+open_redirect:
+  keywords: ["open redirect", "url redirect", "unvalidated redirect"]
+  fix: "Validate all redirect targets against an allowlist of trusted domains. Avoid using user-supplied input directly in redirect URLs. If redirects must be dynamic, use indirect reference maps or ensure the target is a relative path within your domain."
+
+xxe:
+  keywords: ["xxe", "xml external entity", "xml entity"]
+  fix: "Disable external entity and DTD processing in all XML parsers. Use defusedxml (Python) or equivalent safe-by-default libraries. Prefer JSON over XML where possible. If XML is required, validate and sanitize all input before parsing."
+
+csrf:
+  keywords: ["csrf", "cross-site request forgery", "cross site request forgery"]
+  fix: "Implement anti-CSRF tokens (synchronizer tokens or double-submit cookies) on all state-changing forms and API endpoints. Use SameSite cookie attributes. Verify the Origin/Referer header on incoming requests as a secondary defense."
+
+cors:
+  keywords: ["cors", "cross-origin resource sharing", "access-control-allow-origin"]
+  fix: "Configure CORS policies to allow only trusted origins. Never reflect arbitrary Origin headers in Access-Control-Allow-Origin. Avoid using wildcard (*) with credentials. Validate allowed origins against an explicit allowlist on the server side."
+
+missing_headers:
+  keywords: ["missing header", "security header", "x-frame-options", "content-security-policy", "strict-transport-security", "x-content-type-options"]
+  fix: "Add recommended security headers to all responses: Strict-Transport-Security (HSTS), Content-Security-Policy (CSP), X-Content-Type-Options: nosniff, X-Frame-Options: DENY or SAMEORIGIN, and Referrer-Policy. Use a web application firewall or middleware to enforce these consistently."
+
+ssl_tls:
+  keywords: ["ssl", "tls", "certificate", "weak cipher", "expired cert", "self-signed"]
+  fix: "Enforce TLS 1.2 or higher on all endpoints. Disable weak cipher suites (RC4, DES, 3DES, export ciphers). Use valid certificates from a trusted CA and enable HSTS with a long max-age. Automate certificate renewal to prevent expiration."
+
+information_disclosure:
+  keywords: ["information disclosure", "info leak", "sensitive data", "data exposure", "verbose error", "stack trace"]
+  fix: "Remove detailed error messages and stack traces from production responses. Disable directory listings and debug endpoints. Strip unnecessary server version headers. Review responses for unintended leakage of internal paths, credentials, or PII."
+
+subdomain_takeover:
+  keywords: ["subdomain takeover", "dangling cname", "unclaimed subdomain"]
+  fix: "Audit DNS records regularly and remove CNAME entries pointing to deprovisioned services. Claim or reserve relevant resources on cloud platforms before creating DNS records. Monitor for dangling records using automated tooling and respond promptly when services are decommissioned."
