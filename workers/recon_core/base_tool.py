@@ -23,6 +23,7 @@ from lib_webbh import (
     setup_logger,
 )
 from lib_webbh.scope import ScopeManager, ScopeResult
+from lib_webbh.shared_infra import is_shared_infra
 
 from workers.recon_core.concurrency import WeightClass, get_semaphore
 
@@ -183,6 +184,27 @@ class ReconTool(ABC):
         if not scope_result.in_scope:
             return None
 
+        # Shared-infra drift detection
+        tech_data: dict | None = None
+        infra = is_shared_infra(item)
+        if infra.is_shared:
+            log.warning(
+                "Shared infra detected — flagging for review",
+                extra={"asset": item, "provider": infra.provider, "category": infra.category},
+            )
+            tech_data = {
+                "shared_infra": True,
+                "shared_infra_provider": infra.provider,
+                "shared_infra_category": infra.category,
+            }
+            await push_task(f"events:{target_id}", {
+                "event": "SCOPE_DRIFT",
+                "target_id": target_id,
+                "asset_value": item,
+                "provider": infra.provider,
+                "category": infra.category,
+            })
+
         async with get_session() as session:
             stmt = select(Asset).where(
                 Asset.target_id == target_id,
@@ -198,6 +220,7 @@ class ReconTool(ABC):
                 asset_type=scope_result.asset_type,
                 asset_value=scope_result.normalized,
                 source_tool=self.name,
+                tech=tech_data,
             )
             session.add(asset)
             await session.commit()
@@ -220,6 +243,21 @@ class ReconTool(ABC):
             if not scope_result.in_scope:
                 return None
 
+            # Shared-infra drift detection
+            infra = is_shared_infra(ip)
+            if infra.is_shared:
+                log.warning(
+                    "Shared infra detected — flagging for review",
+                    extra={"asset": ip, "provider": infra.provider, "category": infra.category},
+                )
+                await push_task(f"events:{target_id}", {
+                    "event": "SCOPE_DRIFT",
+                    "target_id": target_id,
+                    "asset_value": ip,
+                    "provider": infra.provider,
+                    "category": infra.category,
+                })
+
             async with get_session() as session:
                 stmt = select(Asset).where(
                     Asset.target_id == target_id,
@@ -228,11 +266,19 @@ class ReconTool(ABC):
                 result = await session.execute(stmt)
                 asset = result.scalar_one_or_none()
                 if asset is None:
+                    tech_data = None
+                    if infra.is_shared:
+                        tech_data = {
+                            "shared_infra": True,
+                            "shared_infra_provider": infra.provider,
+                            "shared_infra_category": infra.category,
+                        }
                     asset = Asset(
                         target_id=target_id,
                         asset_type=scope_result.asset_type,
                         asset_value=scope_result.normalized,
                         source_tool=self.name,
+                        tech=tech_data,
                     )
                     session.add(asset)
                     await session.flush()
@@ -310,6 +356,21 @@ class ReconTool(ABC):
             if not scope_result.in_scope:
                 return None
 
+            # Shared-infra drift detection
+            infra = is_shared_infra(host)
+            if infra.is_shared:
+                log.warning(
+                    "Shared infra detected — flagging for review",
+                    extra={"asset": host, "provider": infra.provider, "category": infra.category},
+                )
+                await push_task(f"events:{target_id}", {
+                    "event": "SCOPE_DRIFT",
+                    "target_id": target_id,
+                    "asset_value": host,
+                    "provider": infra.provider,
+                    "category": infra.category,
+                })
+
             async with get_session() as session:
                 stmt = select(Asset).where(
                     Asset.target_id == target_id,
@@ -320,12 +381,34 @@ class ReconTool(ABC):
                 if asset is None:
                     return None
 
-                existing = set(asset.tech or [])
-                merged = existing | set(new_techs)
-                if merged == existing:
-                    return False
+                # Merge tech list — handle both list and dict formats
+                existing = asset.tech if isinstance(asset.tech, dict) else {}
+                if isinstance(asset.tech, list):
+                    existing_set = set(asset.tech)
+                    merged_set = existing_set | set(new_techs)
+                    if merged_set == existing_set and not infra.is_shared:
+                        return False
+                    asset.tech = sorted(merged_set)
+                else:
+                    existing_set = set()
+                    asset.tech = sorted(set(new_techs))
 
-                asset.tech = sorted(merged)
+                # Merge shared-infra metadata into tech column
+                if infra.is_shared:
+                    if isinstance(asset.tech, list):
+                        asset.tech = {
+                            "stack": asset.tech,
+                            "shared_infra": True,
+                            "shared_infra_provider": infra.provider,
+                            "shared_infra_category": infra.category,
+                        }
+                    else:
+                        tech_dict = asset.tech if isinstance(asset.tech, dict) else {}
+                        tech_dict["shared_infra"] = True
+                        tech_dict["shared_infra_provider"] = infra.provider
+                        tech_dict["shared_infra_category"] = infra.category
+                        asset.tech = tech_dict
+
                 flag_modified(asset, "tech")
                 await session.commit()
                 return True
