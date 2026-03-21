@@ -1,0 +1,37 @@
+# Vulnerability Report — {{ company_name }} ({{ base_domain }})
+
+**Report Date:** {{ generation_date }}
+**Findings:** {{ summary_stats.total_findings }} total (Critical: {{ summary_stats.critical }}, High: {{ summary_stats.high }}, Medium: {{ summary_stats.medium }}, Low: {{ summary_stats.low }}, Info: {{ summary_stats.info }})
+
+---
+{% for group in finding_groups %}
+
+## [{{ group.severity | upper }}] {{ group.title }}
+
+**CVSS:** {{ group.cvss_score }} | **Tool:** {{ group.source_tool or "Manual" }}
+
+### Description
+
+{{ group.description or "No description available." }}
+
+### Proof of Concept
+{% for asset in group.affected_assets %}
+
+**Target:** {{ asset.asset_value }}{% if asset.port %} (port {{ asset.port }}){% endif %}
+
+```
+{{ asset.poc or "No PoC available." }}
+```
+{% endfor %}
+
+### Affected Assets
+{% for asset in group.affected_assets %}
+- {{ asset.asset_value }}{% if asset.port %} ({{ asset.protocol }}:{{ asset.port }}){% endif %}
+{% endfor %}
+
+### Remediation
+
+{{ group.remediation or "No specific remediation advice available." }}
+
+---
+{% endfor %}

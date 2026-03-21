@@ -1,0 +1,39 @@
+# Security Assessment Report — {{ company_name }} ({{ base_domain }})
+
+**Date:** {{ generation_date }}
+**Total Findings:** {{ summary_stats.total_findings }}
+**Severity Breakdown:** Critical: {{ summary_stats.critical }} | High: {{ summary_stats.high }} | Medium: {{ summary_stats.medium }} | Low: {{ summary_stats.low }} | Info: {{ summary_stats.info }}
+
+---
+{% for group in finding_groups %}
+
+## {{ group.title }}
+
+**Severity:** {{ group.severity | upper }}
+**CVSS Score:** {{ group.cvss_score }}
+**Source Tool:** {{ group.source_tool or "Manual" }}
+
+### Summary
+
+{{ group.description or "No description available." }}
+
+### Steps To Reproduce
+{% for asset in group.affected_assets %}
+
+**Asset:** {{ asset.asset_value }}{% if asset.port %} ({{ asset.protocol }}://{{ asset.asset_value }}:{{ asset.port }}){% endif %}
+
+```
+{{ asset.poc or "No PoC available." }}
+```
+{% endfor %}
+
+### Impact
+
+This vulnerability is rated **{{ group.severity | upper }}** (CVSS {{ group.cvss_score }}). {% if group.severity.lower() == "critical" %}Immediate remediation is strongly recommended.{% elif group.severity.lower() == "high" %}Remediation should be prioritized.{% else %}Review and remediate as part of regular security maintenance.{% endif %}
+
+### Recommended Fix
+
+{{ group.remediation or "No specific remediation advice available." }}
+
+---
+{% endfor %}
