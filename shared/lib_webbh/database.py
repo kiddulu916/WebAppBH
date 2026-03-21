@@ -269,6 +269,8 @@ class Vulnerability(TimestampMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     poc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     source_tool: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    cvss_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    remediation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     target: Mapped["Target"] = relationship(back_populates="vulnerabilities")
     asset: Mapped[Optional["Asset"]] = relationship(back_populates="vulnerabilities")
