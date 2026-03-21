@@ -13,6 +13,9 @@ PATCH /api/v1/targets/{target_id}  – update target profile (headers, rate limi
 GET   /api/v1/status               – real-time job states
 POST  /api/v1/control              – pause / stop / restart workers
 GET   /api/v1/stream/{id}          – SSE event stream per target
+POST  /api/v1/targets/{id}/reports – trigger report generation
+GET   /api/v1/targets/{id}/reports – list generated reports
+GET   /api/v1/targets/{id}/reports/{filename} – download a report
 """
 
 from __future__ import annotations
@@ -59,6 +62,7 @@ logger = setup_logger("orchestrator")
 API_KEY = os.environ.get("WEB_APP_BH_API_KEY", "")
 SHARED_CONFIG = Path(os.environ.get("SHARED_CONFIG_DIR", "/app/shared/config"))
 SHARED_RAW = Path(os.environ.get("SHARED_RAW_DIR", "/app/shared/raw"))
+SHARED_REPORTS = Path(os.environ.get("SHARED_REPORTS_DIR", "/app/shared/reports"))
 
 # ---------------------------------------------------------------------------
 # Security — X-API-KEY header
@@ -98,6 +102,11 @@ class AlertUpdate(BaseModel):
 class TargetProfileUpdate(BaseModel):
     custom_headers: Optional[dict] = None
     rate_limits: Optional[dict] = None
+
+
+class ReportCreate(BaseModel):
+    formats: list[str] = Field(description="Report formats to generate: hackerone_md, bugcrowd_md, executive_pdf, technical_pdf")
+    platform: str = Field(default="hackerone", description="Target platform: hackerone or bugcrowd")
 
 
 # ---------------------------------------------------------------------------
@@ -518,6 +527,82 @@ async def update_target_profile(target_id: int, body: TargetProfileUpdate):
         "target_id": target_id,
         "target_profile": target.target_profile,
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/targets/{target_id}/reports — trigger report generation
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/targets/{target_id}/reports", status_code=201)
+async def create_report(target_id: int, body: ReportCreate):
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+        vuln_count = (await session.execute(
+            select(Vulnerability).where(Vulnerability.target_id == target_id)
+        )).scalars().all()
+        if not vuln_count:
+            raise HTTPException(status_code=400, detail="No vulnerabilities found for this target")
+
+    msg_id = await push_task("report_queue", {
+        "target_id": target_id,
+        "formats": body.formats,
+        "platform": body.platform,
+    })
+
+    logger.info("Report generation queued", extra={"target_id": target_id, "formats": body.formats})
+
+    return {"job_id": msg_id, "status": "queued", "formats": body.formats}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/targets/{target_id}/reports — list generated reports
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/targets/{target_id}/reports")
+async def list_reports(target_id: int):
+    report_dir = SHARED_REPORTS / str(target_id)
+    if not report_dir.is_dir():
+        return {"reports": []}
+
+    reports = []
+    for f in sorted(report_dir.iterdir()):
+        if f.is_file() and not f.name.startswith("."):
+            stat = f.stat()
+            reports.append({
+                "filename": f.name,
+                "format": "pdf" if f.suffix == ".pdf" else "markdown",
+                "size_bytes": stat.st_size,
+                "created_at": datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc).isoformat(),
+            })
+
+    return {"reports": reports}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/targets/{target_id}/reports/{filename} — download a report
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/targets/{target_id}/reports/{filename}")
+async def download_report(target_id: int, filename: str):
+    from fastapi.responses import FileResponse
+
+    # Prevent path traversal
+    if ".." in filename or "/" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    filepath = SHARED_REPORTS / str(target_id) / filename
+    if not filepath.is_file():
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    media_type = "application/pdf" if filepath.suffix == ".pdf" else "text/markdown"
+    return FileResponse(
+        path=str(filepath),
+        media_type=media_type,
+        filename=filename,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 # ---------------------------------------------------------------------------
