@@ -17,6 +17,7 @@ POST  /api/v1/targets/{id}/reports – trigger report generation
 GET   /api/v1/targets/{id}/reports – list generated reports
 GET   /api/v1/targets/{id}/reports/{filename} – download a report
 POST  /api/v1/targets/{id}/rescan  – snapshot assets and queue rescan
+GET   /api/v1/vulnerabilities/{id}/draft – draft vuln report for platform
 """
 
 from __future__ import annotations
@@ -653,6 +654,35 @@ async def trigger_rescan(target_id: int):
         "target_id": target_id, "rescan": True, "snapshot_scan_number": next_scan,
     })
     return {"target_id": target_id, "status": "queued", "scan_number": next_scan}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/vulnerabilities/{vuln_id}/draft — draft report for platform
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/vulnerabilities/{vuln_id}/draft")
+async def draft_vuln_report(
+    vuln_id: int,
+    platform: str = Query(default="hackerone", description="hackerone or bugcrowd"),
+):
+    from lib_webbh.report_templates import render_vuln_report, Platform
+    platform_enum = Platform.HACKERONE if platform == "hackerone" else Platform.BUGCROWD
+
+    async with get_session() as session:
+        vuln = (await session.execute(
+            select(Vulnerability).where(Vulnerability.id == vuln_id)
+            .options(selectinload(Vulnerability.asset))
+        )).scalar_one_or_none()
+        if vuln is None:
+            raise HTTPException(status_code=404, detail="Vulnerability not found")
+
+        vuln_dict = {
+            "title": vuln.title, "severity": vuln.severity,
+            "asset_value": vuln.asset.asset_value if vuln.asset else "N/A",
+            "description": vuln.description, "poc": vuln.poc,
+            "source_tool": vuln.source_tool, "cvss_score": vuln.cvss_score,
+        }
+    draft = render_vuln_report(vuln_dict, platform_enum)
+    return {"vuln_id": vuln_id, "platform": platform, "draft": draft}
 
 
 # ---------------------------------------------------------------------------
