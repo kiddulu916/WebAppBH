@@ -162,6 +162,11 @@ class ScheduleUpdate(BaseModel):
     playbook: Optional[str] = None
 
 
+class ApiKeyUpdate(BaseModel):
+    shodan_api_key: Optional[str] = None
+    securitytrails_api_key: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Lifespan — start / stop background tasks
 # ---------------------------------------------------------------------------
@@ -1150,6 +1155,144 @@ async def export_findings(
         )
     else:
         return {"target_id": target_id, "count": len(rows), "vulnerabilities": rows}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/config/api_keys — check which intel API keys are set
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/config/api_keys")
+async def get_api_key_status():
+    return {"keys": get_available_intel_sources()}
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/v1/config/api_keys — update intel API keys at runtime
+# ---------------------------------------------------------------------------
+@app.put("/api/v1/config/api_keys")
+async def update_api_keys(body: ApiKeyUpdate):
+    env_lines: list[str] = []
+
+    if body.shodan_api_key is not None:
+        os.environ["SHODAN_API_KEY"] = body.shodan_api_key
+        _intel_mod.SHODAN_API_KEY = body.shodan_api_key
+        env_lines.append(f"SHODAN_API_KEY={body.shodan_api_key}")
+
+    if body.securitytrails_api_key is not None:
+        os.environ["SECURITYTRAILS_API_KEY"] = body.securitytrails_api_key
+        _intel_mod.SECURITYTRAILS_API_KEY = body.securitytrails_api_key
+        env_lines.append(f"SECURITYTRAILS_API_KEY={body.securitytrails_api_key}")
+
+    # Persist to .env.intel file
+    if env_lines:
+        env_file = SHARED_CONFIG / ".env.intel"
+        env_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Merge with existing content
+        existing: dict[str, str] = {}
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, v = line.split("=", 1)
+                    existing[k] = v
+        for line in env_lines:
+            k, v = line.split("=", 1)
+            existing[k] = v
+        env_file.write_text(
+            "\n".join(f"{k}={v}" for k, v in existing.items()) + "\n"
+        )
+
+    return {"keys": get_available_intel_sources()}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/targets/{target_id}/enrich — run intel enrichment
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/targets/{target_id}/enrich")
+async def enrich_target(target_id: int):
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Target not found")
+        domain = target.base_domain
+
+    # Run enrichment from all available sources
+    shodan_result = await enrich_shodan(domain)
+    st_result = await enrich_securitytrails(domain)
+
+    # Aggregate unique subdomains and IPs
+    all_subdomains: list[str] = []
+    all_ips: list[str] = []
+    for r in (shodan_result, st_result):
+        for s in r.subdomains:
+            if s not in all_subdomains:
+                all_subdomains.append(s)
+        for ip in r.ips:
+            if ip not in all_ips:
+                all_ips.append(ip)
+
+    # Insert into DB (skip duplicates via get-or-create)
+    inserted_subdomains = 0
+    inserted_ips = 0
+
+    async with get_session() as session:
+        for sub in all_subdomains:
+            existing = (await session.execute(
+                select(Asset).where(
+                    Asset.target_id == target_id,
+                    Asset.asset_type == "subdomain",
+                    Asset.asset_value == sub,
+                )
+            )).scalar_one_or_none()
+            if existing is None:
+                session.add(Asset(
+                    target_id=target_id,
+                    asset_type="subdomain",
+                    asset_value=sub,
+                    source_tool="intel_enrichment",
+                ))
+                inserted_subdomains += 1
+
+        for ip in all_ips:
+            existing = (await session.execute(
+                select(Asset).where(
+                    Asset.target_id == target_id,
+                    Asset.asset_type == "ip",
+                    Asset.asset_value == ip,
+                )
+            )).scalar_one_or_none()
+            if existing is None:
+                session.add(Asset(
+                    target_id=target_id,
+                    asset_type="ip",
+                    asset_value=ip,
+                    source_tool="intel_enrichment",
+                ))
+                inserted_ips += 1
+
+        await session.commit()
+
+    return {
+        "target_id": target_id,
+        "domain": domain,
+        "sources": {
+            "shodan": {
+                "subdomains": len(shodan_result.subdomains),
+                "ips": len(shodan_result.ips),
+                "ports": len(shodan_result.ports),
+            },
+            "securitytrails": {
+                "subdomains": len(st_result.subdomains),
+                "ips": len(st_result.ips),
+            },
+        },
+        "total_subdomains": len(all_subdomains),
+        "total_ips": len(all_ips),
+        "inserted_subdomains": inserted_subdomains,
+        "inserted_ips": inserted_ips,
+    }
 
 
 # ---------------------------------------------------------------------------

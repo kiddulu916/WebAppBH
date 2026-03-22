@@ -47,6 +47,14 @@ from lib_webbh.secret_scanner import scan_text, SecretMatch
 # Cron utilities
 from lib_webbh.cron_utils import next_run, is_valid_cron
 
+# Intel enrichment
+from lib_webbh.intel_enrichment import (
+    IntelResult,
+    enrich_shodan,
+    enrich_securitytrails,
+    get_available_intel_sources,
+)
+
 __all__ = [
     "get_engine",
     "get_session",
@@ -86,4 +94,8 @@ __all__ = [
     "SecretMatch",
     "next_run",
     "is_valid_cron",
+    "IntelResult",
+    "enrich_shodan",
+    "enrich_securitytrails",
+    "get_available_intel_sources",
 ]
