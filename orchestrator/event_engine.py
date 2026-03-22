@@ -444,6 +444,7 @@ async def _heartbeat_cycle() -> None:
 
     if not running_jobs:
         await _promote_queued_jobs()
+        await _check_scheduled_scans()
         return
 
     # Gather container statuses concurrently
@@ -494,6 +495,9 @@ async def _heartbeat_cycle() -> None:
 
     # Promote queued jobs
     await _promote_queued_jobs()
+
+    # Check scheduled scans
+    await _check_scheduled_scans()
 
 
 async def _handle_zombie(job: JobState, now: datetime) -> None:
@@ -548,6 +552,41 @@ async def _handle_zombie(job: JobState, now: datetime) -> None:
         worker_key = parts[0] if parts else None
         if worker_key and worker_key in WORKER_IMAGES:
             await _trigger_worker(job.target_id, worker_key, job.current_phase or worker_key)
+
+
+async def _check_scheduled_scans() -> None:
+    """Trigger rescans for scheduled scans whose next_run_at has passed."""
+    from lib_webbh.database import ScheduledScan
+    from lib_webbh.cron_utils import next_run
+
+    now = datetime.now(timezone.utc)
+    async with get_session() as session:
+        stmt = select(ScheduledScan).where(
+            ScheduledScan.enabled == True,
+            ScheduledScan.next_run_at != None,
+            ScheduledScan.next_run_at <= now,
+        )
+        result = await session.execute(stmt)
+        due = result.scalars().all()
+
+    for scan in due:
+        logger.info("Scheduled scan triggered", extra={
+            "target_id": scan.target_id, "cron": scan.cron_expression,
+        })
+        await push_task("recon_queue", {
+            "target_id": scan.target_id,
+            "rescan": True,
+            "scheduled": True,
+            "playbook": scan.playbook,
+        })
+        async with get_session() as session:
+            stmt_update = (
+                update(ScheduledScan)
+                .where(ScheduledScan.id == scan.id)
+                .values(last_run_at=now, next_run_at=next_run(scan.cron_expression, now))
+            )
+            await session.execute(stmt_update)
+            await session.commit()
 
 
 async def _promote_queued_jobs() -> None:

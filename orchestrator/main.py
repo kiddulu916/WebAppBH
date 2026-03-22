@@ -967,6 +967,125 @@ async def bounty_stats(target_id: Optional[int] = Query(default=None)):
 
 
 # ---------------------------------------------------------------------------
+# POST /api/v1/schedules — create a scheduled scan
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/schedules", status_code=201)
+async def create_schedule(body: ScheduleCreate):
+    if not is_valid_cron(body.cron_expression):
+        raise HTTPException(status_code=400, detail="Invalid cron expression")
+
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == body.target_id)
+        )).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+        computed_next = next_run(body.cron_expression)
+        schedule = ScheduledScan(
+            target_id=body.target_id,
+            cron_expression=body.cron_expression,
+            playbook=body.playbook,
+            enabled=True,
+            next_run_at=computed_next,
+        )
+        session.add(schedule)
+        await session.commit()
+        await session.refresh(schedule)
+
+    return {
+        "id": schedule.id,
+        "target_id": schedule.target_id,
+        "cron_expression": schedule.cron_expression,
+        "playbook": schedule.playbook,
+        "enabled": schedule.enabled,
+        "next_run_at": schedule.next_run_at.isoformat() if schedule.next_run_at else None,
+        "last_run_at": schedule.last_run_at.isoformat() if schedule.last_run_at else None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/schedules — list schedules
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/schedules")
+async def list_schedules(target_id: Optional[int] = Query(default=None)):
+    async with get_session() as session:
+        stmt = select(ScheduledScan)
+        if target_id is not None:
+            stmt = stmt.where(ScheduledScan.target_id == target_id)
+        result = await session.execute(stmt)
+        schedules = result.scalars().all()
+
+    return [
+        {
+            "id": s.id,
+            "target_id": s.target_id,
+            "cron_expression": s.cron_expression,
+            "playbook": s.playbook,
+            "enabled": s.enabled,
+            "next_run_at": s.next_run_at.isoformat() if s.next_run_at else None,
+            "last_run_at": s.last_run_at.isoformat() if s.last_run_at else None,
+        }
+        for s in schedules
+    ]
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/schedules/{schedule_id} — update schedule
+# ---------------------------------------------------------------------------
+@app.patch("/api/v1/schedules/{schedule_id}")
+async def update_schedule(schedule_id: int, body: ScheduleUpdate):
+    async with get_session() as session:
+        schedule = (await session.execute(
+            select(ScheduledScan).where(ScheduledScan.id == schedule_id)
+        )).scalar_one_or_none()
+        if schedule is None:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+
+        if body.cron_expression is not None:
+            if not is_valid_cron(body.cron_expression):
+                raise HTTPException(status_code=400, detail="Invalid cron expression")
+            schedule.cron_expression = body.cron_expression
+            schedule.next_run_at = next_run(body.cron_expression)
+
+        if body.enabled is not None:
+            schedule.enabled = body.enabled
+
+        if body.playbook is not None:
+            schedule.playbook = body.playbook
+
+        await session.commit()
+        await session.refresh(schedule)
+
+    return {
+        "id": schedule.id,
+        "target_id": schedule.target_id,
+        "cron_expression": schedule.cron_expression,
+        "playbook": schedule.playbook,
+        "enabled": schedule.enabled,
+        "next_run_at": schedule.next_run_at.isoformat() if schedule.next_run_at else None,
+        "last_run_at": schedule.last_run_at.isoformat() if schedule.last_run_at else None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/v1/schedules/{schedule_id} — delete schedule
+# ---------------------------------------------------------------------------
+@app.delete("/api/v1/schedules/{schedule_id}", status_code=204)
+async def delete_schedule(schedule_id: int):
+    async with get_session() as session:
+        schedule = (await session.execute(
+            select(ScheduledScan).where(ScheduledScan.id == schedule_id)
+        )).scalar_one_or_none()
+        if schedule is None:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        await session.delete(schedule)
+        await session.commit()
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Config generation (called on target init)
 # ---------------------------------------------------------------------------
 def _generate_tool_configs(target_id: int, profile: dict) -> None:
