@@ -41,6 +41,9 @@ from lib_webbh.shared_infra import is_shared_infra, InfraClassification
 # Queue monitoring
 from lib_webbh.queue_monitor import QueueHealth, assess_queue_health
 
+# Secret scanning
+from lib_webbh.secret_scanner import scan_text, SecretMatch
+
 __all__ = [
     "get_engine",
     "get_session",
@@ -76,4 +79,6 @@ __all__ = [
     "InfraClassification",
     "QueueHealth",
     "assess_queue_health",
+    "scan_text",
+    "SecretMatch",
 ]
