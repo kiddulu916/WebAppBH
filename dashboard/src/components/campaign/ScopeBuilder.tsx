@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
@@ -70,6 +70,18 @@ export default function ScopeBuilder() {
   const [baseDomain, setBaseDomain] = useState("");
   const [platform, setPlatform] = useState<string>("HackerOne");
   const [notes, setNotes] = useState("");
+
+  /* ---- Intel API Keys ---- */
+  const [shodanKey, setShodanKey] = useState("");
+  const [secTrailsKey, setSecTrailsKey] = useState("");
+  const [apiKeyStatus, setApiKeyStatus] = useState<Record<string, boolean>>({
+    shodan: false,
+    securitytrails: false,
+  });
+
+  useEffect(() => {
+    api.getApiKeyStatus().then((res) => setApiKeyStatus(res.keys)).catch(() => {});
+  }, []);
 
   /* ---- Step 1: Scope Rules ---- */
   const [inScopeDomains, setInScopeDomains] = useState("");
@@ -144,6 +156,14 @@ export default function ScopeBuilder() {
     };
 
     try {
+      // Save API keys if entered
+      if (shodanKey || secTrailsKey) {
+        await api.updateApiKeys({
+          ...(shodanKey ? { shodan_api_key: shodanKey } : {}),
+          ...(secTrailsKey ? { securitytrails_api_key: secTrailsKey } : {}),
+        });
+      }
+
       const res = await api.createTarget(payload);
       setActiveTarget({
         id: res.target_id,
@@ -290,6 +310,60 @@ export default function ScopeBuilder() {
                 rows={3}
                 className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted input-focus"
               />
+            </div>
+
+            {/* ---- API Keys for Intel Enrichment ---- */}
+            <div className="rounded-md border border-border bg-bg-tertiary p-3 space-y-3">
+              <span className="section-label">Intel Enrichment API Keys</span>
+              <p className="text-xs text-text-muted">
+                Optional. Enable passive OSINT enrichment before recon starts.
+              </p>
+
+              {/* Status badges */}
+              <div className="flex gap-2">
+                {Object.entries(apiKeyStatus).map(([key, configured]) => (
+                  <span
+                    key={key}
+                    className={`rounded-full px-2 py-0.5 text-xs font-mono ${
+                      configured
+                        ? "bg-neon-green/15 text-neon-green"
+                        : "bg-bg-surface text-text-muted"
+                    }`}
+                  >
+                    {key}: {configured ? "configured" : "not set"}
+                  </span>
+                ))}
+              </div>
+
+              <div>
+                <label className="section-label mb-1.5 block">Shodan API Key</label>
+                <input
+                  type="password"
+                  value={shodanKey}
+                  onChange={(e) => setShodanKey(e.target.value)}
+                  placeholder={
+                    apiKeyStatus.shodan ? "••••••••••••" : "Enter Shodan API key"
+                  }
+                  className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
+                />
+              </div>
+
+              <div>
+                <label className="section-label mb-1.5 block">
+                  SecurityTrails API Key
+                </label>
+                <input
+                  type="password"
+                  value={secTrailsKey}
+                  onChange={(e) => setSecTrailsKey(e.target.value)}
+                  placeholder={
+                    apiKeyStatus.securitytrails
+                      ? "••••••••••••"
+                      : "Enter SecurityTrails API key"
+                  }
+                  className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
+                />
+              </div>
             </div>
           </div>
         )}
