@@ -1,6 +1,7 @@
 # tests/test_event_engine.py
 """Tests for orchestrator.event_engine — triggers and heartbeat."""
 
+import asyncio
 import os
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -265,21 +266,30 @@ async def seed_zombie_job(db):
 
 @pytest.mark.asyncio
 async def test_zombie_triggers_restart(seed_zombie_job, mock_wm):
-    """Zombie job should be killed, marked FAILED, and restarted."""
+    """Zombie job should be killed, marked FAILED, and scheduled for delayed restart with backoff."""
     mock_wm.get_container_status = AsyncMock(return_value=None)
 
     from orchestrator.event_engine import _heartbeat_cycle
-    await _heartbeat_cycle()
 
-    # Worker should have been restarted (start_worker called)
-    mock_wm.start_worker.assert_called()
+    with patch("orchestrator.event_engine.asyncio") as mock_asyncio:
+        mock_loop = MagicMock()
+        mock_asyncio.get_event_loop.return_value = mock_loop
+        mock_asyncio.gather = asyncio.gather
+        mock_asyncio.sleep = asyncio.sleep
+        await _heartbeat_cycle()
 
-    # Alert should exist
+        # Delayed restart should be scheduled via call_later with 30s backoff (first retry)
+        mock_loop.call_later.assert_called_once()
+        backoff_delay = mock_loop.call_later.call_args[0][0]
+        assert backoff_delay == 30  # 30 * (2 ** 0) = 30s for first retry
+
+    # Alert should exist with backoff info
     async with get_session() as session:
         from sqlalchemy import select
         result = await session.execute(select(Alert).where(Alert.alert_type == "ZOMBIE_RESTART"))
         alert = result.scalar_one()
         assert "webbh-fuzzing-tzombie" in alert.message
+        assert "backoff" in alert.message
 
 
 @pytest_asyncio.fixture

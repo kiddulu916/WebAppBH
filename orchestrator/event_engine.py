@@ -501,7 +501,7 @@ async def _heartbeat_cycle() -> None:
 
 
 async def _handle_zombie(job: JobState, now: datetime) -> None:
-    """Kill a zombie job, create alert, and restart if within retry limit."""
+    """Kill a zombie job, create alert, and restart with exponential backoff."""
     logger.warning(
         "ZOMBIE_RESTART — killing unresponsive job",
         extra={"container": job.container_name, "last_seen": str(job.last_seen)},
@@ -533,13 +533,13 @@ async def _handle_zombie(job: JobState, now: datetime) -> None:
             )
             session.add(alert)
         else:
+            backoff_seconds = 30 * (2 ** retry_count)
             alert = Alert(
                 target_id=job.target_id,
                 alert_type="ZOMBIE_RESTART",
-                message=f"Container {job.container_name} was unresponsive for >{ZOMBIE_TIMEOUT}s. Restarting (attempt {retry_count + 1}/{ZOMBIE_MAX_RETRIES}).",
+                message=f"Container {job.container_name} unresponsive for >{ZOMBIE_TIMEOUT}s. Retry {retry_count + 1}/{ZOMBIE_MAX_RETRIES} after {backoff_seconds}s backoff.",
             )
             session.add(alert)
-
         await session.commit()
 
     if retry_count >= ZOMBIE_MAX_RETRIES:
@@ -548,10 +548,23 @@ async def _handle_zombie(job: JobState, now: datetime) -> None:
             "message": f"Exceeded {ZOMBIE_MAX_RETRIES} zombie restarts",
         })
     else:
-        parts = job.container_name.replace("webbh-", "").rsplit("-t", 1)
-        worker_key = parts[0] if parts else None
-        if worker_key and worker_key in WORKER_IMAGES:
-            await _trigger_worker(job.target_id, worker_key, job.current_phase or worker_key)
+        backoff_seconds = 30 * (2 ** retry_count)
+        asyncio.get_event_loop().call_later(
+            backoff_seconds,
+            lambda j=job: asyncio.ensure_future(_delayed_restart(j)),
+        )
+
+
+async def _delayed_restart(job: JobState) -> None:
+    """Restart a worker after exponential backoff delay."""
+    parts = job.container_name.replace("webbh-", "").rsplit("-t", 1)
+    worker_key = parts[0] if parts else None
+    if worker_key and worker_key in WORKER_IMAGES:
+        logger.info("Delayed restart executing", extra={
+            "container": job.container_name,
+            "worker_key": worker_key,
+        })
+        await _trigger_worker(job.target_id, worker_key, job.current_phase or worker_key)
 
 
 async def _check_scheduled_scans() -> None:
