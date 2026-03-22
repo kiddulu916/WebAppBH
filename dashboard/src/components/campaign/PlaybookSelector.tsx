@@ -1,6 +1,9 @@
 "use client";
 
-import { Search, Globe, Code, Cloud, BookOpen } from "lucide-react";
+import { useState } from "react";
+import { Search, Globe, Code, Cloud, BookOpen, Plus } from "lucide-react";
+import { api } from "@/lib/api";
+import PlaybookEditor from "./PlaybookEditor";
 
 const PLAYBOOKS = [
   {
@@ -39,6 +42,23 @@ interface PlaybookSelectorProps {
 }
 
 export default function PlaybookSelector({ value, onChange }: PlaybookSelectorProps) {
+  const [showEditor, setShowEditor] = useState(false);
+
+  const handleSaveCustom = async (playbook: {
+    name: string;
+    description: string;
+    stages: any[];
+    concurrency: { heavy: number; light: number };
+  }) => {
+    try {
+      await api.createPlaybook(playbook);
+      onChange(playbook.name);
+      setShowEditor(false);
+    } catch {
+      // silently fail
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -88,6 +108,23 @@ export default function PlaybookSelector({ value, onChange }: PlaybookSelectorPr
           );
         })}
       </div>
+
+      {/* Custom playbook option */}
+      {!showEditor ? (
+        <button
+          type="button"
+          onClick={() => setShowEditor(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border-accent p-3 text-sm text-text-muted transition-colors hover:border-neon-orange hover:text-neon-orange"
+        >
+          <Plus className="h-4 w-4" />
+          Create Custom Playbook
+        </button>
+      ) : (
+        <PlaybookEditor
+          onSave={handleSaveCustom}
+          onCancel={() => setShowEditor(false)}
+        />
+      )}
     </div>
   );
 }
