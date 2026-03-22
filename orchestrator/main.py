@@ -42,6 +42,7 @@ from typing import AsyncIterator, Literal, Optional
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
@@ -84,6 +85,12 @@ logger = setup_logger("orchestrator")
 # Configuration
 # ---------------------------------------------------------------------------
 API_KEY = os.environ.get("WEB_APP_BH_API_KEY", "")
+# * Comma-separated origins for browser clients (dashboard on :3000, etc.)
+_CORS_RAW = os.environ.get(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000",
+)
+CORS_ORIGINS = [o.strip() for o in _CORS_RAW.split(",") if o.strip()]
 SHARED_CONFIG = Path(os.environ.get("SHARED_CONFIG_DIR", "/app/shared/config"))
 SHARED_RAW = Path(os.environ.get("SHARED_RAW_DIR", "/app/shared/raw"))
 SHARED_REPORTS = Path(os.environ.get("SHARED_REPORTS_DIR", "/app/shared/reports"))
@@ -253,6 +260,16 @@ async def metrics_middleware(request: Request, call_next):
             endpoint=request.url.path,
         ).observe(duration)
     return response
+
+
+# * Outermost: answer OPTIONS preflight before API-key deps and route method checks
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/metrics", include_in_schema=False)
