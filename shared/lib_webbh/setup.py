@@ -12,6 +12,7 @@ setup(
         "pydantic>=2.0",
         "netaddr>=0.10",
         "tldextract>=5.0",
+        "croniter>=1.3",
     ],
     extras_require={
         "dev": [

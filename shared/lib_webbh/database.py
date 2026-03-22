@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.types import JSON
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
@@ -160,6 +160,8 @@ class Asset(TimestampMixin, Base):
     __tablename__ = "assets"
     __table_args__ = (
         UniqueConstraint("target_id", "asset_type", "asset_value", name="uq_assets_target_type_value"),
+        Index("ix_assets_target_type", "target_id", "asset_type"),
+        Index("ix_assets_target_created", "target_id", "created_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -262,6 +264,10 @@ class Vulnerability(TimestampMixin, Base):
     """Security vulnerability found against a target / asset."""
 
     __tablename__ = "vulnerabilities"
+    __table_args__ = (
+        Index("ix_vulns_target_severity", "target_id", "severity"),
+        Index("ix_vulns_target_created", "target_id", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
@@ -286,6 +292,10 @@ class JobState(TimestampMixin, Base):
     """Runtime state of a reconnaissance container / job."""
 
     __tablename__ = "job_state"
+    __table_args__ = (
+        Index("ix_jobstate_target_status", "target_id", "status"),
+        Index("ix_jobstate_container_status", "container_name", "status"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
@@ -304,6 +314,9 @@ class Alert(TimestampMixin, Base):
     """Notification / alert tied to a target and optionally a vulnerability."""
 
     __tablename__ = "alerts"
+    __table_args__ = (
+        Index("ix_alerts_target_read", "target_id", "is_read"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))

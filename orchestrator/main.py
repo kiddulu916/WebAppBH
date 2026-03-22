@@ -54,10 +54,13 @@ from lib_webbh import (
     CloudAsset,
     JobState,
     Location,
+    ScheduledScan,
     Target,
     Vulnerability,
     get_engine,
     get_session,
+    is_valid_cron,
+    next_run,
     push_task,
     setup_logger,
 )
@@ -139,6 +142,18 @@ class BountyUpdate(BaseModel):
     actual_payout: Optional[float] = None
     submission_url: Optional[str] = None
     notes: Optional[str] = None
+
+
+class ScheduleCreate(BaseModel):
+    target_id: int
+    cron_expression: str
+    playbook: str = "wide_recon"
+
+
+class ScheduleUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    cron_expression: Optional[str] = None
+    playbook: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

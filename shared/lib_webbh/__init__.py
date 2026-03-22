@@ -44,6 +44,9 @@ from lib_webbh.queue_monitor import QueueHealth, assess_queue_health
 # Secret scanning
 from lib_webbh.secret_scanner import scan_text, SecretMatch
 
+# Cron utilities
+from lib_webbh.cron_utils import next_run, is_valid_cron
+
 __all__ = [
     "get_engine",
     "get_session",
@@ -81,4 +84,6 @@ __all__ = [
     "assess_queue_health",
     "scan_text",
     "SecretMatch",
+    "next_run",
+    "is_valid_cron",
 ]
