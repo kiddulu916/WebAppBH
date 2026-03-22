@@ -15,6 +15,7 @@ import {
   Database,
   Workflow,
   GitCompareArrows,
+  CalendarClock,
   Settings,
 } from "lucide-react";
 import { useUIStore } from "@/stores/ui";
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
   { href: "/campaign/findings", label: "Findings", icon: Search },
   { href: "/campaign/explorer", label: "Data Explorer", icon: Database },
   { href: "/campaign/compare", label: "Compare", icon: GitCompareArrows },
+  { href: "/campaign/schedules", label: "Schedules", icon: CalendarClock },
 ] as const;
 
 export default function IconRail() {
