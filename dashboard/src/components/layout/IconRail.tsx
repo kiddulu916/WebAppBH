@@ -16,6 +16,7 @@ import {
   Workflow,
   GitCompareArrows,
   CalendarClock,
+  DollarSign,
   Settings,
 } from "lucide-react";
 import { useUIStore } from "@/stores/ui";
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
   { href: "/campaign/vulns", label: "Vulnerabilities", icon: Bug },
   { href: "/campaign/findings", label: "Findings", icon: Search },
   { href: "/campaign/explorer", label: "Data Explorer", icon: Database },
+  { href: "/campaign/bounties", label: "Bounties", icon: DollarSign },
   { href: "/campaign/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/campaign/schedules", label: "Schedules", icon: CalendarClock },
 ] as const;
