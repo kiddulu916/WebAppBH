@@ -13,6 +13,7 @@ setup(
         "netaddr>=0.10",
         "tldextract>=5.0",
         "croniter>=1.3",
+        "httpx>=0.27",
     ],
     extras_require={
         "dev": [

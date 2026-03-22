@@ -32,7 +32,8 @@ RUN cp $(find /go/pkg/mod/github.com/haccer/subjack@* -name fingerprints.json -p
 FROM debian:bookworm-slim AS massdns-builder
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git make gcc libc6-dev && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates git make gcc libc6-dev && \
     rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/blechschmidt/massdns.git /build/massdns && \

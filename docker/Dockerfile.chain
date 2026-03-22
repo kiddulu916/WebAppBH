@@ -50,11 +50,11 @@ COPY --from=py-builder /install /usr/lib/python3/dist-packages/
 COPY --from=browser-builder /root/.cache/ms-playwright /root/.cache/ms-playwright
 COPY --from=browser-builder /usr/local/lib/python3.10/site-packages/playwright /usr/lib/python3/dist-packages/playwright
 
-# Playwright runtime deps
+# Playwright runtime deps (libasound2t64: kali-rolling exposes libasound2 only as a virtual pkg)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 \
     libcups2 libdrm2 libxcomposite1 libxdamage1 libxrandr2 \
-    libgbm1 libpango-1.0-0 libcairo2 libasound2 libxshmfence1 \
+    libgbm1 libpango-1.0-0 libcairo2 libasound2t64 libxshmfence1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Worker source
