@@ -105,21 +105,15 @@ async def verify_api_key(api_key: str | None = Depends(_api_key_header)) -> str:
 # Pydantic models
 # ---------------------------------------------------------------------------
 class TargetCreate(BaseModel):
-    company_name: str
-    base_domain: str
-    target_profile: Optional[dict] = Field(
-        default=None,
-        description="Scope rules, rate limits, custom headers",
-    )
-    playbook: str = Field(
-        default="wide_recon",
-        description="Playbook name: wide_recon, deep_webapp, api_focused, cloud_first",
-    )
+    company_name: str = Field(..., min_length=1, max_length=255)
+    base_domain: str = Field(..., min_length=3, max_length=255)
+    target_profile: Optional[dict] = None
+    playbook: str = Field(default="wide_recon", max_length=100)
 
 
 class ControlAction(BaseModel):
-    container_name: str
-    action: str = Field(description="pause | stop | restart")
+    container_name: str = Field(..., min_length=1, max_length=200)
+    action: str = Field(..., description="pause | stop | restart | unpause")
 
 
 class AlertUpdate(BaseModel):
@@ -137,26 +131,26 @@ class ReportCreate(BaseModel):
 
 
 class BountyCreate(BaseModel):
-    target_id: int
-    vulnerability_id: int
-    platform: str
-    status: str = "submitted"
-    submission_url: Optional[str] = None
-    expected_payout: Optional[float] = None
+    target_id: int = Field(..., gt=0)
+    vulnerability_id: int = Field(..., gt=0)
+    platform: str = Field(..., min_length=1, max_length=50)
+    status: str = Field(default="submitted", max_length=50)
+    submission_url: Optional[str] = Field(default=None, max_length=2000)
+    expected_payout: Optional[float] = Field(default=None, ge=0)
     notes: Optional[str] = None
 
 
 class BountyUpdate(BaseModel):
-    status: Optional[str] = None
-    actual_payout: Optional[float] = None
-    submission_url: Optional[str] = None
+    status: Optional[str] = Field(default=None, max_length=50)
+    actual_payout: Optional[float] = Field(default=None, ge=0)
+    submission_url: Optional[str] = Field(default=None, max_length=2000)
     notes: Optional[str] = None
 
 
 class ScheduleCreate(BaseModel):
-    target_id: int
-    cron_expression: str
-    playbook: str = "wide_recon"
+    target_id: int = Field(..., gt=0)
+    cron_expression: str = Field(..., min_length=5, max_length=100)
+    playbook: str = Field(default="wide_recon", max_length=100)
 
 
 class ScheduleUpdate(BaseModel):
@@ -171,10 +165,10 @@ class ApiKeyUpdate(BaseModel):
 
 
 class PlaybookCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
-    stages: list[dict]
-    concurrency: dict = {"heavy": 2, "light": 4}
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=1000)
+    stages: list[dict] = Field(..., min_length=1)
+    concurrency: dict = Field(default={"heavy": 2, "light": 4})
 
 
 class PlaybookUpdate(BaseModel):

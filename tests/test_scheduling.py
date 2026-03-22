@@ -77,7 +77,7 @@ async def test_create_schedule(client, seed_target):
 async def test_create_schedule_invalid_cron(client, seed_target):
     resp = await client.post("/api/v1/schedules", json={
         "target_id": seed_target,
-        "cron_expression": "bad",
+        "cron_expression": "bad bad bad",
     })
     assert resp.status_code == 400
     assert "Invalid cron" in resp.json()["detail"]
