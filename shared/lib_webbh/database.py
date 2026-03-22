@@ -149,6 +149,9 @@ class Target(TimestampMixin, Base):
     api_schemas: Mapped[list["ApiSchema"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     mobile_apps: Mapped[list["MobileApp"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     snapshots: Mapped[list["AssetSnapshot"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+    bounty_submissions: Mapped[list["BountySubmission"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+    scheduled_scans: Mapped[list["ScheduledScan"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+    scope_violations: Mapped[list["ScopeViolation"]] = relationship(back_populates="target", cascade="all, delete-orphan")
 
 
 class Asset(TimestampMixin, Base):
@@ -276,6 +279,7 @@ class Vulnerability(TimestampMixin, Base):
     target: Mapped["Target"] = relationship(back_populates="vulnerabilities")
     asset: Mapped[Optional["Asset"]] = relationship(back_populates="vulnerabilities")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="vulnerability")
+    bounty_submissions: Mapped[list["BountySubmission"]] = relationship(back_populates="vulnerability")
 
 
 class JobState(TimestampMixin, Base):
@@ -388,3 +392,70 @@ class AssetSnapshot(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("target_id", "scan_number", name="uq_snapshot_target_scan"),
     )
+
+
+class BountySubmission(TimestampMixin, Base):
+    """Tracks vulnerability submissions to bug bounty platforms."""
+
+    __tablename__ = "bounty_submissions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    vulnerability_id: Mapped[int] = mapped_column(Integer, ForeignKey("vulnerabilities.id"))
+    platform: Mapped[str] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(50))
+    submission_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    expected_payout: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    actual_payout: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    target: Mapped["Target"] = relationship(back_populates="bounty_submissions")
+    vulnerability: Mapped["Vulnerability"] = relationship(back_populates="bounty_submissions")
+
+
+class ScheduledScan(TimestampMixin, Base):
+    """Cron-based recurring scan configuration."""
+
+    __tablename__ = "scheduled_scans"
+    __table_args__ = (
+        UniqueConstraint("target_id", "cron_expression", name="uq_scheduled_scans_target_cron"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    cron_expression: Mapped[str] = mapped_column(String(100))
+    playbook: Mapped[str] = mapped_column(String(100), default="wide_recon")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    next_run_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+
+    target: Mapped["Target"] = relationship(back_populates="scheduled_scans")
+
+
+class ScopeViolation(TimestampMixin, Base):
+    """Audit log of out-of-scope attempts."""
+
+    __tablename__ = "scope_violations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    tool_name: Mapped[str] = mapped_column(String(100))
+    input_value: Mapped[str] = mapped_column(String(2000))
+    violation_type: Mapped[str] = mapped_column(String(50))
+
+    target: Mapped["Target"] = relationship(back_populates="scope_violations")
+
+
+class CustomPlaybook(TimestampMixin, Base):
+    """User-defined playbook configuration."""
+
+    __tablename__ = "custom_playbooks"
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_custom_playbooks_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    stages: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    concurrency: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)

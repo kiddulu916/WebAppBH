@@ -14,6 +14,10 @@ from lib_webbh.database import (
     ApiSchema,
     MobileApp,
     AssetSnapshot,
+    BountySubmission,
+    ScheduledScan,
+    ScopeViolation,
+    CustomPlaybook,
 )
 
 # Scope
@@ -54,6 +58,10 @@ __all__ = [
     "ApiSchema",
     "MobileApp",
     "AssetSnapshot",
+    "BountySubmission",
+    "ScheduledScan",
+    "ScopeViolation",
+    "CustomPlaybook",
     "ScopeManager",
     "ScopeResult",
     "push_task",
