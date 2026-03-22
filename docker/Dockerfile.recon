@@ -54,9 +54,9 @@ RUN echo "deb http://http.kali.org/kali kali-rolling main contrib non-free non-f
 RUN wget  https://http.kali.org/kali/pool/main/k/kali-archive-keyring/kali-archive-keyring_2025.2_all.deb
 
 
-RUN dpkg -i kali-archive-keyring_2025.1_all.deb
+RUN dpkg -i kali-archive-keyring_2025.2_all.deb
 
-RUN rm kali-archive-keyring_2025.1_all.deb
+RUN rm kali-archive-keyring_2025.2_all.deb
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends paramspider && \
