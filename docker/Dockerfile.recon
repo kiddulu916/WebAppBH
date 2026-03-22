@@ -51,7 +51,8 @@ COPY workers/recon_core/resolvers.txt /usr/local/bin/resolvers.txt
 
 RUN echo "deb http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" | tee -a /etc/apt/sources.list
 
-RUN wget  https://http.kali.org/kali/pool/main/k/kali-archive-keyring/kali-archive-keyring_2025.1_all.deb
+RUN wget  https://http.kali.org/kali/pool/main/k/kali-archive-keyring/kali-archive-keyring_2025.2_all.deb
+
 
 RUN dpkg -i kali-archive-keyring_2025.1_all.deb
 
