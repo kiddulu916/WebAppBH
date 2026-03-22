@@ -25,6 +25,7 @@ POST  /api/v1/bounties               – create a bounty submission
 GET   /api/v1/bounties               – list bounty submissions
 PATCH /api/v1/bounties/{bounty_id}   – update bounty submission
 GET   /api/v1/bounties/stats         – ROI stats
+GET   /api/v1/search                 – global search across assets & vulns
 """
 
 from __future__ import annotations
@@ -45,7 +46,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import attributes, selectinload
 
 from lib_webbh import (
@@ -221,7 +222,7 @@ app = FastAPI(
 )
 
 from orchestrator.rate_limit import rate_limit_check  # noqa: E402
-from orchestrator.metrics import metrics_response, api_latency, targets_created, bounties_submitted  # noqa: E402
+from orchestrator.metrics import metrics_response, api_latency, targets_created, bounties_submitted, scans_triggered, connected_sse_clients  # noqa: E402
 import time as _time  # noqa: E402
 
 
@@ -299,6 +300,7 @@ async def create_target(body: TargetCreate):
         "Target initialised",
         extra={"target_id": target.id, "domain": body.base_domain},
     )
+    targets_created.inc()
 
     return {
         "target_id": target.id,
@@ -374,6 +376,40 @@ async def control_worker(body: ControlAction):
 
 
 # ---------------------------------------------------------------------------
+# GET /api/v1/search — Global search across assets & vulnerabilities
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/search")
+async def search(
+    target_id: int = Query(...),
+    q: str = Query(..., min_length=2, max_length=200),
+    limit: int = Query(default=50, le=200),
+):
+    """Search across assets and vulnerabilities for a given target."""
+    results: list[dict] = []
+    async with get_session() as session:
+        # Search assets
+        asset_stmt = select(Asset).where(
+            Asset.target_id == target_id,
+            Asset.asset_value.ilike(f"%{q}%"),
+        ).limit(limit)
+        for a in (await session.execute(asset_stmt)).scalars():
+            results.append({"type": "asset", "id": a.id, "value": a.asset_value, "subtype": a.asset_type})
+
+        # Search vulnerabilities
+        vuln_stmt = select(Vulnerability).where(
+            Vulnerability.target_id == target_id,
+            or_(
+                Vulnerability.title.ilike(f"%{q}%"),
+                Vulnerability.description.ilike(f"%{q}%"),
+            ),
+        ).limit(limit)
+        for v in (await session.execute(vuln_stmt)).scalars():
+            results.append({"type": "vulnerability", "id": v.id, "value": v.title, "subtype": v.severity})
+
+    return {"query": q, "results": results[:limit]}
+
+
+# ---------------------------------------------------------------------------
 # GET /api/v1/stream/{target_id} — SSE
 # ---------------------------------------------------------------------------
 @app.get("/api/v1/stream/{target_id}")
@@ -401,6 +437,7 @@ async def stream_events(target_id: int, request: Request):
     last_event_id = request.headers.get("Last-Event-ID")
 
     async def _generate():
+        connected_sse_clients.inc()
         try:
             # Replay missed messages if Last-Event-ID provided
             if last_event_id:
@@ -432,6 +469,7 @@ async def stream_events(target_id: int, request: Request):
         except asyncio.CancelledError:
             pass
         finally:
+            connected_sse_clients.dec()
             # Release any claimed-but-unacked messages
             try:
                 await redis.xautoclaim(queue, group, consumer, min_idle_time=0)
@@ -772,6 +810,7 @@ async def trigger_rescan(target_id: int):
     await push_task("recon_queue", {
         "target_id": target_id, "rescan": True, "snapshot_scan_number": next_scan,
     })
+    scans_triggered.labels(trigger_type="rescan").inc()
     return {"target_id": target_id, "status": "queued", "scan_number": next_scan}
 
 
@@ -935,6 +974,7 @@ async def create_bounty(body: BountyCreate):
         session.add(submission)
         await session.commit()
         await session.refresh(submission)
+        bounties_submitted.labels(platform=body.platform).inc()
         return {
             "id": submission.id,
             "target_id": submission.target_id,
