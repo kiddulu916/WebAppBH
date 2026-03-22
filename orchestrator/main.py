@@ -353,6 +353,10 @@ async def stream_events(target_id: int, request: Request):
     Publishes events: TOOL_PROGRESS, NEW_ASSET, CRITICAL_ALERT, WORKER_SPAWNED.
     Events are pushed to the ``events:{target_id}`` Redis stream by the event
     engine and consumed here.
+
+    Supports ``Last-Event-ID`` header for reconnection replay: on reconnect the
+    client sends the last received event ID and the server replays any missed
+    messages via XRANGE before switching to the live XREADGROUP loop.
     """
     queue = f"events:{target_id}"
     group = "sse_consumers"
@@ -364,16 +368,28 @@ async def stream_events(target_id: int, request: Request):
     except Exception:
         pass  # group already exists
 
+    last_event_id = request.headers.get("Last-Event-ID")
+
     async def _generate():
-        last_id = ">"
         try:
+            # Replay missed messages if Last-Event-ID provided
+            if last_event_id:
+                messages = await redis.xrange(queue, min=last_event_id, count=500)
+                for msg_id, data in messages:
+                    if msg_id == last_event_id:
+                        continue  # Skip the one already received
+                    payload = json.loads(data.get("payload", "{}"))
+                    event_type = payload.get("event", "message")
+                    yield {"event": event_type, "data": json.dumps(payload), "id": msg_id}
+
+            # Continue with live stream
             while True:
                 if await request.is_disconnected():
                     break
                 messages = await redis.xreadgroup(
                     groupname=group,
                     consumername=consumer,
-                    streams={queue: last_id},
+                    streams={queue: ">"},
                     count=10,
                     block=2000,
                 )
@@ -381,8 +397,10 @@ async def stream_events(target_id: int, request: Request):
                     for msg_id, data in entries:
                         payload = json.loads(data.get("payload", "{}"))
                         event_type = payload.get("event", "message")
-                        yield {"event": event_type, "data": json.dumps(payload)}
+                        yield {"event": event_type, "data": json.dumps(payload), "id": msg_id}
                         await redis.xack(queue, group, msg_id)
+        except asyncio.CancelledError:
+            pass
         finally:
             # Release any claimed-but-unacked messages
             try:
