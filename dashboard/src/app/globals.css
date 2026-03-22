@@ -1,35 +1,82 @@
 @import "tailwindcss";
 
-/* ── Obsidian Dark Theme ── */
+/* ── NEONHIVE Design System ── */
 :root {
-  --bg-primary: #0d1117;
-  --bg-secondary: #161b22;
-  --bg-tertiary: #1c2128;
-  --bg-surface: #21262d;
-  --border: #30363d;
-  --border-accent: #3d444d;
-  --text-primary: #e6edf3;
-  --text-secondary: #8b949e;
-  --text-muted: #6e7681;
-  --accent: #58a6ff;
-  --accent-hover: #79c0ff;
-  --success: #3fb950;
-  --warning: #d29922;
-  --danger: #f85149;
-  --critical: #da3633;
-  --info: #58a6ff;
+  /* Deep backgrounds (layered depth) */
+  --bg-void:       #08090d;
+  --bg-primary:    #0c0e14;
+  --bg-secondary:  #111520;
+  --bg-tertiary:   #161b2a;
+  --bg-surface:    #1c2233;
+  --bg-glow:       #1a1f30;
+
+  /* Borders */
+  --border:        #1e2536;
+  --border-accent: #2a3348;
+  --border-glow:   rgba(255, 140, 50, 0.15);
+
+  /* Text hierarchy */
+  --text-primary:   #e8ecf4;
+  --text-secondary: #8892a8;
+  --text-muted:     #4d5568;
+  --text-code:      #c0c8d8;
+
+  /* The three neons */
+  --neon-orange:      #ff8c32;
+  --neon-orange-dim:  #cc6a20;
+  --neon-orange-glow: rgba(255, 140, 50, 0.12);
+
+  --neon-blue:      #3b8bff;
+  --neon-blue-dim:  #2d6fcc;
+  --neon-blue-glow: rgba(59, 139, 255, 0.10);
+
+  --neon-green:      #00e87b;
+  --neon-green-dim:  #00b85f;
+  --neon-green-glow: rgba(0, 232, 123, 0.10);
+
+  /* Semantic (derived from neons) */
+  --accent:        var(--neon-orange);
+  --accent-hover:  var(--neon-orange-dim);
+  --success:       var(--neon-green);
+  --warning:       #e8b84d;
+  --danger:        #ff4757;
+  --critical:      #ff2d4a;
+  --info:          var(--neon-blue);
+
+  /* Severity spectrum */
+  --sev-critical: #ff2d4a;
+  --sev-high:     #ff6b4a;
+  --sev-medium:   var(--neon-orange);
+  --sev-low:      var(--neon-blue);
+  --sev-info:     var(--text-muted);
+
+  /* Scanline */
+  --scanline-color: rgba(0, 232, 123, 0.03);
 }
 
 @theme inline {
+  --color-bg-void: var(--bg-void);
   --color-bg-primary: var(--bg-primary);
   --color-bg-secondary: var(--bg-secondary);
   --color-bg-tertiary: var(--bg-tertiary);
   --color-bg-surface: var(--bg-surface);
+  --color-bg-glow: var(--bg-glow);
   --color-border: var(--border);
   --color-border-accent: var(--border-accent);
+  --color-border-glow: var(--border-glow);
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-muted: var(--text-muted);
+  --color-text-code: var(--text-code);
+  --color-neon-orange: var(--neon-orange);
+  --color-neon-orange-dim: var(--neon-orange-dim);
+  --color-neon-orange-glow: var(--neon-orange-glow);
+  --color-neon-blue: var(--neon-blue);
+  --color-neon-blue-dim: var(--neon-blue-dim);
+  --color-neon-blue-glow: var(--neon-blue-glow);
+  --color-neon-green: var(--neon-green);
+  --color-neon-green-dim: var(--neon-green-dim);
+  --color-neon-green-glow: var(--neon-green-glow);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-success: var(--success);
@@ -37,17 +84,197 @@
   --color-danger: var(--danger);
   --color-critical: var(--critical);
   --color-info: var(--info);
+  --color-sev-critical: var(--sev-critical);
+  --color-sev-high: var(--sev-high);
+  --color-sev-medium: var(--sev-medium);
+  --color-sev-low: var(--sev-low);
+  --color-sev-info: var(--sev-info);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--bg-primary);
+  background: var(--bg-void);
   color: var(--text-primary);
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: var(--bg-secondary); }
-::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 4px; }
+/* Scanline overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    var(--scanline-color) 2px,
+    var(--scanline-color) 4px
+  );
+  opacity: 0.35;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Animations ── */
+
+@keyframes neon-pulse-green {
+  0%, 100% { box-shadow: 0 0 4px rgba(0, 232, 123, 0.1); }
+  50%      { box-shadow: 0 0 14px rgba(0, 232, 123, 0.22); }
+}
+
+@keyframes neon-pulse-orange {
+  0%, 100% { box-shadow: 0 0 4px rgba(255, 140, 50, 0.1); }
+  50%      { box-shadow: 0 0 14px rgba(255, 140, 50, 0.22); }
+}
+
+@keyframes asset-flash {
+  0%   { background-color: rgba(0, 232, 123, 0.1); }
+  100% { background-color: transparent; }
+}
+
+@keyframes counter-bump {
+  0%   { color: var(--neon-green); transform: scale(1.2); }
+  100% { color: inherit; transform: scale(1); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes progress-glow {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.3); }
+}
+
+.animate-pulse-green  { animation: neon-pulse-green 2s ease-in-out infinite; }
+.animate-pulse-orange { animation: neon-pulse-orange 2s ease-in-out infinite; }
+.animate-asset-flash  { animation: asset-flash 1.5s ease-out forwards; }
+.animate-counter-bump { animation: counter-bump 0.35s ease-out; }
+.animate-fade-in      { animation: fade-in 0.15s ease-out; }
+.animate-slide-right  { animation: slide-right 0.2s ease-out; }
+.animate-slide-up     { animation: slide-up 0.15s ease-out; }
+
+/* ── Glow utilities ── */
+
+.glow-orange {
+  box-shadow:
+    0 0 8px rgba(255, 140, 50, 0.08),
+    0 0 20px rgba(255, 140, 50, 0.04),
+    inset 0 1px 0 rgba(255, 140, 50, 0.05);
+}
+
+.glow-green {
+  box-shadow:
+    0 0 8px rgba(0, 232, 123, 0.08),
+    0 0 20px rgba(0, 232, 123, 0.04);
+}
+
+.glow-blue {
+  box-shadow:
+    0 0 8px rgba(59, 139, 255, 0.08),
+    0 0 20px rgba(59, 139, 255, 0.04);
+}
+
+.glow-danger {
+  box-shadow:
+    0 0 8px rgba(255, 71, 87, 0.1),
+    0 0 20px rgba(255, 71, 87, 0.05);
+}
+
+/* Card with active glow border */
+.card-glow {
+  border-color: rgba(255, 140, 50, 0.25);
+  box-shadow:
+    0 0 8px rgba(255, 140, 50, 0.06),
+    inset 0 1px 0 rgba(255, 140, 50, 0.04);
+}
+
+/* ── Progress bar ── */
+
+.progress-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--neon-green), var(--neon-blue));
+  box-shadow: 0 0 6px rgba(0, 232, 123, 0.25);
+  transition: width 0.6s ease;
+}
+
+.progress-fill-orange {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--neon-orange-dim), var(--neon-orange));
+  box-shadow: 0 0 6px rgba(255, 140, 50, 0.25);
+  transition: width 0.6s ease;
+}
+
+/* ── Typography helpers ── */
+
+.section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.terminal-text {
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  line-height: 1.65;
+  letter-spacing: 0.01em;
+}
+
+/* ── Launch button glow ── */
+
+.btn-launch {
+  position: relative;
+  background: linear-gradient(135deg, var(--neon-orange), var(--neon-orange-dim));
+  color: var(--bg-primary);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.btn-launch::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: var(--neon-orange);
+  opacity: 0;
+  filter: blur(10px);
+  z-index: -1;
+  animation: neon-pulse-orange 2.5s ease-in-out infinite;
+}
+
+/* ── Input focus ring ── */
+
+.input-focus:focus {
+  border-color: var(--neon-orange);
+  box-shadow: 0 0 0 1px rgba(255, 140, 50, 0.15);
+  outline: none;
+}

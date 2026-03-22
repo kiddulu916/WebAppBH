@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
-import { type ColumnDef } from "@tanstack/react-table";
-import DataTable from "@/components/findings/DataTable";
+import { Loader2, Shield, ChevronDown, ChevronUp, X } from "lucide-react";
 import DraftReportButton from "@/components/vulns/DraftReportButton";
 import { api } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
@@ -24,51 +22,36 @@ interface VulnRow {
   updated_at: string | null;
 }
 
-const SEV_COLORS: Record<VulnSeverity, string> = {
-  critical: "bg-critical/20 text-critical",
-  high: "bg-danger/20 text-danger",
-  medium: "bg-warning/20 text-warning",
-  low: "bg-info/20 text-info",
-  info: "bg-bg-surface text-text-muted",
-};
-
-const columns: ColumnDef<VulnRow, unknown>[] = [
-  { accessorKey: "id", header: "ID", size: 60 },
-  {
-    accessorKey: "severity",
-    header: "Severity",
-    cell: ({ getValue }) => {
-      const s = getValue() as VulnSeverity;
-      return (
-        <span
-          className={`rounded px-2 py-0.5 text-xs font-medium ${SEV_COLORS[s] ?? ""}`}
-        >
-          {s.toUpperCase()}
-        </span>
-      );
-    },
-  },
-  { accessorKey: "title", header: "Title" },
-  { accessorKey: "asset_value", header: "Asset" },
-  { accessorKey: "source_tool", header: "Source" },
-  {
-    accessorKey: "created_at",
-    header: "Found",
-    cell: ({ getValue }) => {
-      const v = getValue() as string | null;
-      return v ? new Date(v).toLocaleString() : "—";
-    },
-  },
+const SEVERITIES: VulnSeverity[] = [
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "info",
 ];
 
-const TABS = ["all", "critical", "high", "medium", "low", "info"] as const;
+const SEV_PILL: Record<VulnSeverity, string> = {
+  critical: "bg-sev-critical/15 text-sev-critical border-sev-critical/25",
+  high: "bg-sev-high/15 text-sev-high border-sev-high/25",
+  medium: "bg-sev-medium/15 text-sev-medium border-sev-medium/25",
+  low: "bg-sev-low/15 text-sev-low border-sev-low/25",
+  info: "bg-bg-surface text-text-muted border-border",
+};
+
+const SEV_DOT: Record<VulnSeverity, string> = {
+  critical: "bg-sev-critical",
+  high: "bg-sev-high",
+  medium: "bg-sev-medium",
+  low: "bg-sev-low",
+  info: "bg-text-muted",
+};
 
 export default function VulnsPage() {
   const router = useRouter();
-  const { activeTarget } = useCampaignStore();
-  const [data, setData] = useState<VulnRow[]>([]);
+  const activeTarget = useCampaignStore((s) => s.activeTarget);
+  const [allData, setAllData] = useState<VulnRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<(typeof TABS)[number]>("all");
+  const [activeSev, setActiveSev] = useState<VulnSeverity | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
 
   useEffect(() => {
@@ -77,86 +60,215 @@ export default function VulnsPage() {
       return;
     }
     let cancelled = false;
-    const severity = tab === "all" ? undefined : tab;
     api
-      .getVulnerabilities(activeTarget.id, severity)
+      .getVulnerabilities(activeTarget.id)
       .then((res) => {
-        if (!cancelled) setData(res.vulnerabilities as VulnRow[]);
+        if (!cancelled) setAllData(res.vulnerabilities as VulnRow[]);
       })
       .catch(() => {})
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    return () => { cancelled = true; };
-  }, [activeTarget, tab, router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTarget, router]);
+
+  /* Severity counts */
+  const sevCounts = useMemo(() => {
+    const counts: Record<VulnSeverity, number> = {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+    };
+    for (const v of allData) {
+      if (counts[v.severity] !== undefined) counts[v.severity]++;
+    }
+    return counts;
+  }, [allData]);
+
+  /* Filtered data */
+  const filtered = useMemo(() => {
+    if (!activeSev) return allData;
+    return allData.filter((v) => v.severity === activeSev);
+  }, [allData, activeSev]);
+
+  if (!activeTarget) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <p className="text-text-muted">No active campaign selected.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-text-primary">Vulnerabilities</h1>
-      <p className="text-sm text-text-secondary">
-        Findings grouped by severity
-      </p>
-
-      {/* Severity tabs */}
-      <div className="flex gap-1">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-              tab === t
-                ? "bg-accent/20 text-accent"
-                : "text-text-muted hover:bg-bg-surface hover:text-text-primary"
-            }`}
-          >
-            {t.charAt(0).toUpperCase() + t.slice(1)}
-          </button>
-        ))}
+    <div className="space-y-5 animate-fade-in">
+      {/* Header */}
+      <div>
+        <h1 className="flex items-center gap-2 text-2xl font-bold text-text-primary">
+          <Shield className="h-5 w-5 text-neon-orange" />
+          Vulnerabilities
+        </h1>
+        <p className="mt-1 text-sm text-text-secondary">
+          Findings grouped by severity
+        </p>
       </div>
 
+      {/* Severity distribution pills */}
+      <div className="flex flex-wrap gap-2">
+        {SEVERITIES.map((sev) => {
+          const isActive = activeSev === sev;
+          return (
+            <button
+              key={sev}
+              onClick={() => setActiveSev(isActive ? null : sev)}
+              className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
+                isActive
+                  ? SEV_PILL[sev] + " ring-1 ring-current"
+                  : SEV_PILL[sev] + " opacity-70 hover:opacity-100"
+              }`}
+            >
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${SEV_DOT[sev]}`}
+              />
+              {sev.charAt(0).toUpperCase() + sev.slice(1)}
+              <span className="font-mono">{sevCounts[sev]}</span>
+            </button>
+          );
+        })}
+        {activeSev && (
+          <button
+            onClick={() => setActiveSev(null)}
+            className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-xs text-text-muted hover:text-text-primary"
+          >
+            <X className="h-3 w-3" />
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Table */}
       {loading ? (
         <div className="flex h-32 items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-accent" />
+          <Loader2 className="h-5 w-5 animate-spin text-neon-orange" />
         </div>
       ) : (
-        <>
-          <DataTable data={data} columns={columns} />
-
-          {/* Expandable detail panel — simple click-to-expand */}
-          {expanded !== null && (() => {
-            const vuln = data.find((v) => v.id === expanded);
-            if (!vuln) return null;
-            return (
-              <div className="rounded-lg border border-border bg-bg-secondary p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-text-primary">
-                    {vuln.title}
-                  </h3>
-                  <button
-                    onClick={() => setExpanded(null)}
-                    className="text-xs text-text-muted hover:text-text-primary"
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-bg-surface text-xs text-text-secondary">
+              <tr>
+                <th className="w-8 px-4 py-3" />
+                <th className="px-4 py-3 font-medium">Severity</th>
+                <th className="px-4 py-3 font-medium">Title</th>
+                <th className="px-4 py-3 font-medium">Asset</th>
+                <th className="px-4 py-3 font-medium">Source</th>
+                <th className="px-4 py-3 font-medium">Found At</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filtered.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-8 text-center text-text-muted"
                   >
-                    Close
-                  </button>
-                </div>
-                {vuln.description && (
-                  <p className="mt-2 text-xs text-text-secondary">
-                    {vuln.description}
-                  </p>
-                )}
-                {vuln.poc && (
-                  <pre className="mt-2 overflow-x-auto rounded bg-bg-tertiary p-2 text-xs text-text-primary">
-                    {vuln.poc}
-                  </pre>
-                )}
-                <div className="mt-3 border-t border-border pt-3">
-                  <DraftReportButton vulnId={vuln.id} />
-                </div>
-              </div>
-            );
-          })()}
-        </>
+                    No vulnerabilities found
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((vuln) => {
+                  const isOpen = expanded === vuln.id;
+                  return (
+                    <VulnRowItem
+                      key={vuln.id}
+                      vuln={vuln}
+                      isOpen={isOpen}
+                      onToggle={() =>
+                        setExpanded(isOpen ? null : vuln.id)
+                      }
+                    />
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
+  );
+}
+
+/* ── Vuln Row with expandable detail ── */
+
+function VulnRowItem({
+  vuln,
+  isOpen,
+  onToggle,
+}: {
+  vuln: VulnRow;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <>
+      <tr
+        onClick={onToggle}
+        className="cursor-pointer bg-bg-secondary transition-colors hover:bg-bg-tertiary"
+      >
+        <td className="px-4 py-2.5 text-text-muted">
+          {isOpen ? (
+            <ChevronUp className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5" />
+          )}
+        </td>
+        <td className="px-4 py-2.5">
+          <span className="flex items-center gap-1.5">
+            <span
+              className={`inline-block h-2.5 w-2.5 rounded-full ${SEV_DOT[vuln.severity]}`}
+            />
+            <span className="text-xs font-medium text-text-secondary">
+              {vuln.severity.toUpperCase()}
+            </span>
+          </span>
+        </td>
+        <td className="px-4 py-2.5 text-text-primary">{vuln.title}</td>
+        <td className="px-4 py-2.5 font-mono text-xs text-text-secondary">
+          {vuln.asset_value ?? "—"}
+        </td>
+        <td className="px-4 py-2.5 font-mono text-xs text-text-muted">
+          {vuln.source_tool ?? "—"}
+        </td>
+        <td className="px-4 py-2.5 font-mono text-xs text-text-muted">
+          {vuln.created_at
+            ? new Date(vuln.created_at).toLocaleString()
+            : "—"}
+        </td>
+      </tr>
+      {isOpen && (
+        <tr className="animate-fade-in">
+          <td colSpan={6} className="bg-bg-tertiary px-6 py-4">
+            {vuln.description && (
+              <p className="mb-3 text-xs text-text-secondary">
+                {vuln.description}
+              </p>
+            )}
+            {vuln.poc && (
+              <div className="mb-3">
+                <p className="section-label mb-1">Proof of Concept</p>
+                <pre className="overflow-x-auto rounded-md border border-border bg-bg-void p-3 font-mono text-xs text-text-code">
+                  {vuln.poc}
+                </pre>
+              </div>
+            )}
+            <div className="border-t border-border pt-3">
+              <DraftReportButton vulnId={vuln.id} />
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }

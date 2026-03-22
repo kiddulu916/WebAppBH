@@ -2,16 +2,41 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 interface UIState {
-  sidebarOpen: boolean;
-  toggleSidebar: () => void;
+  sidebarExpanded: boolean;
+  dockExpanded: boolean;
+  commandPaletteOpen: boolean;
+  shortcutsOpen: boolean;
+  systemPulseOpen: boolean;
+
+  setSidebarExpanded: (v: boolean) => void;
+  toggleDock: () => void;
+  setDockExpanded: (v: boolean) => void;
+  setCommandPaletteOpen: (v: boolean) => void;
+  setShortcutsOpen: (v: boolean) => void;
+  setSystemPulseOpen: (v: boolean) => void;
 }
 
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
-      sidebarOpen: true,
-      toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+      sidebarExpanded: false,
+      dockExpanded: false,
+      commandPaletteOpen: false,
+      shortcutsOpen: false,
+      systemPulseOpen: false,
+
+      setSidebarExpanded: (v) => set({ sidebarExpanded: v }),
+      toggleDock: () => set((s) => ({ dockExpanded: !s.dockExpanded })),
+      setDockExpanded: (v) => set({ dockExpanded: v }),
+      setCommandPaletteOpen: (v) => set({ commandPaletteOpen: v }),
+      setShortcutsOpen: (v) => set({ shortcutsOpen: v }),
+      setSystemPulseOpen: (v) => set({ systemPulseOpen: v }),
     }),
-    { name: "webbh-ui" },
+    {
+      name: "webbh-ui",
+      partialize: (s) => ({
+        dockExpanded: s.dockExpanded,
+      }),
+    },
   ),
 );

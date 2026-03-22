@@ -1,19 +1,23 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Activity, Settings } from "lucide-react";
 import AssetTree, { type TreeNode } from "@/components/c2/AssetTree";
-import WorkerConsole from "@/components/c2/WorkerConsole";
-import WorkerFeed from "@/components/c2/WorkerFeed";
-import StatusBoard from "@/components/c2/StatusBoard";
+import PhasePipeline from "@/components/c2/PhasePipeline";
+import WorkerGrid from "@/components/c2/WorkerGrid";
+import SystemPulse from "@/components/c2/SystemPulse";
+import AssetDetailDrawer from "@/components/c2/AssetDetailDrawer";
 import SettingsDrawer from "@/components/c2/SettingsDrawer";
 import DiffTimeline from "@/components/c2/DiffTimeline";
 import ScopeDriftAlerts from "@/components/c2/ScopeDriftAlerts";
 import QueueHealthWidget from "@/components/c2/QueueHealthWidget";
-import { useEventStream } from "@/hooks/useEventStream";
 import { useCampaignStore } from "@/stores/campaign";
-import { api } from "@/lib/api";
+import { api, type AssetWithLocations } from "@/lib/api";
 import type { JobState } from "@/types/schema";
+
+/* ------------------------------------------------------------------ */
+/* Build the asset tree from flat API records                          */
+/* ------------------------------------------------------------------ */
 
 function buildTree(
   baseDomain: string,
@@ -56,15 +60,38 @@ function buildTree(
   return [root];
 }
 
+/* ------------------------------------------------------------------ */
+/* C2 Console Page                                                     */
+/* ------------------------------------------------------------------ */
+
 export default function C2Page() {
-  const { activeTarget } = useCampaignStore();
-  const { events } = useEventStream(activeTarget?.id ?? null);
-  const [jobs, setJobs] = useState<JobState[]>([]);
+  const activeTarget = useCampaignStore((s) => s.activeTarget);
+  const events = useCampaignStore((s) => s.events);
+  const storeJobs = useCampaignStore((s) => s.jobs);
+  const setJobs = useCampaignStore((s) => s.setJobs);
+
+  const [localJobs, setLocalJobs] = useState<JobState[]>([]);
   const [treeRoots, setTreeRoots] = useState<TreeNode[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [selectedAsset, setSelectedAsset] =
+    useState<AssetWithLocations | null>(null);
+  const [allAssets, setAllAssets] = useState<AssetWithLocations[]>([]);
   const lastMergedIdx = useRef(0);
 
-  // Fetch job states periodically
+  // Merge store jobs and local jobs (local poll takes priority for freshness)
+  const jobs = localJobs.length > 0 ? localJobs : storeJobs;
+
+  // Derive completed phases from jobs
+  const completedPhases = jobs
+    .filter(
+      (j) => j.status === "COMPLETED" && j.current_phase,
+    )
+    .map((j) => j.current_phase!);
+
+  const currentPhase =
+    jobs.find((j) => j.status === "RUNNING")?.current_phase ?? null;
+
+  /* ---- Fetch job states periodically ---- */
   useEffect(() => {
     if (!activeTarget) return;
     let cancelled = false;
@@ -72,7 +99,10 @@ export default function C2Page() {
     async function poll() {
       try {
         const res = await api.getStatus(activeTarget!.id);
-        if (!cancelled) setJobs(res.jobs);
+        if (!cancelled) {
+          setLocalJobs(res.jobs);
+          setJobs(res.jobs);
+        }
       } catch {
         /* noop */
       }
@@ -84,21 +114,22 @@ export default function C2Page() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [activeTarget]);
+  }, [activeTarget, setJobs]);
 
-  // Load initial asset tree from API
+  /* ---- Load initial asset tree from API ---- */
   useEffect(() => {
     if (!activeTarget) return;
     lastMergedIdx.current = 0;
     api
       .getAssets(activeTarget.id)
-      .then((res) =>
-        setTreeRoots(buildTree(activeTarget.base_domain, res.assets)),
-      )
+      .then((res) => {
+        setAllAssets(res.assets);
+        setTreeRoots(buildTree(activeTarget.base_domain, res.assets));
+      })
       .catch(() => {});
   }, [activeTarget]);
 
-  // Merge SSE NEW_ASSET events into the tree
+  /* ---- Merge SSE NEW_ASSET events into the tree ---- */
   useEffect(() => {
     if (!activeTarget || events.length === 0) return;
     const newEvents = events.slice(lastMergedIdx.current);
@@ -125,6 +156,20 @@ export default function C2Page() {
     });
   }, [events, activeTarget]);
 
+  /* ---- Handle asset selection from tree ---- */
+  const handleAssetSelect = useCallback(
+    (nodeId: string) => {
+      // Find the asset matching this tree node
+      const assetIdStr = nodeId.replace("asset-", "");
+      const assetId = parseInt(assetIdStr, 10);
+      if (isNaN(assetId)) return;
+      const found = allAssets.find((a) => a.id === assetId);
+      if (found) setSelectedAsset(found);
+    },
+    [allAssets],
+  );
+
+  /* ---- No active campaign ---- */
   if (!activeTarget) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -140,11 +185,12 @@ export default function C2Page() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Page header */}
       <div className="flex items-center gap-3">
         <Activity className="h-5 w-5 text-accent" />
         <h1 className="text-2xl font-bold text-text-primary">C2 Console</h1>
-        <span className="rounded bg-bg-surface px-2 py-0.5 text-xs text-accent">
+        <span className="rounded bg-bg-surface px-2 py-0.5 font-mono text-xs text-accent">
           {activeTarget.base_domain}
         </span>
         <button
@@ -156,85 +202,60 @@ export default function C2Page() {
         </button>
       </div>
 
-      {/* Phase progress bar */}
-      <PhaseProgress currentPhase={jobs[0]?.current_phase ?? null} />
+      {/* Phase Pipeline */}
+      <PhasePipeline
+        currentPhase={currentPhase}
+        completedPhases={completedPhases}
+      />
 
-      {/* Running job status cards */}
-      <StatusBoard jobs={jobs} />
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Left -- Asset tree */}
+      {/* Main content: Asset Tree (1/3) + Worker Grid (2/3) */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        {/* Left -- Asset Tree */}
         <div className="lg:col-span-1">
           <div className="rounded-lg border border-border bg-bg-secondary p-4">
-            <h2 className="mb-3 text-sm font-semibold text-text-secondary">
-              Asset Tree
-            </h2>
-            <AssetTree roots={treeRoots} />
+            <div className="section-label mb-3">ASSET TREE</div>
+            <div className="max-h-[600px] overflow-y-auto">
+              <AssetTree
+                roots={treeRoots}
+                onSelect={handleAssetSelect}
+              />
+            </div>
           </div>
         </div>
 
-        {/* Right -- Workers + Feed */}
-        <div className="space-y-4 lg:col-span-2">
+        {/* Right -- Worker Grid */}
+        <div className="lg:col-span-2">
           <div className="rounded-lg border border-border bg-bg-secondary p-4">
-            <h2 className="mb-3 text-sm font-semibold text-text-secondary">
-              Worker Management
-            </h2>
-            <WorkerConsole jobs={jobs} />
+            <WorkerGrid jobs={jobs} events={events} />
           </div>
-
-          <WorkerFeed events={events} />
         </div>
       </div>
 
-      {/* Diff Timeline + Scope Drift + Queue Health */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {/* System Pulse (conditional on systemPulseOpen) */}
+      <SystemPulse />
+
+      {/* Diff Timeline + Scope Drift Alerts */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <DiffTimeline events={events} />
         <ScopeDriftAlerts events={events} />
       </div>
+
+      {/* Queue Health */}
       <QueueHealthWidget />
 
-      {/* Settings drawer */}
+      {/* Asset Detail Drawer */}
+      <AssetDetailDrawer
+        asset={selectedAsset}
+        onClose={() => setSelectedAsset(null)}
+      />
+
+      {/* Settings Drawer */}
       <SettingsDrawer
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         targetId={activeTarget.id}
         currentProfile={activeTarget.target_profile}
       />
-    </div>
-  );
-}
-
-/* ---- Phase progress bar ---- */
-
-const PHASES = ["RECON", "VULN", "EXPLOIT"] as const;
-
-function PhaseProgress({ currentPhase }: { currentPhase: string | null }) {
-  const activeIdx = currentPhase
-    ? PHASES.findIndex((p) => currentPhase.toUpperCase().includes(p))
-    : 0;
-
-  return (
-    <div className="flex items-center gap-2">
-      {PHASES.map((phase, i) => (
-        <div key={phase} className="flex items-center gap-2">
-          {i > 0 && (
-            <div
-              className={`h-px w-6 ${i <= activeIdx ? "bg-accent" : "bg-border"}`}
-            />
-          )}
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-medium ${
-              i < activeIdx
-                ? "bg-success/20 text-success"
-                : i === activeIdx
-                  ? "bg-accent/20 text-accent"
-                  : "bg-bg-surface text-text-muted"
-            }`}
-          >
-            {phase}
-          </span>
-        </div>
-      ))}
     </div>
   );
 }

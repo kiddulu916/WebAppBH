@@ -1,23 +1,61 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
   ChevronLeft,
   Loader2,
-  Globe,
-  ShieldCheck,
-  Settings,
+  Crosshair,
+  Shield,
+  BookOpen,
+  Layers,
+  Rocket,
+  Check,
 } from "lucide-react";
 import { api, type CreateTargetPayload } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
 import PlaybookSelector from "@/components/campaign/PlaybookSelector";
+import WorkflowBuilder, {
+  initWorkflowState,
+  DEFAULT_PHASES,
+  type WorkflowState,
+} from "@/components/campaign/WorkflowBuilder";
 
-type Step = 0 | 1 | 2;
+/* ------------------------------------------------------------------ */
+/* Step definitions                                                    */
+/* ------------------------------------------------------------------ */
 
-const STEP_TITLES = ["Target Info", "Scope Configuration", "Settings"] as const;
-const STEP_ICONS = [Globe, ShieldCheck, Settings] as const;
+type Step = 0 | 1 | 2 | 3 | 4;
+
+const STEPS = [
+  { title: "Target Intel", icon: Crosshair },
+  { title: "Scope Rules", icon: Shield },
+  { title: "Playbook", icon: BookOpen },
+  { title: "Workflow", icon: Layers },
+  { title: "Review & Launch", icon: Rocket },
+] as const;
+
+/* ------------------------------------------------------------------ */
+/* Platforms                                                           */
+/* ------------------------------------------------------------------ */
+
+const PLATFORMS = ["HackerOne", "Bugcrowd", "Intigriti", "Custom"] as const;
+
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
+
+function lines(s: string): string[] {
+  return s
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
+/* ------------------------------------------------------------------ */
+/* Component                                                          */
+/* ------------------------------------------------------------------ */
 
 export default function ScopeBuilder() {
   const router = useRouter();
@@ -27,48 +65,70 @@ export default function ScopeBuilder() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Step 0 — target info
+  /* ---- Step 0: Target Intel ---- */
   const [companyName, setCompanyName] = useState("");
   const [baseDomain, setBaseDomain] = useState("");
+  const [platform, setPlatform] = useState<string>("HackerOne");
+  const [notes, setNotes] = useState("");
 
-  // Step 1 — scope
+  /* ---- Step 1: Scope Rules ---- */
   const [inScopeDomains, setInScopeDomains] = useState("");
-  const [outScopeDomains, setOutScopeDomains] = useState("");
   const [inScopeCidrs, setInScopeCidrs] = useState("");
   const [inScopeRegex, setInScopeRegex] = useState("");
   const [showOutOfScope, setShowOutOfScope] = useState(false);
+  const [outScopeDomains, setOutScopeDomains] = useState("");
 
-  // Step 2 — settings
-  const [customHeaders, setCustomHeaders] = useState("");
-  const [rateLimit, setRateLimit] = useState("50");
+  /* ---- Step 2: Playbook ---- */
   const [playbook, setPlaybook] = useState("wide_recon");
 
-  const canNext =
-    step === 0 ? companyName.trim() && baseDomain.trim() : true;
+  /* ---- Step 3: Workflow Builder ---- */
+  const [workflow, setWorkflow] = useState<WorkflowState>(initWorkflowState);
 
+  /* ---- Step 4: Review ---- */
+  const [rateLimit] = useState(50);
+
+  /* ---- Validation ---- */
+  const canNext = useMemo(() => {
+    if (step === 0) return companyName.trim() !== "" && baseDomain.trim() !== "";
+    return true;
+  }, [step, companyName, baseDomain]);
+
+  /* ---- Derived counts for review ---- */
+  const scopeCounts = useMemo(() => {
+    const d = lines(inScopeDomains).length;
+    const c = lines(inScopeCidrs).length;
+    const r = lines(inScopeRegex).length;
+    const o = lines(outScopeDomains).length;
+    return { domains: d, cidrs: c, regex: r, outScope: o, total: d + c + r };
+  }, [inScopeDomains, inScopeCidrs, inScopeRegex, outScopeDomains]);
+
+  const workflowCounts = useMemo(() => {
+    let ep = 0;
+    let at = 0;
+    let tt = 0;
+    for (const p of DEFAULT_PHASES) {
+      const set = workflow.phases[p.id];
+      const count = set ? set.size : 0;
+      tt += p.tools.length;
+      at += count;
+      if (count > 0) ep += 1;
+    }
+    return { enabledPhases: ep, totalPhases: DEFAULT_PHASES.length, activeTools: at, totalTools: tt };
+  }, [workflow]);
+
+  /* ---- Navigation ---- */
+  const goBack = useCallback(() => {
+    if (step > 0) setStep((step - 1) as Step);
+  }, [step]);
+
+  const goNext = useCallback(() => {
+    if (step < 4 && canNext) setStep((step + 1) as Step);
+  }, [step, canNext]);
+
+  /* ---- Submit ---- */
   async function handleSubmit() {
     setLoading(true);
     setError("");
-
-    const lines = (s: string) =>
-      s.split("\n").map((l) => l.trim()).filter(Boolean);
-
-    const parsedHeaders: Record<string, string> = {};
-    try {
-      if (customHeaders.trim()) {
-        // Support "Key: Value" lines
-        for (const line of lines(customHeaders)) {
-          const idx = line.indexOf(":");
-          if (idx > 0) {
-            parsedHeaders[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-          }
-        }
-      }
-    } catch {
-      setError("Invalid custom headers format. Use 'Key: Value' per line.");
-      setLoading(false);
-      return;
-    }
 
     const payload: CreateTargetPayload = {
       company_name: companyName.trim(),
@@ -79,8 +139,7 @@ export default function ScopeBuilder() {
         out_scope_domains: lines(outScopeDomains),
         in_scope_cidrs: lines(inScopeCidrs),
         in_scope_regex: lines(inScopeRegex),
-        rate_limits: { pps: parseInt(rateLimit, 10) || 50 },
-        custom_headers: parsedHeaders,
+        rate_limits: { pps: rateLimit },
       },
     };
 
@@ -102,84 +161,151 @@ export default function ScopeBuilder() {
     }
   }
 
+  /* ---- Playbook display name ---- */
+  const playbookLabel =
+    { wide_recon: "Wide Recon", deep_webapp: "Deep WebApp", api_focused: "API Focused", cloud_first: "Cloud First" }[
+      playbook
+    ] ?? playbook;
+
+  /* ================================================================ */
+  /* Render                                                           */
+  /* ================================================================ */
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      {/* Step indicator */}
-      <div className="flex items-center justify-center gap-2">
-        {STEP_TITLES.map((title, i) => {
-          const Icon = STEP_ICONS[i];
+      {/* ── Step indicator ── */}
+      <nav className="flex items-center justify-center gap-0">
+        {STEPS.map((s, i) => {
+          const Icon = s.icon;
           const active = i === step;
           const completed = i < step;
+
           return (
-            <div key={title} className="flex items-center gap-2">
+            <div key={s.title} className="flex items-center">
+              {/* Connecting line (before every step except the first) */}
               {i > 0 && (
                 <div
-                  className={`h-px w-8 ${
-                    completed ? "bg-accent" : "bg-border"
+                  className={`h-px w-6 sm:w-10 transition-colors ${
+                    completed ? "bg-neon-green" : "bg-border"
                   }`}
                 />
               )}
+
+              {/* Step circle + label */}
               <button
-                onClick={() => (i <= step ? setStep(i as Step) : null)}
-                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-colors ${
-                  active
-                    ? "bg-accent text-bg-primary"
-                    : completed
-                      ? "bg-bg-surface text-accent"
-                      : "bg-bg-secondary text-text-muted"
-                }`}
+                type="button"
+                onClick={() => {
+                  if (i <= step) setStep(i as Step);
+                }}
+                disabled={i > step}
+                className="flex flex-col items-center gap-1 group"
               >
-                <Icon className="h-3.5 w-3.5" />
-                {title}
+                <div
+                  className={`flex h-8 w-8 items-center justify-center rounded-full border-2 transition-all ${
+                    active
+                      ? "border-neon-orange bg-neon-orange text-bg-primary glow-orange"
+                      : completed
+                        ? "border-neon-green bg-neon-green/15 text-neon-green"
+                        : "border-border bg-bg-secondary text-text-muted"
+                  }`}
+                >
+                  {completed ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Icon className="h-3.5 w-3.5" />
+                  )}
+                </div>
+                <span
+                  className={`text-[10px] font-medium transition-colors whitespace-nowrap ${
+                    active
+                      ? "text-neon-orange"
+                      : completed
+                        ? "text-neon-green"
+                        : "text-text-muted"
+                  }`}
+                >
+                  {s.title}
+                </span>
               </button>
             </div>
           );
         })}
-      </div>
+      </nav>
 
-      {/* Form card */}
-      <div className="rounded-lg border border-border bg-bg-secondary p-6">
-        {/* Step 0: Target Info */}
+      {/* ── Form card ── */}
+      <div className="rounded-lg border border-border bg-bg-secondary p-6 animate-fade-in">
+        {/* ============================================================ */}
+        {/* Step 0: Target Intel                                         */}
+        {/* ============================================================ */}
         {step === 0 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-text-primary">
-              Target Information
+          <div className="space-y-4 animate-fade-in">
+            <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+              <Crosshair className="h-4.5 w-4.5 text-neon-orange" />
+              Target Intel
             </h2>
+
             <div>
-              <label className="mb-1 block text-sm text-text-secondary">
-                Company Name
-              </label>
+              <label className="section-label mb-1.5 block">Company Name</label>
               <input
                 type="text"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 placeholder="Acme Corp"
-                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted input-focus"
               />
             </div>
+
             <div>
-              <label className="mb-1 block text-sm text-text-secondary">
-                Base Domain
-              </label>
+              <label className="section-label mb-1.5 block">Base Domain</label>
               <input
                 type="text"
                 value={baseDomain}
                 onChange={(e) => setBaseDomain(e.target.value)}
                 placeholder="example.com"
-                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
+              />
+            </div>
+
+            <div>
+              <label className="section-label mb-1.5 block">Platform</label>
+              <select
+                value={platform}
+                onChange={(e) => setPlatform(e.target.value)}
+                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary input-focus appearance-none cursor-pointer"
+              >
+                {PLATFORMS.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="section-label mb-1.5 block">Notes (optional)</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Program rules, special instructions, or context..."
+                rows={3}
+                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted input-focus"
               />
             </div>
           </div>
         )}
 
-        {/* Step 1: Scope Configuration */}
+        {/* ============================================================ */}
+        {/* Step 1: Scope Rules                                          */}
+        {/* ============================================================ */}
         {step === 1 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-text-primary">
-              Scope Configuration
+          <div className="space-y-4 animate-fade-in">
+            <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+              <Shield className="h-4.5 w-4.5 text-neon-blue" />
+              Scope Rules
             </h2>
+
             <div>
-              <label className="mb-1 block text-sm text-text-secondary">
+              <label className="section-label mb-1.5 block">
                 In-Scope Domains (one per line, supports wildcards)
               </label>
               <textarea
@@ -187,11 +313,12 @@ export default function ScopeBuilder() {
                 onChange={(e) => setInScopeDomains(e.target.value)}
                 placeholder={"*.example.com\napi.example.com"}
                 rows={4}
-                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
               />
             </div>
+
             <div>
-              <label className="mb-1 block text-sm text-text-secondary">
+              <label className="section-label mb-1.5 block">
                 In-Scope CIDRs / IPs (one per line)
               </label>
               <textarea
@@ -199,11 +326,12 @@ export default function ScopeBuilder() {
                 onChange={(e) => setInScopeCidrs(e.target.value)}
                 placeholder={"10.0.0.0/8\n192.168.1.100"}
                 rows={3}
-                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
               />
             </div>
+
             <div>
-              <label className="mb-1 block text-sm text-text-secondary">
+              <label className="section-label mb-1.5 block">
                 In-Scope Regex Patterns (one per line)
               </label>
               <textarea
@@ -211,16 +339,16 @@ export default function ScopeBuilder() {
                 onChange={(e) => setInScopeRegex(e.target.value)}
                 placeholder={".*\\.example\\.com$"}
                 rows={2}
-                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
               />
             </div>
 
-            {/* Out of scope toggle */}
+            {/* Out-of-scope toggle */}
             <div className="flex items-center gap-3 rounded-md border border-border bg-bg-tertiary p-3">
               <button
                 type="button"
                 onClick={() => setShowOutOfScope(!showOutOfScope)}
-                className={`relative h-5 w-9 rounded-full transition-colors ${
+                className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
                   showOutOfScope ? "bg-danger" : "bg-border-accent"
                 }`}
               >
@@ -231,13 +359,13 @@ export default function ScopeBuilder() {
                 />
               </button>
               <span className="text-sm text-text-secondary">
-                Show Out-of-Scope (forbidden targets)
+                Define out-of-scope (forbidden targets)
               </span>
             </div>
 
             {showOutOfScope && (
-              <div>
-                <label className="mb-1 block text-sm text-danger">
+              <div className="animate-fade-in">
+                <label className="section-label mb-1.5 block text-danger">
                   Out-of-Scope Domains (one per line)
                 </label>
                 <textarea
@@ -252,50 +380,143 @@ export default function ScopeBuilder() {
           </div>
         )}
 
-        {/* Step 2: Settings */}
+        {/* ============================================================ */}
+        {/* Step 2: Playbook                                             */}
+        {/* ============================================================ */}
         {step === 2 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-text-primary">
-              Advanced Settings
+          <div className="space-y-4 animate-fade-in">
+            <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+              <BookOpen className="h-4.5 w-4.5 text-neon-orange" />
+              Campaign Playbook
             </h2>
             <PlaybookSelector value={playbook} onChange={setPlaybook} />
-            <div>
-              <label className="mb-1 block text-sm text-text-secondary">
-                Custom Headers (Key: Value, one per line)
-              </label>
-              <textarea
-                value={customHeaders}
-                onChange={(e) => setCustomHeaders(e.target.value)}
-                placeholder={"Authorization: Bearer xxx\nX-Custom: value"}
-                rows={4}
-                className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm text-text-secondary">
-                Rate Limit (Packets Per Second)
-              </label>
-              <input
-                type="number"
-                value={rateLimit}
-                onChange={(e) => setRateLimit(e.target.value)}
-                min={1}
-                max={10000}
-                className="w-32 rounded-md border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
-              />
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* Step 3: Workflow Builder                                      */}
+        {/* ============================================================ */}
+        {step === 3 && (
+          <div className="space-y-4 animate-fade-in">
+            <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+              <Layers className="h-4.5 w-4.5 text-neon-blue" />
+              Workflow Builder
+            </h2>
+            <WorkflowBuilder value={workflow} onChange={setWorkflow} />
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* Step 4: Review & Launch                                      */}
+        {/* ============================================================ */}
+        {step === 4 && (
+          <div className="space-y-5 animate-fade-in">
+            <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+              <Rocket className="h-4.5 w-4.5 text-neon-green" />
+              Review & Launch
+            </h2>
+
+            {/* Review grid */}
+            <div className="space-y-3">
+              {/* Target */}
+              <div className="rounded-md border border-border bg-bg-tertiary p-3">
+                <span className="section-label">Target</span>
+                <div className="mt-1.5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-muted">Company</span>
+                    <span className="font-mono text-xs text-text-primary">{companyName}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-muted">Domain</span>
+                    <span className="font-mono text-xs text-neon-orange">{baseDomain}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-muted">Platform</span>
+                    <span className="text-xs text-text-secondary">{platform}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scope */}
+              <div className="rounded-md border border-border bg-bg-tertiary p-3">
+                <span className="section-label">Scope</span>
+                <div className="mt-1.5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-muted">In-scope domains</span>
+                    <span className="font-mono text-xs text-neon-green">{scopeCounts.domains}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-muted">CIDRs</span>
+                    <span className="font-mono text-xs text-neon-blue">{scopeCounts.cidrs}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-muted">Regex patterns</span>
+                    <span className="font-mono text-xs text-text-secondary">{scopeCounts.regex}</span>
+                  </div>
+                  {scopeCounts.outScope > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-danger">Out-of-scope</span>
+                      <span className="font-mono text-xs text-danger">{scopeCounts.outScope}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between border-t border-border pt-1">
+                    <span className="text-xs text-text-muted">Total rules</span>
+                    <span className="font-mono text-xs font-semibold text-text-primary">
+                      {scopeCounts.total}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Playbook + Workflow */}
+              <div className="rounded-md border border-border bg-bg-tertiary p-3">
+                <span className="section-label">Playbook & Workflow</span>
+                <div className="mt-1.5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-muted">Playbook</span>
+                    <span className="text-xs font-semibold text-neon-orange">{playbookLabel}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-muted">Phases enabled</span>
+                    <span className="font-mono text-xs text-neon-green">
+                      {workflowCounts.enabledPhases}/{workflowCounts.totalPhases}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-muted">Active tools</span>
+                    <span className="font-mono text-xs text-neon-blue">
+                      {workflowCounts.activeTools}/{workflowCounts.totalTools}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Execution */}
+              <div className="rounded-md border border-border bg-bg-tertiary p-3">
+                <span className="section-label">Execution</span>
+                <div className="mt-1.5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-muted">Rate limit</span>
+                    <span className="font-mono text-xs text-text-secondary">{rateLimit} pps</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-muted">Estimated time</span>
+                    <span className="font-mono text-xs text-text-muted">--:--</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Error */}
-        {error && (
-          <p className="mt-4 text-sm text-danger">{error}</p>
-        )}
+        {/* ── Error ── */}
+        {error && <p className="mt-4 text-sm text-danger">{error}</p>}
 
-        {/* Navigation */}
+        {/* ── Navigation ── */}
         <div className="mt-6 flex items-center justify-between">
           <button
-            onClick={() => setStep((step - 1) as Step)}
+            type="button"
+            onClick={goBack}
             disabled={step === 0}
             className="flex items-center gap-1 rounded-md px-4 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary disabled:opacity-30"
           >
@@ -303,20 +524,22 @@ export default function ScopeBuilder() {
             Back
           </button>
 
-          {step < 2 ? (
+          {step < 4 ? (
             <button
-              onClick={() => setStep((step + 1) as Step)}
+              type="button"
+              onClick={goNext}
               disabled={!canNext}
-              className="flex items-center gap-1 rounded-md bg-accent px-4 py-2 text-sm font-medium text-bg-primary transition-colors hover:bg-accent-hover disabled:opacity-50"
+              className="flex items-center gap-1 rounded-md bg-neon-orange px-4 py-2 text-sm font-semibold text-bg-primary transition-colors hover:bg-neon-orange-dim disabled:opacity-50"
             >
               Next
               <ChevronRight className="h-4 w-4" />
             </button>
           ) : (
             <button
+              type="button"
               onClick={handleSubmit}
               disabled={loading}
-              className="flex items-center gap-2 rounded-md bg-success px-5 py-2 text-sm font-medium text-bg-primary transition-colors hover:bg-success/90 disabled:opacity-50"
+              className="btn-launch flex items-center gap-2 rounded-md px-6 py-2.5 text-sm"
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
               Launch Campaign

@@ -36,15 +36,32 @@ const ICONS: Record<TreeNode["type"], React.ElementType> = {
  * Single tree node (recursive)
  * ----------------------------------------------------------------*/
 
-function TreeItem({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
+function TreeItem({
+  node,
+  depth = 0,
+  onSelect,
+}: {
+  node: TreeNode;
+  depth?: number;
+  onSelect?: (nodeId: string) => void;
+}) {
   const [open, setOpen] = useState(depth < 2);
   const hasChildren = (node.children?.length ?? 0) > 0;
   const Icon = ICONS[node.type] ?? Globe;
 
+  function handleClick() {
+    if (hasChildren) {
+      setOpen(!open);
+    }
+    if (onSelect && node.id.startsWith("asset-")) {
+      onSelect(node.id);
+    }
+  }
+
   return (
     <li>
       <button
-        onClick={() => setOpen(!open)}
+        onClick={handleClick}
         className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-sm transition-colors hover:bg-bg-surface"
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
@@ -68,7 +85,12 @@ function TreeItem({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
       {open && hasChildren && (
         <ul>
           {node.children!.map((child) => (
-            <TreeItem key={child.id} node={child} depth={depth + 1} />
+            <TreeItem
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              onSelect={onSelect}
+            />
           ))}
         </ul>
       )}
@@ -80,7 +102,13 @@ function TreeItem({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
  * Tree container
  * ----------------------------------------------------------------*/
 
-export default function AssetTree({ roots }: { roots: TreeNode[] }) {
+export default function AssetTree({
+  roots,
+  onSelect,
+}: {
+  roots: TreeNode[];
+  onSelect?: (nodeId: string) => void;
+}) {
   if (roots.length === 0) {
     return (
       <div className="flex h-40 items-center justify-center text-sm text-text-muted">
@@ -92,7 +120,7 @@ export default function AssetTree({ roots }: { roots: TreeNode[] }) {
   return (
     <ul className="space-y-0.5 font-mono text-sm">
       {roots.map((node) => (
-        <TreeItem key={node.id} node={node} />
+        <TreeItem key={node.id} node={node} onSelect={onSelect} />
       ))}
     </ul>
   );

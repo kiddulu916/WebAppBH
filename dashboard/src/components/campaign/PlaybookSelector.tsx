@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { BookOpen, Search, Globe, Cloud, Code } from "lucide-react";
+import { Search, Globe, Code, Cloud, BookOpen } from "lucide-react";
 
 const PLAYBOOKS = [
   {
@@ -9,24 +8,28 @@ const PLAYBOOKS = [
     label: "Wide Recon",
     description: "Full 7-stage reconnaissance pipeline for maximum asset discovery",
     icon: Search,
+    accent: "neon-orange" as const,
   },
   {
     name: "deep_webapp",
     label: "Deep WebApp",
     description: "Focus on web application testing — skip port scanning and cloud enum",
     icon: Globe,
+    accent: "neon-blue" as const,
   },
   {
     name: "api_focused",
     label: "API Focused",
     description: "Target API endpoints and parameters for API security testing",
     icon: Code,
+    accent: "neon-green" as const,
   },
   {
     name: "cloud_first",
     label: "Cloud First",
     description: "Prioritize cloud asset discovery and cloud-specific vulnerabilities",
     icon: Cloud,
+    accent: "neon-blue" as const,
   },
 ] as const;
 
@@ -39,9 +42,12 @@ export default function PlaybookSelector({ value, onChange }: PlaybookSelectorPr
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <BookOpen className="h-4 w-4 text-accent" />
+        <BookOpen className="h-4 w-4 text-neon-orange" />
         <span className="text-sm font-medium text-text-primary">Campaign Playbook</span>
       </div>
+      <p className="text-xs text-text-muted">
+        Select a strategy that determines phase priorities and tool weighting.
+      </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {PLAYBOOKS.map((pb) => {
           const Icon = pb.icon;
@@ -51,19 +57,33 @@ export default function PlaybookSelector({ value, onChange }: PlaybookSelectorPr
               key={pb.name}
               type="button"
               onClick={() => onChange(pb.name)}
-              className={`rounded-lg border p-3 text-left transition-colors ${
+              className={`rounded-lg border p-3 text-left transition-all ${
                 selected
-                  ? "border-accent bg-accent/10"
-                  : "border-border bg-bg-secondary hover:border-accent/50"
+                  ? "border-neon-orange card-glow bg-neon-orange-glow"
+                  : "border-border bg-bg-tertiary hover:border-border-accent"
               }`}
             >
               <div className="flex items-center gap-2">
-                <Icon className={`h-4 w-4 ${selected ? "text-accent" : "text-text-muted"}`} />
-                <span className={`text-sm font-medium ${selected ? "text-accent" : "text-text-primary"}`}>
+                <Icon
+                  className={`h-4 w-4 ${
+                    selected ? "text-neon-orange" : "text-text-muted"
+                  }`}
+                />
+                <span
+                  className={`text-sm font-semibold ${
+                    selected ? "text-neon-orange" : "text-text-primary"
+                  }`}
+                >
                   {pb.label}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-text-muted">{pb.description}</p>
+              <p
+                className={`mt-1.5 text-xs leading-relaxed ${
+                  selected ? "text-text-secondary" : "text-text-muted"
+                }`}
+              >
+                {pb.description}
+              </p>
             </button>
           );
         })}

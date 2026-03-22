@@ -61,7 +61,7 @@ interface ControlResponse {
 /* Assets                                                             */
 /* ------------------------------------------------------------------ */
 
-interface AssetWithLocations {
+export interface AssetWithLocations {
   id: number;
   target_id: number;
   asset_type: string;

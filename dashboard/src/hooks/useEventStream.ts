@@ -1,67 +1,67 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from "react";
-import { toast } from "sonner";
+import { useEffect, useRef } from "react";
 import { useCampaignStore } from "@/stores/campaign";
 import type { SSEEvent } from "@/types/events";
 
 /**
- * Hook that connects to the orchestrator SSE stream for a given target.
- * Dispatches events to the campaign store and shows toast alerts.
+ * Connects to the orchestrator SSE stream for the active target.
+ * Pushes events to the global campaign store — no toasts, no popups.
+ * Call once in the layout; all components consume from the store.
  */
 export function useEventStream(targetId: number | null) {
-  const [events, setEvents] = useState<SSEEvent[]>([]);
   const sourceRef = useRef<EventSource | null>(null);
-  const setConnected = useCampaignStore((s) => s.setConnected);
-
-  const addEvent = useCallback((evt: SSEEvent) => {
-    setEvents((prev) => [...prev.slice(-199), evt]); // keep last 200
-  }, []);
+  const { setConnected, pushEvent, bumpCounter } = useCampaignStore.getState();
 
   useEffect(() => {
-    if (targetId == null) return;
+    if (targetId == null) {
+      useCampaignStore.getState().setConnected(false);
+      return;
+    }
 
     const url = `/api/sse/${targetId}`;
     const es = new EventSource(url);
     sourceRef.current = es;
 
-    es.onopen = () => setConnected(true);
-    es.onerror = () => setConnected(false);
+    es.onopen = () => useCampaignStore.getState().setConnected(true);
+    es.onerror = () => useCampaignStore.getState().setConnected(false);
 
     const handleEvent = (e: MessageEvent) => {
       try {
         const data: SSEEvent = JSON.parse(e.data);
         data.timestamp = new Date().toISOString();
-        addEvent(data);
 
-        if (data.event === "CRITICAL_ALERT") {
-          toast.error(String((data as Record<string, unknown>).message ?? "Critical alert"), {
-            description: String((data as Record<string, unknown>).alert_type ?? ""),
-            duration: 10_000,
-          });
+        useCampaignStore.getState().pushEvent(data);
+
+        // Silently bump counters — no toasts
+        if (data.event === "NEW_ASSET") {
+          useCampaignStore.getState().bumpCounter("assets");
         } else if (data.event === "WORKER_SPAWNED") {
-          toast.info(
-            `Worker started: ${String((data as Record<string, unknown>).container ?? "")}`,
-            { duration: 4_000 },
-          );
+          useCampaignStore.getState().bumpCounter("workers");
+        } else if (data.event === "CRITICAL_ALERT") {
+          useCampaignStore.getState().incrementUnreadAlerts();
         }
       } catch {
         // ignore malformed events
       }
     };
 
-    // Listen for typed events
-    for (const t of ["TOOL_PROGRESS", "NEW_ASSET", "CRITICAL_ALERT", "WORKER_SPAWNED", "RECON_DIFF", "SCOPE_DRIFT", "AUTOSCALE_RECOMMENDATION"]) {
+    for (const t of [
+      "TOOL_PROGRESS",
+      "NEW_ASSET",
+      "CRITICAL_ALERT",
+      "WORKER_SPAWNED",
+      "RECON_DIFF",
+      "SCOPE_DRIFT",
+      "AUTOSCALE_RECOMMENDATION",
+    ]) {
       es.addEventListener(t, handleEvent);
     }
-    // Also listen for generic "message" events
     es.onmessage = handleEvent;
 
     return () => {
       es.close();
       sourceRef.current = null;
     };
-  }, [targetId, addEvent, setConnected]);
-
-  return { events };
+  }, [targetId]);
 }
