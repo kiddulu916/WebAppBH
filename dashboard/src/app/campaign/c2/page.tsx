@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Activity, Settings } from "lucide-react";
+import { Activity, Columns2, Settings } from "lucide-react";
 import AssetTree, { type TreeNode } from "@/components/c2/AssetTree";
 import PhasePipeline from "@/components/c2/PhasePipeline";
 import WorkerGrid from "@/components/c2/WorkerGrid";
+import SplitConsole from "@/components/c2/SplitConsole";
 import SystemPulse from "@/components/c2/SystemPulse";
 import CampaignTimeline from "@/components/c2/CampaignTimeline";
 import AssetDetailDrawer from "@/components/c2/AssetDetailDrawer";
@@ -74,6 +75,7 @@ export default function C2Page() {
   const [localJobs, setLocalJobs] = useState<JobState[]>([]);
   const [treeRoots, setTreeRoots] = useState<TreeNode[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [splitView, setSplitView] = useState(false);
   const [selectedAsset, setSelectedAsset] =
     useState<AssetWithLocations | null>(null);
   const [allAssets, setAllAssets] = useState<AssetWithLocations[]>([]);
@@ -194,13 +196,26 @@ export default function C2Page() {
         <span className="rounded bg-bg-surface px-2 py-0.5 font-mono text-xs text-accent">
           {activeTarget.base_domain}
         </span>
-        <button
-          onClick={() => setSettingsOpen(true)}
-          className="ml-auto rounded p-1.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-text-primary"
-          title="Settings"
-        >
-          <Settings className="h-4 w-4" />
-        </button>
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            onClick={() => setSplitView(!splitView)}
+            className={`rounded p-1.5 transition-colors ${
+              splitView
+                ? "bg-neon-blue/10 text-neon-blue"
+                : "text-text-muted hover:bg-bg-surface hover:text-text-primary"
+            }`}
+            title="Split Console View"
+          >
+            <Columns2 className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="rounded p-1.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-text-primary"
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Phase Pipeline */}
@@ -224,10 +239,14 @@ export default function C2Page() {
           </div>
         </div>
 
-        {/* Right -- Worker Grid */}
+        {/* Right -- Worker Grid / Split Console */}
         <div className="lg:col-span-2">
           <div className="rounded-lg border border-border bg-bg-secondary p-4">
-            <WorkerGrid jobs={jobs} events={events} />
+            {splitView ? (
+              <SplitConsole jobs={jobs} events={events} />
+            ) : (
+              <WorkerGrid jobs={jobs} events={events} />
+            )}
           </div>
         </div>
       </div>
