@@ -220,6 +220,14 @@ app = FastAPI(
     dependencies=[Depends(verify_api_key)],
 )
 
+from orchestrator.rate_limit import rate_limit_check  # noqa: E402
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    await rate_limit_check(request)
+    return await call_next(request)
+
 
 # ---------------------------------------------------------------------------
 # POST /api/v1/targets — initialise a new scan
