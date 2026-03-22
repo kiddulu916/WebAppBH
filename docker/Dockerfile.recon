@@ -6,6 +6,11 @@ FROM golang:1.25.7-bookworm AS go-builder
 ENV GOPATH=/go
 ENV PATH=$GOPATH/bin:$PATH
 
+# * naabu (and other tools) link libpcap via gopacket; pcap.h is required at compile time
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libpcap-dev && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
     go install github.com/tomnomnom/assetfinder@latest && \
     go install github.com/projectdiscovery/chaos-client/cmd/chaos@latest && \
