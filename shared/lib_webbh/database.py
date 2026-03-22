@@ -64,9 +64,10 @@ def get_engine() -> AsyncEngine:
         kwargs: dict = {}
         if not url.startswith("sqlite"):
             kwargs.update(
-                pool_size=10,
-                max_overflow=20,
-                pool_recycle=3600,
+                pool_size=int(os.environ.get("DB_POOL_SIZE", "10")),
+                max_overflow=int(os.environ.get("DB_MAX_OVERFLOW", "20")),
+                pool_recycle=int(os.environ.get("DB_POOL_RECYCLE", "3600")),
+                pool_pre_ping=True,
             )
         _engine = create_async_engine(url, **kwargs)
     return _engine

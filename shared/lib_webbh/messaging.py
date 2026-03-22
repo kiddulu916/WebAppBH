@@ -15,7 +15,13 @@ def get_redis() -> aioredis.Redis:
     if _redis is None:
         host = os.environ.get("REDIS_HOST", "localhost")
         port = int(os.environ.get("REDIS_PORT", "6379"))
-        _redis = aioredis.Redis(host=host, port=port, decode_responses=True)
+        max_connections = int(os.environ.get("REDIS_MAX_CONNECTIONS", "50"))
+        _redis = aioredis.Redis(
+            host=host,
+            port=port,
+            decode_responses=True,
+            max_connections=max_connections,
+        )
     return _redis
 
 
