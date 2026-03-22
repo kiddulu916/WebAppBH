@@ -9,6 +9,7 @@ import CommandPalette from "@/components/layout/CommandPalette";
 import ShortcutsOverlay from "@/components/layout/ShortcutsOverlay";
 import SystemCheck from "@/components/common/SystemCheck";
 import GlobalEventStream from "@/components/common/GlobalEventStream";
+import OnboardingTour from "@/components/common/OnboardingTour";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -40,6 +41,7 @@ export default function RootLayout({
           </div>
           <CommandPalette />
           <ShortcutsOverlay />
+          <OnboardingTour />
         </SystemCheck>
         <Toaster
           theme="dark"
