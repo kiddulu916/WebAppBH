@@ -6,6 +6,7 @@ import AssetTree, { type TreeNode } from "@/components/c2/AssetTree";
 import PhasePipeline from "@/components/c2/PhasePipeline";
 import WorkerGrid from "@/components/c2/WorkerGrid";
 import SystemPulse from "@/components/c2/SystemPulse";
+import CampaignTimeline from "@/components/c2/CampaignTimeline";
 import AssetDetailDrawer from "@/components/c2/AssetDetailDrawer";
 import SettingsDrawer from "@/components/c2/SettingsDrawer";
 import DiffTimeline from "@/components/c2/DiffTimeline";
@@ -233,6 +234,9 @@ export default function C2Page() {
 
       {/* System Pulse (conditional on systemPulseOpen) */}
       <SystemPulse />
+
+      {/* Campaign Timeline */}
+      <CampaignTimeline jobs={jobs} />
 
       {/* Diff Timeline + Scope Drift Alerts */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
