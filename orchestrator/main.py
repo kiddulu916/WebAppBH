@@ -18,6 +18,9 @@ GET   /api/v1/targets/{id}/reports – list generated reports
 GET   /api/v1/targets/{id}/reports/{filename} – download a report
 POST  /api/v1/targets/{id}/rescan  – snapshot assets and queue rescan
 GET   /api/v1/vulnerabilities/{id}/draft – draft vuln report for platform
+GET   /api/v1/targets/{id}/graph   – attack graph (nodes + edges)
+GET   /api/v1/targets/{id}/correlations – correlated vulnerability groups
+GET   /api/v1/queue_health            – queue depth health status
 """
 
 from __future__ import annotations
@@ -134,6 +137,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine_task = asyncio.create_task(event_engine.run_event_loop(), name="event-engine")
     heartbeat_task = asyncio.create_task(event_engine.run_heartbeat(), name="heartbeat")
     redis_task = asyncio.create_task(event_engine.run_redis_listener(), name="redis-listener")
+    autoscale_task = asyncio.create_task(event_engine.run_autoscaler(), name="autoscaler")
     logger.info("Background tasks started")
 
     yield
@@ -142,7 +146,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine_task.cancel()
     heartbeat_task.cancel()
     redis_task.cancel()
-    for task in (engine_task, heartbeat_task, redis_task):
+    autoscale_task.cancel()
+    for task in (engine_task, heartbeat_task, redis_task, autoscale_task):
         try:
             await task
         except asyncio.CancelledError:
@@ -683,6 +688,112 @@ async def draft_vuln_report(
         }
     draft = render_vuln_report(vuln_dict, platform_enum)
     return {"vuln_id": vuln_id, "platform": platform, "draft": draft}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/targets/{target_id}/graph — attack graph
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/targets/{target_id}/graph")
+async def get_attack_graph(target_id: int):
+    nodes, edges = [], []
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+        nodes.append({"id": f"target-{target.id}", "label": target.base_domain, "type": "target"})
+
+        assets = (await session.execute(
+            select(Asset).where(Asset.target_id == target_id)
+            .options(selectinload(Asset.locations))
+        )).scalars().all()
+        for a in assets:
+            node_id = f"asset-{a.id}"
+            nodes.append({"id": node_id, "label": a.asset_value, "type": a.asset_type})
+            edges.append({"source": f"target-{target.id}", "target": node_id})
+            for loc in a.locations:
+                loc_id = f"loc-{loc.id}"
+                nodes.append({"id": loc_id, "label": f":{loc.port}/{loc.service or ''}", "type": "port"})
+                edges.append({"source": node_id, "target": loc_id})
+
+        vulns = (await session.execute(
+            select(Vulnerability).where(Vulnerability.target_id == target_id)
+        )).scalars().all()
+        for v in vulns:
+            vuln_id = f"vuln-{v.id}"
+            nodes.append({"id": vuln_id, "label": v.title, "type": "vulnerability", "severity": v.severity})
+            if v.asset_id:
+                edges.append({"source": f"asset-{v.asset_id}", "target": vuln_id})
+            else:
+                edges.append({"source": f"target-{target.id}", "target": vuln_id})
+    return {"nodes": nodes, "edges": edges}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/targets/{target_id}/correlations — correlated vuln groups
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/targets/{target_id}/correlations")
+async def get_correlations(target_id: int):
+    from lib_webbh.correlation import correlate_findings
+
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+        vulns = (await session.execute(
+            select(Vulnerability).where(Vulnerability.target_id == target_id)
+            .options(selectinload(Vulnerability.asset))
+        )).scalars().all()
+
+    vuln_dicts = [
+        {
+            "id": v.id, "title": v.title, "severity": v.severity,
+            "asset_id": v.asset_id,
+            "asset_value": v.asset.asset_value if v.asset else None,
+            "source_tool": v.source_tool, "cvss_score": v.cvss_score,
+        }
+        for v in vulns
+    ]
+    groups = correlate_findings(vuln_dicts)
+    return {
+        "target_id": target_id,
+        "groups": [
+            {
+                "shared_assets": g.shared_assets,
+                "severity": g.composite_severity,
+                "count": len(g.vuln_ids),
+                "vuln_ids": g.vuln_ids,
+                "chain_description": g.chain_description,
+            }
+            for g in groups
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/queue_health — queue depth health status
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/queue_health")
+async def get_queue_health():
+    from lib_webbh.messaging import get_pending
+    from lib_webbh.queue_monitor import assess_queue_health
+
+    queues = ["recon_queue", "fuzzing_queue", "webapp_queue", "cloud_queue", "api_queue"]
+    results = {}
+    for q in queues:
+        try:
+            info = await get_pending(q, f"{q.replace('_queue', '')}_group")
+            pending = info.get("pending", 0)
+        except Exception:
+            pending = 0
+        health = assess_queue_health(pending)
+        results[q] = {"pending": pending, "health": health.value}
+    return {"queues": results}
 
 
 # ---------------------------------------------------------------------------

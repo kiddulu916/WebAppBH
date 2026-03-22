@@ -7,8 +7,10 @@ pipeline for each incoming target.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -59,6 +61,10 @@ async def handle_message(msg_id: str, data: dict) -> None:
     headers = profile.get("custom_headers", {})
     scope_manager = ScopeManager(profile)
 
+    config_dir = Path("shared/config") / str(target_id)
+    playbook_path = config_dir / "playbook.json"
+    playbook = json.loads(playbook_path.read_text()) if playbook_path.exists() else None
+
     # Ensure job_state row
     async with get_session() as session:
         stmt = select(JobState).where(
@@ -89,7 +95,7 @@ async def handle_message(msg_id: str, data: dict) -> None:
     )
 
     try:
-        await pipeline.run(target, scope_manager, headers=headers)
+        await pipeline.run(target, scope_manager, headers=headers, playbook=playbook)
     except Exception:
         log.exception("Pipeline failed")
         async with get_session() as session:

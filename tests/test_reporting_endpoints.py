@@ -62,13 +62,14 @@ async def seed_empty_target(db):
 
 @pytest.fixture
 def client():
-    with patch("orchestrator.event_engine.run_event_loop", new_callable=AsyncMock):
-        with patch("orchestrator.event_engine.run_heartbeat", new_callable=AsyncMock):
-            with patch("orchestrator.event_engine.run_redis_listener", new_callable=AsyncMock):
-                from httpx import ASGITransport, AsyncClient
-                from orchestrator.main import app
-                transport = ASGITransport(app=app)
-                return AsyncClient(transport=transport, base_url="http://test", headers={"X-API-KEY": "test-api-key-1234"})
+    with patch("orchestrator.event_engine.run_event_loop", new_callable=AsyncMock), \
+         patch("orchestrator.event_engine.run_heartbeat", new_callable=AsyncMock), \
+         patch("orchestrator.event_engine.run_redis_listener", new_callable=AsyncMock), \
+         patch("orchestrator.event_engine.run_autoscaler", new_callable=AsyncMock):
+        from httpx import ASGITransport, AsyncClient
+        from orchestrator.main import app
+        transport = ASGITransport(app=app)
+        return AsyncClient(transport=transport, base_url="http://test", headers={"X-API-KEY": "test-api-key-1234"})
 
 
 @pytest.mark.anyio

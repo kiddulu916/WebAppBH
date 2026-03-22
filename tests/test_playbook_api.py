@@ -18,7 +18,9 @@ from lib_webbh.database import get_engine, Base
 
 # Patch event_engine background tasks before importing app
 with patch("orchestrator.event_engine.run_event_loop", new_callable=AsyncMock), \
-     patch("orchestrator.event_engine.run_heartbeat", new_callable=AsyncMock):
+     patch("orchestrator.event_engine.run_heartbeat", new_callable=AsyncMock), \
+     patch("orchestrator.event_engine.run_redis_listener", new_callable=AsyncMock), \
+     patch("orchestrator.event_engine.run_autoscaler", new_callable=AsyncMock):
     from orchestrator.main import app
 
 API_KEY_HEADER = {"X-API-KEY": "test-api-key-1234"}

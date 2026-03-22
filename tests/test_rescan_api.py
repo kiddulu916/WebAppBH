@@ -48,7 +48,8 @@ async def seed_target_with_assets(db):
 def client():
     with patch("orchestrator.event_engine.run_event_loop", new_callable=AsyncMock), \
          patch("orchestrator.event_engine.run_heartbeat", new_callable=AsyncMock), \
-         patch("orchestrator.event_engine.run_redis_listener", new_callable=AsyncMock):
+         patch("orchestrator.event_engine.run_redis_listener", new_callable=AsyncMock), \
+         patch("orchestrator.event_engine.run_autoscaler", new_callable=AsyncMock):
         from httpx import ASGITransport, AsyncClient
         from orchestrator.main import app
         transport = ASGITransport(app=app)

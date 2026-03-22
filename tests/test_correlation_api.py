@@ -1,5 +1,5 @@
-# tests/test_draft_report_api.py
-"""Test GET /api/v1/vulnerabilities/{vuln_id}/draft endpoint."""
+# tests/test_correlation_api.py
+"""Test GET /api/v1/targets/{target_id}/correlations endpoint."""
 
 import os
 
@@ -31,27 +31,29 @@ async def db():
 
 
 @pytest_asyncio.fixture
-async def seed_vuln(db):
+async def seed_correlated_vulns(db):
     async with get_session() as session:
-        t = Target(company_name="DraftCo", base_domain="draft.com", target_profile={})
+        t = Target(company_name="CorrCo", base_domain="corr.com", target_profile={})
         session.add(t)
         await session.commit()
         await session.refresh(t)
 
-        a = Asset(target_id=t.id, asset_type="domain", asset_value="app.draft.com", source_tool="subfinder")
+        a = Asset(target_id=t.id, asset_type="domain", asset_value="app.corr.com", source_tool="subfinder")
         session.add(a)
         await session.commit()
         await session.refresh(a)
 
-        v = Vulnerability(
+        v1 = Vulnerability(
             target_id=t.id, asset_id=a.id, severity="high",
-            title="XSS in Search", description="Reflected XSS found",
-            poc="<script>alert(1)</script>", source_tool="nuclei", cvss_score=7.5,
+            title="XSS in Search", source_tool="dalfox", cvss_score=7.5,
         )
-        session.add(v)
+        v2 = Vulnerability(
+            target_id=t.id, asset_id=a.id, severity="critical",
+            title="SQLi in Login", source_tool="sqlmap", cvss_score=9.8,
+        )
+        session.add_all([v1, v2])
         await session.commit()
-        await session.refresh(v)
-        return v.id
+        return t.id
 
 
 @pytest.fixture
@@ -67,26 +69,32 @@ def client():
 
 
 @pytest.mark.anyio
-async def test_draft_report_hackerone(client, seed_vuln):
-    resp = await client.get(f"/api/v1/vulnerabilities/{seed_vuln}/draft?platform=hackerone")
+async def test_correlations_groups_by_asset(client, seed_correlated_vulns):
+    resp = await client.get(f"/api/v1/targets/{seed_correlated_vulns}/correlations")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["vuln_id"] == seed_vuln
-    assert body["platform"] == "hackerone"
-    assert "## Summary" in body["draft"]
-    assert "XSS in Search" in body["draft"]
+    assert body["target_id"] == seed_correlated_vulns
+    assert len(body["groups"]) >= 1
+    group = body["groups"][0]
+    assert "app.corr.com" in group["shared_assets"]
+    assert group["count"] == 2
 
 
 @pytest.mark.anyio
-async def test_draft_report_bugcrowd(client, seed_vuln):
-    resp = await client.get(f"/api/v1/vulnerabilities/{seed_vuln}/draft?platform=bugcrowd")
+async def test_correlations_empty_target(client, db):
+    async with get_session() as session:
+        t = Target(company_name="EmptyCorr", base_domain="empty-corr.com", target_profile={})
+        session.add(t)
+        await session.commit()
+        await session.refresh(t)
+        tid = t.id
+
+    resp = await client.get(f"/api/v1/targets/{tid}/correlations")
     assert resp.status_code == 200
-    body = resp.json()
-    assert body["platform"] == "bugcrowd"
-    assert "## Vulnerability:" in body["draft"]
+    assert resp.json()["groups"] == []
 
 
 @pytest.mark.anyio
-async def test_draft_report_unknown_vuln(client, db):
-    resp = await client.get("/api/v1/vulnerabilities/9999/draft")
+async def test_correlations_unknown_target(client, db):
+    resp = await client.get("/api/v1/targets/9999/correlations")
     assert resp.status_code == 404

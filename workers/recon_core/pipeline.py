@@ -62,8 +62,18 @@ class Pipeline:
         self.container_name = container_name
         self.log = logger.bind(target_id=target_id)
 
+    def _filter_stages(self, playbook: dict | None) -> list[Stage]:
+        """Return only the stages enabled by the playbook config."""
+        if not playbook or "stages" not in playbook:
+            return list(STAGES)
+        enabled_names = {
+            s["name"] for s in playbook["stages"] if s.get("enabled", True)
+        }
+        return [stage for stage in STAGES if stage.name in enabled_names]
+
     async def run(
-        self, target, scope_manager: ScopeManager, headers: dict | None = None
+        self, target, scope_manager: ScopeManager, headers: dict | None = None,
+        playbook: dict | None = None,
     ) -> None:
         """Execute the pipeline, resuming from last completed stage."""
         completed_phase = await self._get_completed_phase()
@@ -76,7 +86,8 @@ class Pipeline:
                 extra={"completed_phase": completed_phase},
             )
 
-        for stage in STAGES[start_index:]:
+        stages = self._filter_stages(playbook)
+        for stage in stages[start_index:]:
             self.log.info(f"Starting stage: {stage.name}")
             await self._update_phase(stage.name)
 

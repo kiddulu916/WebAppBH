@@ -644,3 +644,58 @@ async def run_redis_listener() -> None:
         consumer="event-engine",
         callback=_dispatch_recon_event,
     )
+
+
+# ---------------------------------------------------------------------------
+# Auto-scaling — monitor queue depth and scale workers
+# ---------------------------------------------------------------------------
+AUTOSCALE_INTERVAL = int(os.environ.get("AUTOSCALE_INTERVAL", "30"))
+QUEUE_PRESSURE_THRESHOLD = int(os.environ.get("QUEUE_PRESSURE_THRESHOLD", "50"))
+
+QUEUE_TO_WORKER = {
+    "recon_queue": "recon",
+    "fuzzing_queue": "fuzzing",
+    "webapp_queue": "webapp_testing",
+    "cloud_queue": "cloud_testing",
+    "api_queue": "api_testing",
+}
+
+
+async def run_autoscaler() -> None:
+    """Monitor queue depths and log scaling recommendations."""
+    from lib_webbh.messaging import get_pending
+    from lib_webbh.queue_monitor import assess_queue_health
+
+    logger.info("Autoscaler started", extra={"interval": AUTOSCALE_INTERVAL})
+    await asyncio.sleep(5)
+
+    while True:
+        try:
+            for queue_name, worker_key in QUEUE_TO_WORKER.items():
+                try:
+                    info = await get_pending(queue_name, f"{worker_key}_group")
+                    pending = info.get("pending", 0)
+                except Exception:
+                    pending = 0
+
+                health = assess_queue_health(pending, QUEUE_PRESSURE_THRESHOLD)
+
+                if health.should_scale_up:
+                    logger.warning(
+                        "Queue pressure detected — scale up recommended",
+                        extra={"queue": queue_name, "pending": pending,
+                               "health": health.value, "worker": worker_key},
+                    )
+                    await _emit_event(0, "AUTOSCALE_RECOMMENDATION", {
+                        "queue": queue_name, "worker": worker_key,
+                        "pending": pending, "action": "scale_up",
+                    })
+                elif health.should_scale_down:
+                    logger.debug(
+                        "Queue idle — scale down possible",
+                        extra={"queue": queue_name, "worker": worker_key},
+                    )
+        except Exception:
+            logger.exception("Error in autoscaler cycle")
+
+        await asyncio.sleep(AUTOSCALE_INTERVAL)
