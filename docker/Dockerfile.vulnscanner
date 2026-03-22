@@ -9,13 +9,21 @@ ENV PATH=$GOPATH/bin:$PATH
 RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 
 # ============================================================
-# Stage 2: Python tool builder
+# Stage 2: Python tool + lib_webbh builder
 # ============================================================
 FROM python:3.10-slim-bookworm AS py-builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir --target=/py-tools \
     sqlmap \
     aiohttp
+
+# Install lib_webbh (needs gcc + libpq-dev at compile time)
+COPY shared/lib_webbh /build/lib_webbh
+RUN pip install --no-cache-dir --target=/py-tools /build/lib_webbh
 
 # ============================================================
 # Stage 3: Runtime
@@ -26,7 +34,7 @@ WORKDIR /app
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        gcc libpq-dev git wget ruby default-jre-headless php-cli && \
+        libpq5 git wget ruby default-jre-headless php-cli && \
     rm -rf /var/lib/apt/lists/*
 
 # Go binaries
@@ -61,10 +69,6 @@ RUN ln -sf /opt/commix/commix.py /usr/local/bin/commix && \
 
 # Nuclei templates directory
 RUN mkdir -p /app/nuclei-templates /app/custom-templates
-
-# Install lib_webbh
-COPY shared/lib_webbh /app/shared/lib_webbh
-RUN pip install --no-cache-dir /app/shared/lib_webbh
 
 # Shared directories
 RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs

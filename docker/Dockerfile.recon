@@ -27,30 +27,48 @@ RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && 
 RUN cp $(find /go/pkg/mod/github.com/haccer/subjack@* -name fingerprints.json -print -quit) /opt/fingerprints.json
 
 # ============================================================
-# Stage 2: Python tool builder
+# Stage 2: massdns builder
+# ============================================================
+FROM debian:bookworm-slim AS massdns-builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git make gcc libc6-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/blechschmidt/massdns.git /build/massdns && \
+    cd /build/massdns && make && \
+    cp bin/massdns /usr/local/bin/massdns
+
+# ============================================================
+# Stage 3: Python tool + lib_webbh builder
 # ============================================================
 FROM python:3.10-slim-bookworm AS py-builder
 
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir --target=/py-tools \
-    sublist3r 
+    sublist3r
+
+# Install lib_webbh (needs gcc + libpq-dev at compile time)
+COPY shared/lib_webbh /build/lib_webbh
+RUN pip install --no-cache-dir --target=/py-tools /build/lib_webbh
 
 # ============================================================
-# Stage 3: Runtime
+# Stage 4: Runtime
 # ============================================================
 FROM python:3.10-slim-bookworm
 
 WORKDIR /app
 
 RUN apt-get update && \
-apt-get install -y --no-install-recommends \
-gcc libpq-dev libpcap-dev git wget make build-essential gnupg
+    apt-get install -y --no-install-recommends \
+    libpq5 libpcap0.8 git wget gnupg && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN git clone https://github.com/blechschmidt/massdns.git && \
-    cd massdns && \ 
-    make && \
-    cp bin/massdns /usr/local/bin/ && \
-    cd .. && \
-    rm -rf massdns
+# massdns from builder (no build-essential needed in runtime)
+COPY --from=massdns-builder /usr/local/bin/massdns /usr/local/bin/massdns
 
 COPY workers/recon_core/resolvers.txt /usr/local/bin/resolvers.txt
 
@@ -83,10 +101,6 @@ COPY --from=go-builder /opt/fingerprints.json /opt/fingerprints.json
 
 # Python tools
 COPY --from=py-builder /py-tools /usr/local/lib/python3.10/site-packages/
-
-# Install lib_webbh
-COPY shared/lib_webbh /app/shared/lib_webbh
-RUN pip install --no-cache-dir /app/shared/lib_webbh
 
 # Shared directories
 RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs

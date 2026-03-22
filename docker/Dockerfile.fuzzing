@@ -17,13 +17,21 @@ FROM rust:1.77-bookworm AS rust-builder
 RUN cargo install feroxbuster
 
 # ============================================================
-# Stage 3: Python tool builder
+# Stage 3: Python tool + lib_webbh builder
 # ============================================================
 FROM python:3.10-slim-bookworm AS py-builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir --target=/py-tools \
     arjun \
     aiohttp
+
+# Install lib_webbh (needs gcc + libpq-dev at compile time)
+COPY shared/lib_webbh /build/lib_webbh
+RUN pip install --no-cache-dir --target=/py-tools /build/lib_webbh
 
 # ============================================================
 # Stage 4: SecLists downloader
@@ -51,7 +59,7 @@ WORKDIR /app
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        gcc libpq-dev && \
+        libpq5 && \
     rm -rf /var/lib/apt/lists/*
 
 # Go binaries
@@ -72,10 +80,6 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git && \
     git clone https://github.com/nicedayfor/oralyzer.git /opt/oralyzer && \
     rm -rf /var/lib/apt/lists/*
-
-# Install lib_webbh
-COPY shared/lib_webbh /app/shared/lib_webbh
-RUN pip install --no-cache-dir /app/shared/lib_webbh
 
 # Shared directories
 RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs

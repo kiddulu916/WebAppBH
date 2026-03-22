@@ -14,12 +14,20 @@ RUN ARCH=$(dpkg --print-architecture) && \
     tar xzf trufflehog_linux_${ARCH}.tar.gz -C /usr/local/bin trufflehog
 
 # ============================================================
-# Stage 2: Python pip builder (httpx[http2])
+# Stage 2: Python pip + lib_webbh builder
 # ============================================================
 FROM python:3.10-slim-bookworm AS py-builder
 
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir --target=/py-tools \
     "httpx[http2]"
+
+# Install lib_webbh (needs gcc + libpq-dev at compile time)
+COPY shared/lib_webbh /build/lib_webbh
+RUN pip install --no-cache-dir --target=/py-tools /build/lib_webbh
 
 # ============================================================
 # Stage 3: Runtime
@@ -30,7 +38,7 @@ WORKDIR /app
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        gcc libpq-dev git wget && \
+        libpq5 git wget && \
     rm -rf /var/lib/apt/lists/*
 
 # Go binaries
@@ -61,10 +69,6 @@ RUN mkdir -p /app/wordlists && \
 
 # Temp directories for tool output
 RUN mkdir -p /tmp/api-specs /tmp/inql-output /tmp/cors-out
-
-# Install lib_webbh
-COPY shared/lib_webbh /app/shared/lib_webbh
-RUN pip install --no-cache-dir /app/shared/lib_webbh
 
 # Shared directories
 RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs

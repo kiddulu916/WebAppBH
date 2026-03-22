@@ -33,6 +33,13 @@ RUN ARCH=$(dpkg --print-architecture) && \
 RUN pip install --no-cache-dir --target=/py-tools \
     frida-tools httpx
 
+# Install lib_webbh (needs gcc + libpq-dev at compile time)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+COPY shared/lib_webbh /build/lib_webbh
+RUN pip install --no-cache-dir --target=/py-tools /build/lib_webbh
+
 # ============================================================
 # Stage 2: Runtime
 # ============================================================
@@ -42,7 +49,7 @@ WORKDIR /app
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        gcc libpq-dev default-jre-headless android-tools-adb && \
+        libpq5 default-jre-headless android-tools-adb && \
     rm -rf /var/lib/apt/lists/*
 
 # apktool
@@ -58,10 +65,6 @@ COPY --from=builder /usr/local/bin/apkeep /usr/local/bin/apkeep
 
 # Python tools (frida-tools, httpx)
 COPY --from=builder /py-tools /usr/local/lib/python3.11/site-packages/
-
-# Install lib_webbh
-COPY shared/lib_webbh /app/shared/lib_webbh
-RUN pip install --no-cache-dir /app/shared/lib_webbh
 
 # Shared directories
 RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs \

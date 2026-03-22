@@ -1,17 +1,33 @@
-FROM python:3.10-slim
+# ============================================================
+# Stage 1: Builder — compile asyncpg and install lib_webbh
+# ============================================================
+FROM python:3.10-slim AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-# System deps for asyncpg compilation
+# Build-time deps for asyncpg (gcc, libpq-dev headers)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy shared library
-COPY shared/lib_webbh /app/shared/lib_webbh
+# Install lib_webbh into an isolated target directory
+COPY shared/lib_webbh /build/shared/lib_webbh
+RUN pip install --no-cache-dir --target=/install /build/shared/lib_webbh
 
-# Install lib_webbh (non-editable for Docker; editable only for local dev)
-RUN pip install --no-cache-dir /app/shared/lib_webbh
+# ============================================================
+# Stage 2: Runtime — slim image without compiler toolchain
+# ============================================================
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Runtime-only dependency: libpq for asyncpg (no gcc, no -dev headers)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libpq5 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy pre-built Python packages from builder
+COPY --from=builder /install /usr/local/lib/python3.10/site-packages/
 
 # Copy setup_env script
 COPY shared/setup_env.py /app/shared/setup_env.py

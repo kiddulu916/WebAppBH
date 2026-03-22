@@ -1,23 +1,41 @@
+# ============================================================
+# Stage 1: Builder — compile asyncpg and install all deps
+# ============================================================
+FROM python:3.10-slim AS builder
+
+WORKDIR /build
+
+# Build-time deps (gcc + libpq-dev for asyncpg, libffi-dev for WeasyPrint)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev libffi-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install lib_webbh
+COPY shared/lib_webbh /build/shared/lib_webbh
+RUN pip install --no-cache-dir --target=/install /build/shared/lib_webbh
+
+# Install worker dependencies
+COPY workers/reporting_worker/requirements.txt /build/requirements.txt
+RUN pip install --no-cache-dir --target=/install -r /build/requirements.txt
+
+# ============================================================
+# Stage 2: Runtime — slim image without compiler toolchain
+# ============================================================
 FROM python:3.10-slim
 
 WORKDIR /app
 
-# System deps for asyncpg + WeasyPrint
+# Runtime-only deps: libpq for asyncpg, WeasyPrint rendering libs, fonts
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        gcc libpq-dev \
+        libpq5 \
         libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 \
-        libcairo2 libgdk-pixbuf-2.0-0 libffi-dev \
+        libcairo2 libgdk-pixbuf-2.0-0 libffi8 \
         fonts-liberation && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy and install shared library
-COPY shared/lib_webbh /app/shared/lib_webbh
-RUN pip install --no-cache-dir /app/shared/lib_webbh
-
-# Install worker dependencies
-COPY workers/reporting_worker/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+# Copy pre-built Python packages from builder
+COPY --from=builder /install /usr/local/lib/python3.10/site-packages/
 
 # Copy worker code
 COPY workers/reporting_worker /app/workers/reporting_worker

@@ -13,13 +13,21 @@ FROM node:20-slim AS node-builder
 RUN npm install -g newman
 
 # ============================================================
-# Stage 3: Python tool builder
+# Stage 3: Python tool + lib_webbh builder
 # ============================================================
 FROM python:3.10-slim-bookworm AS py-builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir --target=/py-tools \
     httpx[http2] \
     beautifulsoup4
+
+# Install lib_webbh (needs gcc + libpq-dev at compile time)
+COPY shared/lib_webbh /build/lib_webbh
+RUN pip install --no-cache-dir --target=/py-tools /build/lib_webbh
 
 # ============================================================
 # Stage 4: Runtime
@@ -31,7 +39,7 @@ WORKDIR /app
 # System dependencies for Chromium and Playwright
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        gcc libpq-dev git \
+        libpq5 git \
         # Chromium runtime deps
         chromium \
         libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 \
@@ -70,10 +78,6 @@ RUN pip install --no-cache-dir jsminer || true
 
 # ppmap — prototype pollution scanner
 RUN pip install --no-cache-dir ppmap || true
-
-# Install lib_webbh
-COPY shared/lib_webbh /app/shared/lib_webbh
-RUN pip install --no-cache-dir /app/shared/lib_webbh
 
 # Shared directories
 RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs

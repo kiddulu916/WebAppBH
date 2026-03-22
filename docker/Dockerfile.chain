@@ -1,26 +1,63 @@
+# ============================================================
+# Stage 1: Python dependency builder
+# ============================================================
+FROM python:3.10-slim-bookworm AS py-builder
+
+WORKDIR /build
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install lib_webbh into isolated target
+COPY shared/lib_webbh /build/shared/lib_webbh
+RUN pip install --no-cache-dir --target=/install /build/shared/lib_webbh
+
+# Install worker Python deps
+RUN pip install --no-cache-dir --target=/install \
+    aiohttp \
+    pymetasploit3 \
+    pyyaml \
+    python-owasp-zap-v2.4
+
+# ============================================================
+# Stage 2: Browser installer
+# ============================================================
+FROM python:3.10-slim-bookworm AS browser-builder
+
+RUN pip install --no-cache-dir playwright && \
+    playwright install chromium --with-deps
+
+# ============================================================
+# Stage 3: Runtime — Kali with only runtime tools
+# ============================================================
 FROM kalilinux/kali-rolling
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv \
-    curl ca-certificates unzip \
+    curl ca-certificates \
     zaproxy \
     metasploit-framework \
+    libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --break-system-packages playwright \
-    && playwright install chromium --with-deps
+# Copy pre-built Python packages (avoids gcc/libpq-dev in final image)
+COPY --from=py-builder /install /usr/lib/python3/dist-packages/
 
-COPY shared/lib_webbh /app/shared/lib_webbh
-RUN pip3 install --break-system-packages -e /app/shared/lib_webbh
+# Copy Playwright + Chromium from browser builder
+COPY --from=browser-builder /root/.cache/ms-playwright /root/.cache/ms-playwright
+COPY --from=browser-builder /usr/local/lib/python3.10/site-packages/playwright /usr/lib/python3/dist-packages/playwright
 
-RUN pip3 install --break-system-packages \
-    aiohttp \
-    pymetasploit3 \
-    pyyaml \
-    python-owasp-zap-v2.4
+# Playwright runtime deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+    libcups2 libdrm2 libxcomposite1 libxdamage1 libxrandr2 \
+    libgbm1 libpango-1.0-0 libcairo2 libasound2 libxshmfence1 \
+    && rm -rf /var/lib/apt/lists/*
 
+# Worker source
 COPY workers/chain_worker /app/workers/chain_worker
 
 WORKDIR /app
