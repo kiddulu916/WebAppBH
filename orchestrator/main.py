@@ -21,6 +21,10 @@ GET   /api/v1/vulnerabilities/{id}/draft – draft vuln report for platform
 GET   /api/v1/targets/{id}/graph   – attack graph (nodes + edges)
 GET   /api/v1/targets/{id}/correlations – correlated vulnerability groups
 GET   /api/v1/queue_health            – queue depth health status
+POST  /api/v1/bounties               – create a bounty submission
+GET   /api/v1/bounties               – list bounty submissions
+PATCH /api/v1/bounties/{bounty_id}   – update bounty submission
+GET   /api/v1/bounties/stats         – ROI stats
 """
 
 from __future__ import annotations
@@ -46,6 +50,7 @@ from lib_webbh import (
     Alert,
     Asset,
     Base,
+    BountySubmission,
     CloudAsset,
     JobState,
     Location,
@@ -117,6 +122,23 @@ class TargetProfileUpdate(BaseModel):
 class ReportCreate(BaseModel):
     formats: list[Literal["hackerone_md", "bugcrowd_md", "executive_pdf", "technical_pdf"]] = Field(description="Report formats to generate")
     platform: Literal["hackerone", "bugcrowd"] = Field(default="hackerone", description="Target platform")
+
+
+class BountyCreate(BaseModel):
+    target_id: int
+    vulnerability_id: int
+    platform: str
+    status: str = "submitted"
+    submission_url: Optional[str] = None
+    expected_payout: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class BountyUpdate(BaseModel):
+    status: Optional[str] = None
+    actual_payout: Optional[float] = None
+    submission_url: Optional[str] = None
+    notes: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -794,6 +816,139 @@ async def get_queue_health():
         health = assess_queue_health(pending)
         results[q] = {"pending": pending, "health": health.value}
     return {"queues": results}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/bounties — create a bounty submission
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/bounties", status_code=201)
+async def create_bounty(body: BountyCreate):
+    async with get_session() as session:
+        # Verify vulnerability exists
+        vuln = (await session.execute(
+            select(Vulnerability).where(Vulnerability.id == body.vulnerability_id)
+        )).scalar_one_or_none()
+        if not vuln:
+            raise HTTPException(status_code=404, detail="Vulnerability not found")
+
+        submission = BountySubmission(
+            target_id=body.target_id,
+            vulnerability_id=body.vulnerability_id,
+            platform=body.platform,
+            status=body.status,
+            submission_url=body.submission_url,
+            expected_payout=body.expected_payout,
+            notes=body.notes,
+        )
+        session.add(submission)
+        await session.commit()
+        await session.refresh(submission)
+        return {
+            "id": submission.id,
+            "target_id": submission.target_id,
+            "vulnerability_id": submission.vulnerability_id,
+            "platform": submission.platform,
+            "status": submission.status,
+            "submission_url": submission.submission_url,
+            "expected_payout": submission.expected_payout,
+            "actual_payout": submission.actual_payout,
+            "notes": submission.notes,
+        }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/bounties — list bounty submissions
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/bounties")
+async def list_bounties(
+    target_id: Optional[int] = Query(default=None),
+    status: Optional[str] = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=1000),
+):
+    async with get_session() as session:
+        stmt = select(BountySubmission)
+        if target_id is not None:
+            stmt = stmt.where(BountySubmission.target_id == target_id)
+        if status is not None:
+            stmt = stmt.where(BountySubmission.status == status)
+        stmt = stmt.limit(limit)
+        rows = (await session.execute(stmt)).scalars().all()
+        return [
+            {
+                "id": r.id,
+                "target_id": r.target_id,
+                "vulnerability_id": r.vulnerability_id,
+                "platform": r.platform,
+                "status": r.status,
+                "submission_url": r.submission_url,
+                "expected_payout": r.expected_payout,
+                "actual_payout": r.actual_payout,
+                "notes": r.notes,
+            }
+            for r in rows
+        ]
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/bounties/{bounty_id} — update bounty submission
+# ---------------------------------------------------------------------------
+@app.patch("/api/v1/bounties/{bounty_id}")
+async def update_bounty(bounty_id: int, body: BountyUpdate):
+    async with get_session() as session:
+        submission = (await session.execute(
+            select(BountySubmission).where(BountySubmission.id == bounty_id)
+        )).scalar_one_or_none()
+        if not submission:
+            raise HTTPException(status_code=404, detail="Bounty submission not found")
+        updates = body.model_dump(exclude_none=True)
+        for key, value in updates.items():
+            setattr(submission, key, value)
+        await session.commit()
+        await session.refresh(submission)
+        return {
+            "id": submission.id,
+            "target_id": submission.target_id,
+            "vulnerability_id": submission.vulnerability_id,
+            "platform": submission.platform,
+            "status": submission.status,
+            "submission_url": submission.submission_url,
+            "expected_payout": submission.expected_payout,
+            "actual_payout": submission.actual_payout,
+            "notes": submission.notes,
+        }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/bounties/stats — ROI stats
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/bounties/stats")
+async def bounty_stats(target_id: Optional[int] = Query(default=None)):
+    async with get_session() as session:
+        stmt = select(BountySubmission)
+        if target_id is not None:
+            stmt = stmt.where(BountySubmission.target_id == target_id)
+        rows = (await session.execute(stmt)).scalars().all()
+
+        total_submitted = len(rows)
+        total_accepted = sum(1 for r in rows if r.status == "accepted")
+        total_paid = sum(1 for r in rows if r.actual_payout and r.actual_payout > 0)
+        total_payout = sum(r.actual_payout for r in rows if r.actual_payout)
+
+        by_platform: dict[str, int] = {}
+        by_target: dict[int, float] = {}
+        for r in rows:
+            by_platform[r.platform] = by_platform.get(r.platform, 0) + 1
+            if r.actual_payout:
+                by_target[r.target_id] = by_target.get(r.target_id, 0.0) + r.actual_payout
+
+        return {
+            "total_submitted": total_submitted,
+            "total_accepted": total_accepted,
+            "total_paid": total_paid,
+            "total_payout": total_payout,
+            "by_platform": by_platform,
+            "by_target": by_target,
+        }
 
 
 # ---------------------------------------------------------------------------
