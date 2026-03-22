@@ -54,9 +54,11 @@ from lib_webbh import (
     Base,
     BountySubmission,
     CloudAsset,
+    CustomPlaybook,
     JobState,
     Location,
     ScheduledScan,
+    ScopeViolation,
     Target,
     Vulnerability,
     get_engine,
@@ -71,6 +73,7 @@ from lib_webbh import (
 )
 import lib_webbh.intel_enrichment as _intel_mod
 from lib_webbh.messaging import get_redis
+from lib_webbh.playbooks import BUILTIN_PLAYBOOKS
 
 from orchestrator import event_engine, worker_manager
 
@@ -165,6 +168,19 @@ class ScheduleUpdate(BaseModel):
 class ApiKeyUpdate(BaseModel):
     shodan_api_key: Optional[str] = None
     securitytrails_api_key: Optional[str] = None
+
+
+class PlaybookCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    stages: list[dict]
+    concurrency: dict = {"heavy": 2, "light": 4}
+
+
+class PlaybookUpdate(BaseModel):
+    description: Optional[str] = None
+    stages: Optional[list[dict]] = None
+    concurrency: Optional[dict] = None
 
 
 # ---------------------------------------------------------------------------
@@ -1293,6 +1309,143 @@ async def enrich_target(target_id: int):
         "inserted_subdomains": inserted_subdomains,
         "inserted_ips": inserted_ips,
     }
+
+
+# ---------------------------------------------------------------------------
+# Scope violation audit log
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/scope_violations")
+async def list_scope_violations(
+    target_id: int = Query(...),
+    limit: int = Query(default=100, le=500),
+):
+    async with get_session() as session:
+        stmt = (
+            select(ScopeViolation)
+            .where(ScopeViolation.target_id == target_id)
+            .order_by(ScopeViolation.created_at.desc())
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        violations = result.scalars().all()
+    return {"violations": [
+        {
+            "id": v.id,
+            "tool_name": v.tool_name,
+            "input_value": v.input_value,
+            "violation_type": v.violation_type,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+        }
+        for v in violations
+    ]}
+
+
+# ---------------------------------------------------------------------------
+# Custom Playbook CRUD
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/playbooks", status_code=201)
+async def create_playbook(body: PlaybookCreate):
+    async with get_session() as session:
+        # Check for duplicate name (including built-in names)
+        if body.name in BUILTIN_PLAYBOOKS:
+            raise HTTPException(status_code=409, detail="Playbook name conflicts with a built-in playbook")
+
+        existing = await session.execute(
+            select(CustomPlaybook).where(CustomPlaybook.name == body.name)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Playbook with this name already exists")
+
+        playbook = CustomPlaybook(
+            name=body.name,
+            description=body.description,
+            stages=body.stages,
+            concurrency=body.concurrency,
+        )
+        session.add(playbook)
+        await session.commit()
+        await session.refresh(playbook)
+
+    return {
+        "id": playbook.id,
+        "name": playbook.name,
+        "description": playbook.description,
+        "stages": playbook.stages,
+        "concurrency": playbook.concurrency,
+        "builtin": False,
+    }
+
+
+@app.get("/api/v1/playbooks")
+async def list_playbooks():
+    results = []
+
+    # Built-in playbooks
+    for name, pb in BUILTIN_PLAYBOOKS.items():
+        d = pb.to_dict()
+        d["builtin"] = True
+        results.append(d)
+
+    # Custom playbooks from DB
+    async with get_session() as session:
+        rows = await session.execute(select(CustomPlaybook))
+        for pb in rows.scalars().all():
+            results.append({
+                "id": pb.id,
+                "name": pb.name,
+                "description": pb.description,
+                "stages": pb.stages,
+                "concurrency": pb.concurrency,
+                "builtin": False,
+            })
+
+    return results
+
+
+@app.patch("/api/v1/playbooks/{playbook_id}")
+async def update_playbook(playbook_id: int, body: PlaybookUpdate):
+    async with get_session() as session:
+        result = await session.execute(
+            select(CustomPlaybook).where(CustomPlaybook.id == playbook_id)
+        )
+        playbook = result.scalar_one_or_none()
+        if not playbook:
+            raise HTTPException(status_code=404, detail="Playbook not found")
+
+        if body.description is not None:
+            playbook.description = body.description
+        if body.stages is not None:
+            playbook.stages = body.stages
+        if body.concurrency is not None:
+            playbook.concurrency = body.concurrency
+
+        await session.commit()
+        await session.refresh(playbook)
+
+    return {
+        "id": playbook.id,
+        "name": playbook.name,
+        "description": playbook.description,
+        "stages": playbook.stages,
+        "concurrency": playbook.concurrency,
+        "builtin": False,
+    }
+
+
+@app.delete("/api/v1/playbooks/{playbook_id}", status_code=204)
+async def delete_playbook(playbook_id: int):
+    async with get_session() as session:
+        result = await session.execute(
+            select(CustomPlaybook).where(CustomPlaybook.id == playbook_id)
+        )
+        playbook = result.scalar_one_or_none()
+        if not playbook:
+            raise HTTPException(status_code=404, detail="Playbook not found")
+
+        await session.delete(playbook)
+        await session.commit()
+
+    return None
 
 
 # ---------------------------------------------------------------------------

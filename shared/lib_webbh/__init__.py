@@ -21,7 +21,7 @@ from lib_webbh.database import (
 )
 
 # Scope
-from lib_webbh.scope import ScopeManager, ScopeResult
+from lib_webbh.scope import ScopeManager, ScopeResult, record_scope_violation
 
 # Messaging
 from lib_webbh.messaging import push_task, listen_queue, get_pending
@@ -78,6 +78,7 @@ __all__ = [
     "CustomPlaybook",
     "ScopeManager",
     "ScopeResult",
+    "record_scope_violation",
     "push_task",
     "listen_queue",
     "get_pending",

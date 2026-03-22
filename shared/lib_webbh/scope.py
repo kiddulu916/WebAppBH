@@ -243,3 +243,20 @@ class ScopeManager:
             "networks": [str(n) for n in self._in_networks],
             "regex": [p.pattern for p in self._regex_rules],
         }
+
+
+async def record_scope_violation(
+    target_id: int, tool_name: str, input_value: str, violation_type: str
+) -> None:
+    """Persist a scope violation to the database."""
+    from lib_webbh.database import get_session, ScopeViolation
+
+    async with get_session() as session:
+        sv = ScopeViolation(
+            target_id=target_id,
+            tool_name=tool_name,
+            input_value=input_value,
+            violation_type=violation_type,
+        )
+        session.add(sv)
+        await session.commit()
