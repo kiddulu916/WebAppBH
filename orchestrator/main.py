@@ -47,7 +47,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, inspect, or_, select, text
 from sqlalchemy.orm import attributes, selectinload
 
 from lib_webbh import (
@@ -186,15 +186,35 @@ class PlaybookUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Schema sync — add columns that exist in ORM models but not in the DB
+# ---------------------------------------------------------------------------
+def _add_missing_columns(connection) -> None:
+    """Compare ORM metadata to live DB and ALTER TABLE for missing columns."""
+    inspector = inspect(connection)
+    for table in Base.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            continue
+        db_columns = {c["name"] for c in inspector.get_columns(table.name)}
+        for col in table.columns:
+            if col.name not in db_columns:
+                col_type = col.type.compile(dialect=connection.dialect)
+                nullable = "NULL" if col.nullable else "NOT NULL"
+                ddl = f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {col_type} {nullable}'
+                logger.info("Adding missing column", extra={"ddl": ddl})
+                connection.execute(text(ddl))
+
+
+# ---------------------------------------------------------------------------
 # Lifespan — start / stop background tasks
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Orchestrator starting")
 
-    # Ensure tables exist (idempotent)
+    # Ensure tables exist (idempotent) and sync missing columns
     async with get_engine().begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_add_missing_columns)
 
     if not API_KEY:
         logger.warning("WEB_APP_BH_API_KEY is not set — all endpoints are unauthenticated")
