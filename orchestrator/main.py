@@ -221,12 +221,42 @@ app = FastAPI(
 )
 
 from orchestrator.rate_limit import rate_limit_check  # noqa: E402
+from orchestrator.metrics import metrics_response, api_latency, targets_created, bounties_submitted  # noqa: E402
+import time as _time  # noqa: E402
 
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     await rate_limit_check(request)
     return await call_next(request)
+
+
+@app.middleware("http")
+async def correlation_id_middleware(request: Request, call_next):
+    correlation_id = request.headers.get("X-Correlation-ID", uuid4().hex)
+    request.state.correlation_id = correlation_id
+    response = await call_next(request)
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
+
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    start = _time.time()
+    response = await call_next(request)
+    duration = _time.time() - start
+    # Skip metrics endpoint itself
+    if request.url.path != "/metrics":
+        api_latency.labels(
+            method=request.method,
+            endpoint=request.url.path,
+        ).observe(duration)
+    return response
+
+
+@app.get("/metrics", include_in_schema=False)
+async def prometheus_metrics():
+    return metrics_response()
 
 
 # ---------------------------------------------------------------------------

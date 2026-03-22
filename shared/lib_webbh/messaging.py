@@ -25,8 +25,11 @@ def get_redis() -> aioredis.Redis:
     return _redis
 
 
-async def push_task(queue: str, data: dict[str, Any]) -> str:
+async def push_task(queue: str, data: dict[str, Any], correlation_id: str | None = None) -> str:
+    """Push a task message to a Redis Stream."""
     r = get_redis()
+    if correlation_id:
+        data = {**data, "_correlation_id": correlation_id}
     payload = json.dumps(data, default=str)
     timestamp = datetime.now(timezone.utc).isoformat()
     msg_id: str = await r.xadd(queue, {"payload": payload, "timestamp": timestamp})
