@@ -4,7 +4,10 @@ export type SSEEventType =
   | "TOOL_PROGRESS"
   | "NEW_ASSET"
   | "CRITICAL_ALERT"
-  | "WORKER_SPAWNED";
+  | "WORKER_SPAWNED"
+  | "RECON_DIFF"
+  | "SCOPE_DRIFT"
+  | "AUTOSCALE_RECOMMENDATION";
 
 export interface SSEEvent {
   event: SSEEventType;
@@ -39,4 +42,27 @@ export interface WorkerSpawnedEvent extends SSEEvent {
   container: string;
   image: string;
   phase: string;
+}
+
+export interface ReconDiffEvent extends SSEEvent {
+  event: "RECON_DIFF";
+  scan_number: number;
+  added: string[];
+  removed: string[];
+  unchanged_count: number;
+}
+
+export interface ScopeDriftEvent extends SSEEvent {
+  event: "SCOPE_DRIFT";
+  asset_value: string;
+  classification: string;
+  provider: string | null;
+}
+
+export interface AutoscaleEvent extends SSEEvent {
+  event: "AUTOSCALE_RECOMMENDATION";
+  queue: string;
+  worker: string;
+  pending: number;
+  action: string;
 }

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { api, type CreateTargetPayload } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
+import PlaybookSelector from "@/components/campaign/PlaybookSelector";
 
 type Step = 0 | 1 | 2;
 
@@ -40,6 +41,7 @@ export default function ScopeBuilder() {
   // Step 2 — settings
   const [customHeaders, setCustomHeaders] = useState("");
   const [rateLimit, setRateLimit] = useState("50");
+  const [playbook, setPlaybook] = useState("wide_recon");
 
   const canNext =
     step === 0 ? companyName.trim() && baseDomain.trim() : true;
@@ -71,6 +73,7 @@ export default function ScopeBuilder() {
     const payload: CreateTargetPayload = {
       company_name: companyName.trim(),
       base_domain: baseDomain.trim(),
+      playbook,
       target_profile: {
         in_scope_domains: lines(inScopeDomains),
         out_scope_domains: lines(outScopeDomains),
@@ -255,6 +258,7 @@ export default function ScopeBuilder() {
             <h2 className="text-lg font-semibold text-text-primary">
               Advanced Settings
             </h2>
+            <PlaybookSelector value={playbook} onChange={setPlaybook} />
             <div>
               <label className="mb-1 block text-sm text-text-secondary">
                 Custom Headers (Key: Value, one per line)

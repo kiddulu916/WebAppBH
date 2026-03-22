@@ -7,6 +7,9 @@ import WorkerConsole from "@/components/c2/WorkerConsole";
 import WorkerFeed from "@/components/c2/WorkerFeed";
 import StatusBoard from "@/components/c2/StatusBoard";
 import SettingsDrawer from "@/components/c2/SettingsDrawer";
+import DiffTimeline from "@/components/c2/DiffTimeline";
+import ScopeDriftAlerts from "@/components/c2/ScopeDriftAlerts";
+import QueueHealthWidget from "@/components/c2/QueueHealthWidget";
 import { useEventStream } from "@/hooks/useEventStream";
 import { useCampaignStore } from "@/stores/campaign";
 import { api } from "@/lib/api";
@@ -182,6 +185,13 @@ export default function C2Page() {
           <WorkerFeed events={events} />
         </div>
       </div>
+
+      {/* Diff Timeline + Scope Drift + Queue Health */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <DiffTimeline events={events} />
+        <ScopeDriftAlerts events={events} />
+      </div>
+      <QueueHealthWidget />
 
       {/* Settings drawer */}
       <SettingsDrawer

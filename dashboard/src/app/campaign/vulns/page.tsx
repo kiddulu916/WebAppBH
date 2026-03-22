@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { type ColumnDef } from "@tanstack/react-table";
 import DataTable from "@/components/findings/DataTable";
+import DraftReportButton from "@/components/vulns/DraftReportButton";
 import { api } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
 import type { VulnSeverity } from "@/types/schema";
@@ -148,6 +149,9 @@ export default function VulnsPage() {
                     {vuln.poc}
                   </pre>
                 )}
+                <div className="mt-3 border-t border-border pt-3">
+                  <DraftReportButton vulnId={vuln.id} />
+                </div>
               </div>
             );
           })()}

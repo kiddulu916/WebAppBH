@@ -51,7 +51,7 @@ export function useEventStream(targetId: number | null) {
     };
 
     // Listen for typed events
-    for (const t of ["TOOL_PROGRESS", "NEW_ASSET", "CRITICAL_ALERT", "WORKER_SPAWNED"]) {
+    for (const t of ["TOOL_PROGRESS", "NEW_ASSET", "CRITICAL_ALERT", "WORKER_SPAWNED", "RECON_DIFF", "SCOPE_DRIFT", "AUTOSCALE_RECOMMENDATION"]) {
       es.addEventListener(t, handleEvent);
     }
     // Also listen for generic "message" events

@@ -29,6 +29,7 @@ export interface CreateTargetPayload {
   company_name: string;
   base_domain: string;
   target_profile?: TargetProfile;
+  playbook?: string;
 }
 
 interface CreateTargetResponse {
@@ -187,6 +188,45 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ container_name: containerName, action }),
     });
+  },
+
+  triggerRescan(targetId: number) {
+    return request<{ target_id: number; status: string; scan_number: number }>(
+      `/api/v1/targets/${targetId}/rescan`,
+      { method: "POST" },
+    );
+  },
+
+  getDraftReport(vulnId: number, platform: "hackerone" | "bugcrowd" = "hackerone") {
+    return request<{ vuln_id: number; platform: string; draft: string }>(
+      `/api/v1/vulnerabilities/${vulnId}/draft?platform=${platform}`,
+    );
+  },
+
+  getAttackGraph(targetId: number) {
+    return request<{
+      nodes: { id: string; label: string; type: string; severity?: string }[];
+      edges: { source: string; target: string }[];
+    }>(`/api/v1/targets/${targetId}/graph`);
+  },
+
+  getCorrelations(targetId: number) {
+    return request<{
+      target_id: number;
+      groups: {
+        shared_assets: string[];
+        severity: string;
+        count: number;
+        vuln_ids: number[];
+        chain_description: string;
+      }[];
+    }>(`/api/v1/targets/${targetId}/correlations`);
+  },
+
+  getQueueHealth() {
+    return request<{
+      queues: Record<string, { pending: number; health: string }>;
+    }>("/api/v1/queue_health");
   },
 
   sseUrl(targetId: number) {

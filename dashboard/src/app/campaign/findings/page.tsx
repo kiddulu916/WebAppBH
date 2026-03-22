@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { Activity, Cloud, Shield, Server } from "lucide-react";
+import { Cloud, Shield, Server } from "lucide-react";
+import CorrelationView from "@/components/findings/CorrelationView";
 
 const TABS = [
   { key: "assets", label: "Assets", icon: Server, href: "/campaign/assets" },
@@ -40,6 +40,9 @@ export default function FindingsPage() {
           </Link>
         ))}
       </div>
+
+      {/* Correlated findings */}
+      <CorrelationView />
     </div>
   );
 }

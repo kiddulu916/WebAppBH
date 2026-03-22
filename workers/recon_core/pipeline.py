@@ -8,7 +8,9 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from lib_webbh import JobState, get_session, push_task, setup_logger
+from lib_webbh import Asset, JobState, get_session, push_task, setup_logger
+from lib_webbh.database import AssetSnapshot
+from lib_webbh.diffing import compute_diff
 from lib_webbh.scope import ScopeManager
 
 from workers.recon_core.base_tool import ReconTool
@@ -73,7 +75,7 @@ class Pipeline:
 
     async def run(
         self, target, scope_manager: ScopeManager, headers: dict | None = None,
-        playbook: dict | None = None,
+        playbook: dict | None = None, rescan_scan_number: int | None = None,
     ) -> None:
         """Execute the pipeline, resuming from last completed stage."""
         completed_phase = await self._get_completed_phase()
@@ -101,6 +103,10 @@ class Pipeline:
             })
 
         await self._mark_completed()
+
+        if rescan_scan_number is not None:
+            await self._compute_and_emit_diff(rescan_scan_number)
+
         await push_task(f"events:{self.target_id}", {
             "event": "pipeline_complete",
             "target_id": self.target_id,
@@ -165,6 +171,41 @@ class Pipeline:
                 job.current_phase = phase
                 job.last_seen = datetime.now(timezone.utc)
                 await session.commit()
+
+    async def _compute_and_emit_diff(self, scan_number: int) -> None:
+        """Compare current assets against the pre-rescan snapshot and emit diff."""
+        async with get_session() as session:
+            snapshot = (await session.execute(
+                select(AssetSnapshot).where(
+                    AssetSnapshot.target_id == self.target_id,
+                    AssetSnapshot.scan_number == scan_number,
+                )
+            )).scalar_one_or_none()
+
+            if snapshot is None:
+                self.log.warning("No snapshot found for diff", extra={"scan_number": scan_number})
+                return
+
+            previous_hashes = snapshot.asset_hashes or {}
+
+            assets = (await session.execute(
+                select(Asset).where(Asset.target_id == self.target_id)
+            )).scalars().all()
+            current_hashes = {a.asset_value: f"{a.asset_type}:{a.source_tool}" for a in assets}
+
+        diff = compute_diff(previous_hashes, current_hashes)
+
+        if diff.has_changes:
+            self.log.info("Recon diff detected", extra={
+                "added": len(diff.added), "removed": len(diff.removed),
+            })
+            await push_task(f"events:{self.target_id}", {
+                "event": "RECON_DIFF",
+                "scan_number": scan_number,
+                "added": diff.added,
+                "removed": diff.removed,
+                "unchanged_count": len(diff.unchanged),
+            })
 
     async def _mark_completed(self) -> None:
         """Mark the job as COMPLETED."""

@@ -95,7 +95,11 @@ async def handle_message(msg_id: str, data: dict) -> None:
     )
 
     try:
-        await pipeline.run(target, scope_manager, headers=headers, playbook=playbook)
+        rescan_scan = data.get("snapshot_scan_number")
+        await pipeline.run(
+            target, scope_manager, headers=headers, playbook=playbook,
+            rescan_scan_number=rescan_scan,
+        )
     except Exception:
         log.exception("Pipeline failed")
         async with get_session() as session:
