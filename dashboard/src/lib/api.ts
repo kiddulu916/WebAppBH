@@ -129,6 +129,82 @@ interface TargetsResponse {
 }
 
 /* ------------------------------------------------------------------ */
+/* Bounties                                                           */
+/* ------------------------------------------------------------------ */
+
+export interface BountyRow {
+  id: number;
+  target_id: number;
+  vulnerability_id: number;
+  platform: string;
+  status: string;
+  expected_payout: number | null;
+  actual_payout: number | null;
+  submitted_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Schedules                                                          */
+/* ------------------------------------------------------------------ */
+
+export interface ScheduleRow {
+  id: number;
+  target_id: number;
+  cron_expression: string;
+  playbook: string;
+  enabled: boolean;
+  last_run: string | null;
+  next_run: string | null;
+  created_at: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Custom Playbooks                                                   */
+/* ------------------------------------------------------------------ */
+
+export interface StageConfig {
+  name: string;
+  enabled: boolean;
+  tool_timeout?: number;
+}
+
+export interface PlaybookRow {
+  id: number;
+  name: string;
+  description: string | null;
+  stages: StageConfig[];
+  concurrency: { heavy: number; light: number } | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Scope Violations                                                   */
+/* ------------------------------------------------------------------ */
+
+export interface ScopeViolationRow {
+  id: number;
+  target_id: number;
+  tool_name: string;
+  input_value: string;
+  violation_type: string;
+  created_at: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Search                                                             */
+/* ------------------------------------------------------------------ */
+
+export interface SearchResult {
+  type: "asset" | "vulnerability";
+  id: number;
+  value: string;
+  subtype: string;
+}
+
+/* ------------------------------------------------------------------ */
 /* Exported API object                                                */
 /* ------------------------------------------------------------------ */
 
@@ -231,5 +307,177 @@ export const api = {
 
   sseUrl(targetId: number) {
     return `${BASE_URL}/api/v1/stream/${targetId}`;
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Bounty Tracker                                                      */
+  /* ------------------------------------------------------------------ */
+
+  createBounty(data: {
+    target_id: number;
+    vulnerability_id: number;
+    platform: string;
+    expected_payout?: number;
+  }) {
+    return request<{ id: number; status: string }>("/api/v1/bounties", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  getBounties(targetId: number, status?: string) {
+    let qs = `?target_id=${targetId}`;
+    if (status) qs += `&status=${status}`;
+    return request<{ bounties: BountyRow[] }>(`/api/v1/bounties${qs}`);
+  },
+
+  updateBounty(id: number, data: { status?: string; actual_payout?: number }) {
+    return request<BountyRow>(`/api/v1/bounties/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  getBountyStats() {
+    return request<{
+      stats: {
+        total: number;
+        by_status: Record<string, number>;
+        total_expected: number;
+        total_paid: number;
+      };
+    }>("/api/v1/bounties/stats");
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Scheduling                                                          */
+  /* ------------------------------------------------------------------ */
+
+  createSchedule(data: {
+    target_id: number;
+    cron_expression: string;
+    playbook?: string;
+  }) {
+    return request<{ id: number }>("/api/v1/schedules", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  getSchedules(targetId?: number) {
+    const qs = targetId ? `?target_id=${targetId}` : "";
+    return request<{ schedules: ScheduleRow[] }>(`/api/v1/schedules${qs}`);
+  },
+
+  updateSchedule(
+    id: number,
+    data: { enabled?: boolean; cron_expression?: string },
+  ) {
+    return request<ScheduleRow>(`/api/v1/schedules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  deleteSchedule(id: number) {
+    return request<void>(`/api/v1/schedules/${id}`, { method: "DELETE" });
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Intel Enrichment / API Keys                                         */
+  /* ------------------------------------------------------------------ */
+
+  getApiKeyStatus() {
+    return request<{ keys: Record<string, boolean> }>("/api/v1/config/api_keys");
+  },
+
+  updateApiKeys(data: {
+    shodan_api_key?: string;
+    securitytrails_api_key?: string;
+  }) {
+    return request<{ keys: Record<string, boolean> }>(
+      "/api/v1/config/api_keys",
+      { method: "PUT", body: JSON.stringify(data) },
+    );
+  },
+
+  enrichTarget(targetId: number) {
+    return request<{ target_id: number; enrichment: unknown[] }>(
+      `/api/v1/targets/${targetId}/enrich`,
+      { method: "POST" },
+    );
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Custom Playbooks                                                    */
+  /* ------------------------------------------------------------------ */
+
+  getPlaybooks() {
+    return request<{ playbooks: PlaybookRow[] }>("/api/v1/playbooks");
+  },
+
+  createPlaybook(data: {
+    name: string;
+    description?: string;
+    stages: StageConfig[];
+    concurrency?: { heavy: number; light: number };
+  }) {
+    return request<PlaybookRow>("/api/v1/playbooks", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  updatePlaybook(
+    id: number,
+    data: {
+      name?: string;
+      description?: string;
+      stages?: StageConfig[];
+      concurrency?: { heavy: number; light: number };
+    },
+  ) {
+    return request<PlaybookRow>(`/api/v1/playbooks/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  deletePlaybook(id: number) {
+    return request<void>(`/api/v1/playbooks/${id}`, { method: "DELETE" });
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Export                                                              */
+  /* ------------------------------------------------------------------ */
+
+  exportFindings(
+    targetId: number,
+    format: "json" | "csv" | "markdown" = "json",
+  ) {
+    return request<unknown>(
+      `/api/v1/targets/${targetId}/export?format=${format}`,
+    );
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Scope Violations                                                    */
+  /* ------------------------------------------------------------------ */
+
+  getScopeViolations(targetId: number) {
+    return request<{ violations: ScopeViolationRow[] }>(
+      `/api/v1/scope_violations?target_id=${targetId}`,
+    );
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Search                                                              */
+  /* ------------------------------------------------------------------ */
+
+  search(targetId: number, query: string) {
+    return request<{
+      query: string;
+      results: SearchResult[];
+    }>(`/api/v1/search?target_id=${targetId}&q=${encodeURIComponent(query)}`);
   },
 };
