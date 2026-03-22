@@ -18,9 +18,14 @@ async def test_rate_limit_allows_normal_traffic():
     request.method = "GET"
     request.client.host = "127.0.0.1"
 
-    mock_redis = AsyncMock()
-    mock_pipe = AsyncMock()
+    mock_pipe = MagicMock()
+    mock_pipe.zremrangebyscore.return_value = mock_pipe
+    mock_pipe.zadd.return_value = mock_pipe
+    mock_pipe.zcard.return_value = mock_pipe
+    mock_pipe.expire.return_value = mock_pipe
     mock_pipe.execute = AsyncMock(return_value=[None, None, 5, None])  # 5 requests
+
+    mock_redis = MagicMock()
     mock_redis.pipeline.return_value = mock_pipe
 
     with patch("orchestrator.rate_limit.get_redis", return_value=mock_redis):
@@ -36,9 +41,14 @@ async def test_rate_limit_blocks_excess():
     request.method = "POST"
     request.client.host = "127.0.0.1"
 
-    mock_redis = AsyncMock()
-    mock_pipe = AsyncMock()
+    mock_pipe = MagicMock()
+    mock_pipe.zremrangebyscore.return_value = mock_pipe
+    mock_pipe.zadd.return_value = mock_pipe
+    mock_pipe.zcard.return_value = mock_pipe
+    mock_pipe.expire.return_value = mock_pipe
     mock_pipe.execute = AsyncMock(return_value=[None, None, 999, None])  # Way over limit
+
+    mock_redis = MagicMock()
     mock_redis.pipeline.return_value = mock_pipe
 
     with patch("orchestrator.rate_limit.get_redis", return_value=mock_redis):

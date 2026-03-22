@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 from fastapi import Request, HTTPException
+from lib_webbh.messaging import get_redis
 
 
 # Defaults: 60 requests per minute for mutating, 200 for reads
@@ -23,7 +24,6 @@ async def rate_limit_check(request: Request) -> None:
         return
 
     try:
-        from lib_webbh.messaging import get_redis
         redis = get_redis()
     except Exception:
         return  # If Redis is unavailable, skip rate limiting
