@@ -30,6 +30,8 @@ GET   /api/v1/bounties/stats         – ROI stats
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import json
 import os
 from contextlib import asynccontextmanager
@@ -39,7 +41,7 @@ from typing import AsyncIterator, Literal, Optional
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
@@ -63,7 +65,11 @@ from lib_webbh import (
     next_run,
     push_task,
     setup_logger,
+    enrich_shodan,
+    enrich_securitytrails,
+    get_available_intel_sources,
 )
+import lib_webbh.intel_enrichment as _intel_mod
 from lib_webbh.messaging import get_redis
 
 from orchestrator import event_engine, worker_manager
@@ -1083,6 +1089,67 @@ async def delete_schedule(schedule_id: int):
         await session.commit()
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/targets/{target_id}/export — export findings
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/targets/{target_id}/export")
+async def export_findings(
+    target_id: int,
+    format: str = Query(default="json", description="json, csv, or markdown"),
+    severity: Optional[str] = Query(default=None),
+):
+    async with get_session() as session:
+        stmt = (
+            select(Vulnerability)
+            .options(selectinload(Vulnerability.asset))
+            .where(Vulnerability.target_id == target_id)
+            .order_by(Vulnerability.created_at.desc())
+        )
+        if severity:
+            stmt = stmt.where(Vulnerability.severity == severity)
+        result = await session.execute(stmt)
+        vulns = result.scalars().all()
+
+    rows = []
+    for v in vulns:
+        rows.append({
+            "id": v.id,
+            "severity": v.severity,
+            "title": v.title,
+            "asset": v.asset.asset_value if v.asset else "",
+            "source_tool": v.source_tool or "",
+            "cvss": v.cvss_score,
+            "description": v.description or "",
+            "created_at": v.created_at.isoformat() if v.created_at else "",
+        })
+
+    if format == "csv":
+        output = io.StringIO()
+        if rows:
+            writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+            writer.writeheader()
+            writer.writerows(rows)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=findings_target_{target_id}.csv"},
+        )
+    elif format == "markdown":
+        lines = [f"# Findings Export — Target {target_id}\n"]
+        lines.append("| ID | Severity | Title | Asset | Tool | CVSS | Date |")
+        lines.append("|---|---|---|---|---|---|---|")
+        for r in rows:
+            lines.append(f"| {r['id']} | {r['severity']} | {r['title']} | {r['asset']} | {r['source_tool']} | {r['cvss'] or '-'} | {r['created_at'][:10] if r['created_at'] else '-'} |")
+        md = "\n".join(lines)
+        return StreamingResponse(
+            iter([md]),
+            media_type="text/markdown",
+            headers={"Content-Disposition": f"attachment; filename=findings_target_{target_id}.md"},
+        )
+    else:
+        return {"target_id": target_id, "count": len(rows), "vulnerabilities": rows}
 
 
 # ---------------------------------------------------------------------------
