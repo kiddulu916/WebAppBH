@@ -55,6 +55,9 @@ from lib_webbh.intel_enrichment import (
     get_available_intel_sources,
 )
 
+# Batch insert
+from lib_webbh.batch_insert import BatchInserter
+
 __all__ = [
     "get_engine",
     "get_session",
@@ -99,4 +102,5 @@ __all__ = [
     "enrich_shodan",
     "enrich_securitytrails",
     "get_available_intel_sources",
+    "BatchInserter",
 ]
