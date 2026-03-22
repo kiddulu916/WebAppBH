@@ -22,12 +22,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install naabu binary
+# Install naabu binary (assets are naabu_<semver>_linux_<arch>.zip, not naabu_linux_<arch>.zip)
 RUN ARCH=$(dpkg --print-architecture) && \
+    TAG=$(curl -sSf https://api.github.com/repos/projectdiscovery/naabu/releases/latest \
+        | python3 -c "import sys, json; print(json.load(sys.stdin)['tag_name'])") && \
+    VER="${TAG#v}" && \
     curl -sSfL \
-    "https://github.com/projectdiscovery/naabu/releases/latest/download/naabu_linux_${ARCH}.zip" \
+    "https://github.com/projectdiscovery/naabu/releases/download/${TAG}/naabu_${VER}_linux_${ARCH}.zip" \
     -o /tmp/naabu.zip && \
-    unzip /tmp/naabu.zip -d /usr/local/bin/ && \
+    unzip -j -o /tmp/naabu.zip naabu -d /usr/local/bin/ && \
     chmod +x /usr/local/bin/naabu && \
     rm /tmp/naabu.zip
 
