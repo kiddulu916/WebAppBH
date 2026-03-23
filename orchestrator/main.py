@@ -12,6 +12,7 @@ PATCH /api/v1/alerts/{alert_id}    – update alert read status
 PATCH /api/v1/targets/{target_id}  – update target profile (headers, rate limits)
 GET   /api/v1/status               – real-time job states
 POST  /api/v1/control              – pause / stop / restart workers
+POST  /api/v1/kill                 – hard-kill all active workers
 GET   /api/v1/stream/{id}          – SSE event stream per target
 POST  /api/v1/targets/{id}/reports – trigger report generation
 GET   /api/v1/targets/{id}/reports – list generated reports
@@ -410,6 +411,45 @@ async def control_worker(body: ControlAction):
             await session.commit()
 
     return {"container": body.container_name, "action": body.action, "success": True}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/kill — hard-kill all active workers
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/kill")
+async def kill_all():
+    """SIGKILL all RUNNING/PAUSED containers and mark all active jobs as KILLED."""
+    active_statuses = ["RUNNING", "QUEUED", "PAUSED"]
+    killable_statuses = ["RUNNING", "PAUSED"]
+
+    async with get_session() as session:
+        stmt = select(JobState).where(JobState.status.in_(active_statuses))
+        result = await session.execute(stmt)
+        jobs = result.scalars().all()
+
+        if not jobs:
+            return {"success": True, "killed_count": 0, "containers": []}
+
+        target_id = jobs[0].target_id
+        containers = []
+
+        for job in jobs:
+            containers.append(job.container_name)
+            if job.status in killable_statuses:
+                await worker_manager.kill_worker(job.container_name)
+            job.status = "KILLED"
+            job.last_seen = datetime.now(timezone.utc)
+
+        await session.commit()
+
+    await push_task(f"events:{target_id}", {
+        "event": "KILL_ALL",
+        "target_id": target_id,
+        "killed_count": len(containers),
+        "containers": containers,
+    })
+
+    return {"success": True, "killed_count": len(containers), "containers": containers}
 
 
 # ---------------------------------------------------------------------------
