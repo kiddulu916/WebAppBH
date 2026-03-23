@@ -140,6 +140,7 @@ class Target(TimestampMixin, Base):
     company_name: Mapped[str] = mapped_column(String(255))
     base_domain: Mapped[str] = mapped_column(String(255))
     target_profile: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    last_playbook: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     assets: Mapped[list["Asset"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     identities: Mapped[list["Identity"]] = relationship(back_populates="target", cascade="all, delete-orphan")
