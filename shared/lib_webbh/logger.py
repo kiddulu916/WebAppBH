@@ -182,14 +182,20 @@ def setup_logger(name: str, log_dir: str = "/app/shared/logs/") -> BoundLogger:
     logger.addHandler(stream_handler)
 
     # 2. RotatingFileHandler -> <log_dir>/<name>.log
-    os.makedirs(log_dir, exist_ok=True)
-    file_path = os.path.join(log_dir, f"{name}.log")
-    file_handler = RotatingFileHandler(
-        file_path,
-        maxBytes=10 * 1024 * 1024,  # 10 MB
-        backupCount=5,
-    )
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    #    Gracefully skip file logging if permissions deny access (e.g.
+    #    Docker user-namespace remapping makes host files unwritable).
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        file_path = os.path.join(log_dir, f"{name}.log")
+        file_handler = RotatingFileHandler(
+            file_path,
+            maxBytes=10 * 1024 * 1024,  # 10 MB
+            backupCount=5,
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    except PermissionError:
+        # stdout handler is already attached; warn and continue
+        logger.warning(f"Cannot write to {log_dir}{name}.log — file logging disabled")
 
     return BoundLogger(logger)

@@ -9,9 +9,9 @@ import {
   Shield,
   Cloud,
   Activity,
-  Settings,
   Bug,
   GitGraph,
+  Settings,
 } from "lucide-react";
 
 const NAV_ITEMS = [
