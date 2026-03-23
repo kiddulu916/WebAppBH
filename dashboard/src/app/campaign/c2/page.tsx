@@ -165,26 +165,52 @@ export default function C2Page() {
     const newEvents = events.slice(lastMergedIdx.current);
     lastMergedIdx.current = events.length;
     const assetEvents = newEvents.filter((e) => e.event === "NEW_ASSET");
-    if (assetEvents.length === 0) return;
-    setTreeRoots((prev) => {
-      if (prev.length === 0) return prev;
-      const root = {
-        ...prev[0],
-        children: [...(prev[0].children ?? [])],
-      };
-      for (const evt of assetEvents) {
-        const d = evt as Record<string, unknown>;
-        root.children!.push({
-          id: `sse-${String(d.asset_value)}-${Date.now()}`,
-          label: String(d.asset_value ?? ""),
-          type: (String(d.asset_type ?? "subdomain") === "ip"
-            ? "ip"
-            : "subdomain") as TreeNode["type"],
-        });
-      }
-      return [root];
-    });
-  }, [events, activeTarget]);
+    if (assetEvents.length > 0) {
+      setTreeRoots((prev) => {
+        if (prev.length === 0) return prev;
+        const root = {
+          ...prev[0],
+          children: [...(prev[0].children ?? [])],
+        };
+        for (const evt of assetEvents) {
+          const d = evt as Record<string, unknown>;
+          root.children!.push({
+            id: `sse-${String(d.asset_value)}-${Date.now()}`,
+            label: String(d.asset_value ?? ""),
+            type: (String(d.asset_type ?? "subdomain") === "ip"
+              ? "ip"
+              : "subdomain") as TreeNode["type"],
+          });
+        }
+        return [root];
+      });
+    }
+
+    // Handle KILL_ALL — refresh jobs to show KILLED statuses
+    const killEvents = newEvents.filter((e) => e.event === "KILL_ALL");
+    if (killEvents.length > 0) {
+      api.getStatus(activeTarget.id).then((res) => {
+        setLocalJobs(res.jobs);
+        setJobs(res.jobs);
+      }).catch(() => {});
+    }
+
+    // Handle RERUN_STARTED — reset pipeline, clear jobs
+    const rerunEvents = newEvents.filter((e) => e.event === "RERUN_STARTED");
+    if (rerunEvents.length > 0) {
+      setLocalJobs([]);
+      setJobs([]);
+    }
+
+    // Handle CLEAN_SLATE — reset everything
+    const cleanEvents = newEvents.filter((e) => e.event === "CLEAN_SLATE");
+    if (cleanEvents.length > 0) {
+      setTreeRoots([]);
+      setAllAssets([]);
+      setLocalJobs([]);
+      setJobs([]);
+    }
+  }, [events, activeTarget, setJobs]);
 
   /* ---- Handle asset selection from tree ---- */
   const handleAssetSelect = useCallback(
