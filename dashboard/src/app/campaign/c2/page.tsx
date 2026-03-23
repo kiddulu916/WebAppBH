@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Activity, Columns2, Settings } from "lucide-react";
+import { Activity, Columns2, Settings, RotateCcw } from "lucide-react";
 import AssetTree, { type TreeNode } from "@/components/c2/AssetTree";
 import PhasePipeline from "@/components/c2/PhasePipeline";
 import WorkerGrid from "@/components/c2/WorkerGrid";
@@ -14,7 +14,7 @@ import DiffTimeline from "@/components/c2/DiffTimeline";
 import ScopeDriftAlerts from "@/components/c2/ScopeDriftAlerts";
 import QueueHealthWidget from "@/components/c2/QueueHealthWidget";
 import { useCampaignStore } from "@/stores/campaign";
-import { api, type AssetWithLocations } from "@/lib/api";
+import { api, type AssetWithLocations, type PlaybookRow } from "@/lib/api";
 import type { JobState } from "@/types/schema";
 
 /* ------------------------------------------------------------------ */
@@ -76,6 +76,10 @@ export default function C2Page() {
   const [treeRoots, setTreeRoots] = useState<TreeNode[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [splitView, setSplitView] = useState(false);
+  const [rerunOpen, setRerunOpen] = useState(false);
+  const [rerunMode, setRerunMode] = useState<"menu" | "pick">("menu");
+  const [playbooks, setPlaybooks] = useState<PlaybookRow[]>([]);
+  const [rerunning, setRerunning] = useState(false);
   const [selectedAsset, setSelectedAsset] =
     useState<AssetWithLocations | null>(null);
   const [allAssets, setAllAssets] = useState<AssetWithLocations[]>([]);
@@ -93,6 +97,29 @@ export default function C2Page() {
 
   const currentPhase =
     jobs.find((j) => j.status === "RUNNING")?.current_phase ?? null;
+
+  const hasActiveJobs = jobs.some((j) =>
+    ["RUNNING", "QUEUED", "PAUSED"].includes(j.status),
+  );
+
+  async function handleRerun(playbookName: string) {
+    if (!activeTarget) return;
+    setRerunning(true);
+    try {
+      await api.rerun(activeTarget.id, playbookName);
+      setRerunOpen(false);
+      setRerunMode("menu");
+    } catch {
+      /* error handled by API client */
+    } finally {
+      setRerunning(false);
+    }
+  }
+
+  function openPlaybookPicker() {
+    setRerunMode("pick");
+    api.getPlaybooks().then((res) => setPlaybooks(res.playbooks)).catch(() => {});
+  }
 
   /* ---- Fetch job states periodically ---- */
   useEffect(() => {
@@ -197,6 +224,61 @@ export default function C2Page() {
           {activeTarget.base_domain}
         </span>
         <div className="ml-auto flex items-center gap-1">
+          {/* Rerun Popover */}
+          <div className="relative">
+            <button
+              onClick={() => { setRerunOpen(!rerunOpen); setRerunMode("menu"); }}
+              disabled={hasActiveJobs}
+              className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+              title={hasActiveJobs ? "Kill current run first" : "Rerun target"}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Rerun
+            </button>
+            {rerunOpen && !hasActiveJobs && (
+              <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-md border border-border bg-bg-secondary shadow-lg animate-fade-in">
+                {rerunMode === "menu" ? (
+                  <div className="p-1">
+                    <button
+                      onClick={() => handleRerun(activeTarget!.last_playbook ?? "wide_recon")}
+                      disabled={rerunning}
+                      className="flex w-full flex-col items-start rounded px-3 py-2 text-left transition-colors hover:bg-bg-surface disabled:opacity-50"
+                    >
+                      <span className="text-xs font-medium text-text-primary">Same Playbook</span>
+                      <span className="text-[10px] text-text-muted font-mono">
+                        {activeTarget!.last_playbook ?? "wide_recon"}
+                      </span>
+                    </button>
+                    <button
+                      onClick={openPlaybookPicker}
+                      className="flex w-full items-start rounded px-3 py-2 text-left text-xs font-medium text-text-primary transition-colors hover:bg-bg-surface"
+                    >
+                      Change Playbook
+                    </button>
+                  </div>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto p-1">
+                    {playbooks.map((pb) => (
+                      <button
+                        key={pb.id ?? pb.name}
+                        onClick={() => handleRerun(pb.name)}
+                        disabled={rerunning}
+                        className="flex w-full flex-col items-start rounded px-3 py-2 text-left transition-colors hover:bg-bg-surface disabled:opacity-50"
+                      >
+                        <span className="text-xs font-medium text-text-primary">{pb.name}</span>
+                        {pb.description && (
+                          <span className="text-[10px] text-text-muted line-clamp-1">{pb.description}</span>
+                        )}
+                      </button>
+                    ))}
+                    {playbooks.length === 0 && (
+                      <span className="block px-3 py-2 text-xs text-text-muted">Loading...</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setSplitView(!splitView)}
             className={`rounded p-1.5 transition-colors ${
