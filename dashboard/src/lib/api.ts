@@ -155,8 +155,8 @@ export interface ScheduleRow {
   cron_expression: string;
   playbook: string;
   enabled: boolean;
-  last_run: string | null;
-  next_run: string | null;
+  last_run_at: string | null;
+  next_run_at: string | null;
   created_at: string | null;
 }
 
@@ -366,7 +366,7 @@ export const api = {
 
   getSchedules(targetId?: number) {
     const qs = targetId ? `?target_id=${targetId}` : "";
-    return request<{ schedules: ScheduleRow[] }>(`/api/v1/schedules${qs}`);
+    return request<ScheduleRow[]>(`/api/v1/schedules${qs}`);
   },
 
   updateSchedule(

@@ -42,8 +42,8 @@ export default function BountiesPage() {
     ])
       .then(([bRes, sRes]) => {
         if (!cancelled) {
-          setBounties(bRes.bounties);
-          setStats(sRes.stats);
+          setBounties(bRes.bounties ?? []);
+          setStats(sRes.stats ?? null);
         }
       })
       .catch(() => {})

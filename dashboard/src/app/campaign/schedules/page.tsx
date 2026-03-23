@@ -34,7 +34,7 @@ export default function SchedulesPage() {
     api
       .getSchedules(activeTarget.id)
       .then((res) => {
-        if (!cancelled) setSchedules(res.schedules);
+        if (!cancelled) setSchedules(res);
       })
       .catch(() => {})
       .finally(() => {
@@ -56,7 +56,7 @@ export default function SchedulesPage() {
       });
       // Refresh list
       const updated = await api.getSchedules(activeTarget.id);
-      setSchedules(updated.schedules);
+      setSchedules(updated);
       setShowCreate(false);
       setCronExpr("0 0 * * *");
     } catch {}
@@ -221,13 +221,13 @@ export default function SchedulesPage() {
                       {s.playbook}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-text-muted">
-                      {s.last_run
-                        ? new Date(s.last_run).toLocaleString()
+                      {s.last_run_at
+                        ? new Date(s.last_run_at).toLocaleString()
                         : "Never"}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-text-muted">
-                      {s.next_run
-                        ? new Date(s.next_run).toLocaleString()
+                      {s.next_run_at
+                        ? new Date(s.next_run_at).toLocaleString()
                         : "\u2014"}
                     </td>
                     <td className="px-4 py-2.5">
