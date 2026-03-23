@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Wifi, WifiOff, Command } from "lucide-react";
+import { ChevronDown, Wifi, WifiOff, Command, Power } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
 import { useUIStore } from "@/stores/ui";
@@ -17,6 +17,8 @@ export default function TopBar() {
   const [open, setOpen] = useState(false);
   const [targets, setTargets] = useState<Target[]>([]);
   const ref = useRef<HTMLDivElement>(null);
+  const [killConfirmOpen, setKillConfirmOpen] = useState(false);
+  const [killing, setKilling] = useState(false);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -40,6 +42,18 @@ export default function TopBar() {
     setActiveTarget(target);
     setOpen(false);
     router.push("/campaign/c2");
+  }
+
+  async function handleKill() {
+    setKilling(true);
+    try {
+      await api.kill();
+      setKillConfirmOpen(false);
+    } catch {
+      /* error handled by API client */
+    } finally {
+      setKilling(false);
+    }
   }
 
   const runningWorkers = jobs.filter((j) => j.status === "RUNNING").length;
@@ -99,6 +113,14 @@ export default function TopBar() {
       {/* Right — cmd-k + alerts + connection */}
       <div className="flex items-center gap-2">
         <button
+          onClick={() => setKillConfirmOpen(true)}
+          className="flex items-center gap-1 rounded bg-danger/10 px-2 py-0.5 text-[10px] font-medium text-danger transition-colors hover:bg-danger/20"
+          title="Kill all active operations"
+        >
+          <Power className="h-3 w-3" />
+          <span className="hidden sm:inline">KILL</span>
+        </button>
+        <button
           onClick={() => setCommandPaletteOpen(true)}
           className="flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[10px] text-text-muted transition-colors hover:border-border-accent hover:text-text-secondary"
         >
@@ -114,6 +136,32 @@ export default function TopBar() {
           )}
         </div>
       </div>
+      {killConfirmOpen && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/60" onClick={() => setKillConfirmOpen(false)} />
+          <div className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-danger/30 bg-bg-secondary p-5 shadow-xl">
+            <h3 className="text-sm font-semibold text-text-primary">Kill All Operations</h3>
+            <p className="mt-2 text-xs text-text-muted">
+              This will immediately terminate all running workers. This cannot be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setKillConfirmOpen(false)}
+                className="rounded px-3 py-1.5 text-xs text-text-muted transition-colors hover:bg-bg-surface"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleKill}
+                disabled={killing}
+                className="rounded bg-danger px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-danger/90 disabled:opacity-50"
+              >
+                {killing ? "Killing..." : "Kill All"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </header>
   );
 }
