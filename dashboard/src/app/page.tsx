@@ -79,7 +79,7 @@ export default function DashboardHome() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-4 gap-4">
         <StatCard
           label="Assets"
           value={counters.assets}
@@ -109,7 +109,7 @@ export default function DashboardHome() {
       {/* Quick links */}
       <div>
         <p className="section-label mb-3">Quick Links</p>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-4 gap-3">
           <QuickLink
             href="/campaign/c2"
             icon={<Terminal className="h-5 w-5 text-neon-green" />}
@@ -140,7 +140,7 @@ export default function DashboardHome() {
       {/* Active campaign info */}
       <div className="rounded-lg border border-border bg-bg-secondary p-5">
         <p className="section-label mb-3">Active Campaign</p>
-        <dl className="grid grid-cols-2 gap-4 text-sm lg:grid-cols-4">
+        <dl className="grid grid-cols-4 gap-4 text-sm">
           <div>
             <dt className="text-text-muted">Company</dt>
             <dd className="mt-0.5 text-text-primary">

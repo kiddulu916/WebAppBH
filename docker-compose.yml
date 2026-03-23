@@ -308,7 +308,9 @@ services:
       orchestrator:
         condition: service_healthy
     environment:
-      NEXT_PUBLIC_API_URL: http://orchestrator:8001
+      API_URL: http://orchestrator:8001
+      API_KEY: ${WEB_APP_BH_API_KEY:-}
+      NEXT_PUBLIC_API_URL: http://localhost:8001
       NEXT_PUBLIC_API_KEY: ${WEB_APP_BH_API_KEY:-}
     ports:
       - "3000:3000"

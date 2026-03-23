@@ -68,7 +68,7 @@ export default function PlaybookSelector({ value, onChange }: PlaybookSelectorPr
       <p className="text-xs text-text-muted">
         Select a strategy that determines phase priorities and tool weighting.
       </p>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-2">
         {PLAYBOOKS.map((pb) => {
           const Icon = pb.icon;
           const selected = value === pb.name;

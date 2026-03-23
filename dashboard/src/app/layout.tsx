@@ -30,7 +30,7 @@ export default function RootLayout({
       >
         <SystemCheck>
           <GlobalEventStream />
-          <div className="flex min-h-screen">
+          <div className="flex min-h-screen min-w-[1024px]">
             <IconRail />
             <div className="ml-12 flex flex-1 flex-col min-h-screen">
               <TopBar />

@@ -333,9 +333,9 @@ export default function C2Page() {
       />
 
       {/* Main content: Asset Tree (1/3) + Worker Grid (2/3) */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+      <div className="grid grid-cols-3 gap-5">
         {/* Left -- Asset Tree */}
-        <div className="lg:col-span-1">
+        <div className="col-span-1">
           <div className="rounded-lg border border-border bg-bg-secondary p-4">
             <div className="section-label mb-3">ASSET TREE</div>
             <div className="max-h-[600px] overflow-y-auto">
@@ -348,7 +348,7 @@ export default function C2Page() {
         </div>
 
         {/* Right -- Worker Grid / Split Console */}
-        <div className="lg:col-span-2">
+        <div className="col-span-2">
           <div className="rounded-lg border border-border bg-bg-secondary p-4">
             {splitView ? (
               <SplitConsole jobs={jobs} events={events} />
@@ -366,7 +366,7 @@ export default function C2Page() {
       <CampaignTimeline jobs={jobs} />
 
       {/* Diff Timeline + Scope Drift Alerts */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-2 gap-5">
         <DiffTimeline events={events} />
         <ScopeDriftAlerts events={events} />
       </div>

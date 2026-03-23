@@ -1,8 +1,14 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "";
+// Use runtime env vars (not NEXT_PUBLIC_ which are inlined at build time).
+// In Docker, API_URL resolves to http://orchestrator:8001 at runtime.
+function getApiUrl() {
+  return process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
+}
+function getApiKey() {
+  return process.env.API_KEY ?? process.env.NEXT_PUBLIC_API_KEY ?? "";
+}
 
 export async function GET(
   _request: Request,
@@ -11,8 +17,8 @@ export async function GET(
   const { targetId } = await params;
   const abort = new AbortController();
 
-  const upstream = await fetch(`${API_URL}/api/v1/stream/${targetId}`, {
-    headers: { "X-API-KEY": API_KEY },
+  const upstream = await fetch(`${getApiUrl()}/api/v1/stream/${targetId}`, {
+    headers: { "X-API-KEY": getApiKey() },
     signal: abort.signal,
   });
 

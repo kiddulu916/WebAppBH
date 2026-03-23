@@ -64,7 +64,7 @@ export default function QueueHealthWidget() {
         <Activity className="h-4 w-4 text-accent" />
         <span className="text-sm font-semibold text-text-primary">Queue Health</span>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-3 gap-2">
         {entries.map(([name, status]) => {
           const label = name.replace("_queue", "").replace("_", " ");
           return (

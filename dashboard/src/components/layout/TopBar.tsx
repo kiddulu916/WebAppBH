@@ -118,7 +118,7 @@ export default function TopBar() {
           title="Kill all active operations"
         >
           <Power className="h-3 w-3" />
-          <span className="hidden sm:inline">KILL</span>
+          <span>KILL</span>
         </button>
         <button
           onClick={() => setCommandPaletteOpen(true)}

@@ -54,6 +54,9 @@ export function useEventStream(targetId: number | null) {
       "RECON_DIFF",
       "SCOPE_DRIFT",
       "AUTOSCALE_RECOMMENDATION",
+      "KILL_ALL",
+      "RERUN_STARTED",
+      "CLEAN_SLATE",
     ]) {
       es.addEventListener(t, handleEvent);
     }

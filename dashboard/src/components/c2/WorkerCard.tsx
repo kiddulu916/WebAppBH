@@ -26,6 +26,7 @@ const STATUS_DOT: Record<JobStatus, string> = {
   STOPPED: "bg-text-muted",
   COMPLETED: "bg-text-muted",
   FAILED: "bg-danger",
+  KILLED: "bg-danger",
 };
 
 const STATUS_LABEL_COLOR: Record<JobStatus, string> = {
@@ -35,6 +36,7 @@ const STATUS_LABEL_COLOR: Record<JobStatus, string> = {
   STOPPED: "text-text-muted",
   COMPLETED: "text-text-muted",
   FAILED: "text-danger",
+  KILLED: "text-danger",
 };
 
 export default function WorkerCard({

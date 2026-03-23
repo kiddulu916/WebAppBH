@@ -170,6 +170,7 @@ export default function ScopeBuilder() {
         company_name: res.company_name,
         base_domain: res.base_domain,
         target_profile: payload.target_profile ?? null,
+        last_playbook: payload.playbook ?? null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
@@ -192,7 +193,7 @@ export default function ScopeBuilder() {
   /* ================================================================ */
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       {/* ── Step indicator ── */}
       <nav className="flex items-center justify-center gap-0">
         {STEPS.map((s, i) => {
@@ -205,7 +206,7 @@ export default function ScopeBuilder() {
               {/* Connecting line (before every step except the first) */}
               {i > 0 && (
                 <div
-                  className={`h-px w-6 sm:w-10 transition-colors ${
+                  className={`h-px w-10 transition-colors ${
                     completed ? "bg-neon-green" : "bg-border"
                   }`}
                 />

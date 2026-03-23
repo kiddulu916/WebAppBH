@@ -19,6 +19,7 @@ const STATUS_COLORS: Record<JobStatus, string> = {
   STOPPED: "text-text-muted",
   COMPLETED: "text-text-muted",
   FAILED: "text-danger",
+  KILLED: "text-danger",
 };
 
 const STATUS_DOT: Record<JobStatus, string> = {
@@ -28,6 +29,7 @@ const STATUS_DOT: Record<JobStatus, string> = {
   STOPPED: "bg-text-muted",
   COMPLETED: "bg-text-muted",
   FAILED: "bg-danger",
+  KILLED: "bg-danger",
 };
 
 export default function WorkerConsole({ jobs }: { jobs: JobState[] }) {

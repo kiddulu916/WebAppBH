@@ -90,7 +90,7 @@ export default function BountiesPage() {
 
       {/* Stats cards */}
       {stats && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-4 gap-3">
           <div className="rounded-lg border border-border bg-bg-secondary p-3">
             <div className="flex items-center gap-2 text-text-muted">
               <Send className="h-3.5 w-3.5" />

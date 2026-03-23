@@ -90,7 +90,7 @@ export default function SystemPulse() {
         SYSTEM PULSE
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-3 gap-6">
         {/* Redis Queue Depths */}
         <div className="space-y-3">
           <div className="flex items-center gap-1.5 text-xs font-medium text-text-secondary">

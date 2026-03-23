@@ -118,7 +118,7 @@ export default function WorkerGrid({ jobs, events }: WorkerGridProps) {
           No workers active
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-4 gap-3">
           {jobs.map((job) => {
             const wp = progressMap.get(job.container_name);
             return (
