@@ -132,7 +132,7 @@ function ApiKeysSection() {
   useEffect(() => {
     api
       .getApiKeyStatus()
-      .then((res) => setKeys(res.keys))
+      .then((res) => setKeys(res.keys ?? {}))
       .catch(() => {});
   }, []);
 
@@ -144,7 +144,7 @@ function ApiKeysSection() {
       if (securityTrailsKey.trim())
         payload.securitytrails_api_key = securityTrailsKey.trim();
       const res = await api.updateApiKeys(payload);
-      setKeys(res.keys);
+      setKeys(res.keys ?? {});
       setEditing(false);
       setShodanKey("");
       setSecurityTrailsKey("");

@@ -1518,25 +1518,28 @@ async def update_api_keys(body: ApiKeyUpdate):
         _intel_mod.SECURITYTRAILS_API_KEY = body.securitytrails_api_key
         env_lines.append(f"SECURITYTRAILS_API_KEY={body.securitytrails_api_key}")
 
-    # Persist to .env.intel file
+    # Persist to .env.intel file (best-effort — keys are already set in memory)
     if env_lines:
-        env_file = SHARED_CONFIG / ".env.intel"
-        env_file.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            env_file = SHARED_CONFIG / ".env.intel"
+            env_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Merge with existing content
-        existing: dict[str, str] = {}
-        if env_file.exists():
-            for line in env_file.read_text().splitlines():
-                line = line.strip()
-                if "=" in line and not line.startswith("#"):
-                    k, v = line.split("=", 1)
-                    existing[k] = v
-        for line in env_lines:
-            k, v = line.split("=", 1)
-            existing[k] = v
-        env_file.write_text(
-            "\n".join(f"{k}={v}" for k, v in existing.items()) + "\n"
-        )
+            # Merge with existing content
+            existing: dict[str, str] = {}
+            if env_file.exists():
+                for line in env_file.read_text().splitlines():
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        k, v = line.split("=", 1)
+                        existing[k] = v
+            for line in env_lines:
+                k, v = line.split("=", 1)
+                existing[k] = v
+            env_file.write_text(
+                "\n".join(f"{k}={v}" for k, v in existing.items()) + "\n"
+            )
+        except OSError as exc:
+            logger.warning("could not persist api keys to disk", extra={"error": str(exc)})
 
     return {"keys": get_available_intel_sources()}
 
