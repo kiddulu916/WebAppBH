@@ -11,9 +11,10 @@ interface Props {
   onClose: () => void;
   targetId: number;
   currentProfile: TargetProfile | null;
+  hasActiveJobs: boolean;
 }
 
-export default function SettingsDrawer({ open, onClose, targetId, currentProfile }: Props) {
+export default function SettingsDrawer({ open, onClose, targetId, currentProfile, hasActiveJobs }: Props) {
   const setActiveTarget = useCampaignStore((s) => s.setActiveTarget);
   const activeTarget = useCampaignStore((s) => s.activeTarget);
 
@@ -21,6 +22,8 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
   const [headers, setHeaders] = useState(initialHeaders.length > 0 ? initialHeaders : [{ key: "", value: "" }]);
   const [pps, setPps] = useState(String(currentProfile?.rate_limits?.pps ?? ""));
   const [saving, setSaving] = useState(false);
+  const [cleanSlateConfirm, setCleanSlateConfirm] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
 
   function addHeader() {
     setHeaders([...headers, { key: "", value: "" }]);
@@ -52,6 +55,19 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
       /* error handled by API client */
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleCleanSlate() {
+    setCleaning(true);
+    try {
+      await api.cleanSlate(targetId);
+      setCleanSlateConfirm(false);
+      onClose();
+    } catch {
+      /* error handled by API client */
+    } finally {
+      setCleaning(false);
     }
   }
 
@@ -110,8 +126,53 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
           >
             {saving ? "Saving..." : "Save Settings"}
           </button>
+
+          {/* Danger Zone */}
+          <div className="mt-8 border-t border-danger/20 pt-4">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-danger/60">Danger Zone</span>
+            <div className="mt-3">
+              <button
+                onClick={() => setCleanSlateConfirm(true)}
+                disabled={hasActiveJobs}
+                className="w-full rounded-md border border-danger/30 px-4 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-40"
+                title={hasActiveJobs ? "Kill current run first" : ""}
+              >
+                Reset Target Data
+              </button>
+              <p className="mt-1 text-[10px] text-text-muted">
+                Deletes all assets, vulnerabilities, jobs, and alerts. Preserves configuration and bounties.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
+
+      {cleanSlateConfirm && (
+        <>
+          <div className="fixed inset-0 z-[60] bg-black/60" onClick={() => setCleanSlateConfirm(false)} />
+          <div className="fixed left-1/2 top-1/2 z-[60] w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-danger/30 bg-bg-secondary p-5 shadow-xl">
+            <h3 className="text-sm font-semibold text-text-primary">Reset Target Data</h3>
+            <p className="mt-2 text-xs text-text-muted">
+              This will permanently delete all discovered assets, vulnerabilities, jobs, and alerts for this target. Configuration and bounty submissions are preserved. This cannot be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setCleanSlateConfirm(false)}
+                className="rounded px-3 py-1.5 text-xs text-text-muted transition-colors hover:bg-bg-surface"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCleanSlate}
+                disabled={cleaning}
+                className="rounded bg-danger px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-danger/90 disabled:opacity-50"
+              >
+                {cleaning ? "Resetting..." : "Delete All Data"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

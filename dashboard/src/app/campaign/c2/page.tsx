@@ -360,6 +360,7 @@ export default function C2Page() {
         onClose={() => setSettingsOpen(false)}
         targetId={activeTarget.id}
         currentProfile={activeTarget.target_profile}
+        hasActiveJobs={hasActiveJobs}
       />
     </div>
   );
