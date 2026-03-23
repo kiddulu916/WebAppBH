@@ -205,6 +205,27 @@ export interface SearchResult {
 }
 
 /* ------------------------------------------------------------------ */
+/* Kill / Rerun / Clean Slate                                          */
+/* ------------------------------------------------------------------ */
+
+interface KillResponse {
+  success: boolean;
+  killed_count: number;
+  containers: string[];
+}
+
+interface RerunResponse {
+  success: boolean;
+  target_id: number;
+  playbook_name: string;
+}
+
+interface CleanSlateResponse {
+  success: boolean;
+  target_id: number;
+}
+
+/* ------------------------------------------------------------------ */
 /* Exported API object                                                */
 /* ------------------------------------------------------------------ */
 
@@ -479,5 +500,26 @@ export const api = {
       query: string;
       results: SearchResult[];
     }>(`/api/v1/search?target_id=${targetId}&q=${encodeURIComponent(query)}`);
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Kill / Rerun / Clean Slate                                          */
+  /* ------------------------------------------------------------------ */
+
+  kill() {
+    return request<KillResponse>("/api/v1/kill", { method: "POST" });
+  },
+
+  rerun(targetId: number, playbookName: string) {
+    return request<RerunResponse>("/api/v1/rerun", {
+      method: "POST",
+      body: JSON.stringify({ target_id: targetId, playbook_name: playbookName }),
+    });
+  },
+
+  cleanSlate(targetId: number) {
+    return request<CleanSlateResponse>(`/api/v1/targets/${targetId}/clean-slate`, {
+      method: "POST",
+    });
   },
 };
