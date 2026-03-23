@@ -88,7 +88,7 @@ API_KEY = os.environ.get("WEB_APP_BH_API_KEY", "")
 # * Comma-separated origins for browser clients (dashboard on :3000, etc.)
 _CORS_RAW = os.environ.get(
     "CORS_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000",
+    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",
 )
 CORS_ORIGINS = [o.strip() for o in _CORS_RAW.split(",") if o.strip()]
 SHARED_CONFIG = Path(os.environ.get("SHARED_CONFIG_DIR", "/app/shared/config"))
