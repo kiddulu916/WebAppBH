@@ -125,3 +125,47 @@ async def test_kill_idempotent(client, db):
         resp = await client.post("/api/v1/kill")
     assert resp.status_code == 200
     assert resp.json()["killed_count"] == 0
+
+
+@pytest.mark.anyio
+async def test_rerun_same_playbook(client, seed_target):
+    """POST /api/v1/rerun with a valid playbook queues the target."""
+    tid = seed_target
+    with patch("orchestrator.main.push_task", new_callable=AsyncMock) as mock_push, \
+         patch("orchestrator.main.SHARED_CONFIG", new=__import__("pathlib").Path("/tmp/webbh_test_config")):
+        import pathlib
+        pathlib.Path(f"/tmp/webbh_test_config/{tid}").mkdir(parents=True, exist_ok=True)
+        resp = await client.post("/api/v1/rerun", json={
+            "target_id": tid,
+            "playbook_name": "wide_recon",
+        })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["playbook_name"] == "wide_recon"
+
+    async with get_session() as session:
+        from sqlalchemy import select
+        t = (await session.execute(select(Target).where(Target.id == tid))).scalar_one()
+        assert t.last_playbook == "wide_recon"
+
+
+@pytest.mark.anyio
+async def test_rerun_blocked_by_active_jobs(client, seed_running_jobs):
+    """POST /api/v1/rerun returns 409 when jobs are active."""
+    tid = seed_running_jobs
+    resp = await client.post("/api/v1/rerun", json={
+        "target_id": tid,
+        "playbook_name": "wide_recon",
+    })
+    assert resp.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_rerun_unknown_playbook(client, seed_target):
+    """POST /api/v1/rerun with unknown playbook returns 404."""
+    resp = await client.post("/api/v1/rerun", json={
+        "target_id": seed_target,
+        "playbook_name": "nonexistent_playbook",
+    })
+    assert resp.status_code == 404

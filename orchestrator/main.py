@@ -186,6 +186,11 @@ class PlaybookUpdate(BaseModel):
     concurrency: Optional[dict] = None
 
 
+class RerunRequest(BaseModel):
+    target_id: int = Field(..., gt=0)
+    playbook_name: str = Field(..., min_length=1, max_length=100)
+
+
 # ---------------------------------------------------------------------------
 # Schema sync — add columns that exist in ORM models but not in the DB
 # ---------------------------------------------------------------------------
@@ -450,6 +455,72 @@ async def kill_all():
     })
 
     return {"success": True, "killed_count": len(containers), "containers": containers}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/rerun — rerun target with specified playbook
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/rerun")
+async def rerun_target(body: RerunRequest):
+    """Re-queue a target with the specified playbook. Preserves existing data."""
+    active_statuses = ["RUNNING", "QUEUED", "PAUSED"]
+
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == body.target_id)
+        )).scalar_one_or_none()
+        if not target:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+        active = (await session.execute(
+            select(func.count(JobState.id)).where(
+                JobState.target_id == body.target_id,
+                JobState.status.in_(active_statuses),
+            )
+        )).scalar()
+        if active > 0:
+            raise HTTPException(status_code=409, detail="Active jobs exist. Kill them first.")
+
+        playbook_config = None
+        if body.playbook_name in BUILTIN_PLAYBOOKS:
+            playbook_config = BUILTIN_PLAYBOOKS[body.playbook_name]
+        else:
+            custom = (await session.execute(
+                select(CustomPlaybook).where(CustomPlaybook.name == body.playbook_name)
+            )).scalar_one_or_none()
+            if custom:
+                from lib_webbh.playbooks import PlaybookConfig, StageConfig, ConcurrencyConfig
+                playbook_config = PlaybookConfig(
+                    name=custom.name,
+                    description=custom.description or "",
+                    stages=[StageConfig(**s) for s in (custom.stages or [])],
+                    concurrency=ConcurrencyConfig(**(custom.concurrency or {})),
+                )
+
+        if not playbook_config:
+            raise HTTPException(status_code=404, detail=f"Playbook '{body.playbook_name}' not found")
+
+        profile_dir = SHARED_CONFIG / str(body.target_id)
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        (profile_dir / "playbook.json").write_text(
+            json.dumps(playbook_config.to_dict(), indent=2)
+        )
+
+        target.last_playbook = body.playbook_name
+        await session.commit()
+
+    await push_task("recon_queue", {
+        "target_id": body.target_id,
+        "action": "rerun",
+    })
+
+    await push_task(f"events:{body.target_id}", {
+        "event": "RERUN_STARTED",
+        "target_id": body.target_id,
+        "playbook_name": body.playbook_name,
+    })
+
+    return {"success": True, "target_id": body.target_id, "playbook_name": body.playbook_name}
 
 
 # ---------------------------------------------------------------------------
