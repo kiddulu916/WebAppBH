@@ -169,3 +169,84 @@ async def test_rerun_unknown_playbook(client, seed_target):
         "playbook_name": "nonexistent_playbook",
     })
     assert resp.status_code == 404
+
+
+@pytest_asyncio.fixture
+async def seed_full_target(db):
+    """Insert a target with assets, vulns, jobs, alerts — the full data set."""
+    async with get_session() as session:
+        t = Target(company_name="SlateTest", base_domain="slate.com", target_profile={})
+        session.add(t)
+        await session.flush()
+        tid = t.id
+
+        a = Asset(target_id=tid, asset_type="subdomain", asset_value="api.slate.com")
+        session.add(a)
+        await session.flush()
+
+        session.add(Location(asset_id=a.id, port=443, protocol="tcp"))
+        session.add(Vulnerability(target_id=tid, asset_id=a.id, severity="high", title="XSS"))
+        session.add(JobState(target_id=tid, container_name=f"webbh-recon-t{tid}", status="COMPLETED", current_phase="done"))
+        session.add(Alert(target_id=tid, alert_type="critical", message="test"))
+        session.add(ScopeViolation(target_id=tid, tool_name="test", input_value="x", violation_type="domain"))
+        v2 = Vulnerability(target_id=tid, severity="medium", title="CSRF")
+        session.add(v2)
+        await session.flush()
+        session.add(BountySubmission(target_id=tid, vulnerability_id=v2.id, platform="hackerone", status="submitted"))
+
+        await session.commit()
+        return tid
+
+
+@pytest.mark.anyio
+async def test_clean_slate(client, seed_full_target):
+    """POST /api/v1/targets/{id}/clean-slate wipes data, preserves target + bounties."""
+    tid = seed_full_target
+    with patch("orchestrator.main.push_task", new_callable=AsyncMock):
+        resp = await client.post(f"/api/v1/targets/{tid}/clean-slate")
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+    async with get_session() as session:
+        from sqlalchemy import select, func
+        # Target still exists
+        t = (await session.execute(select(Target).where(Target.id == tid))).scalar_one()
+        assert t is not None
+
+        # Assets wiped
+        asset_count = (await session.execute(
+            select(func.count()).select_from(Asset).where(Asset.target_id == tid)
+        )).scalar()
+        assert asset_count == 0
+
+        # Vulns wiped (except the one referenced by bounty)
+        vuln_count = (await session.execute(
+            select(func.count()).select_from(Vulnerability).where(Vulnerability.target_id == tid)
+        )).scalar()
+        assert vuln_count == 1  # CSRF vuln preserved (referenced by bounty)
+
+        # Jobs wiped
+        job_count = (await session.execute(
+            select(func.count()).select_from(JobState).where(JobState.target_id == tid)
+        )).scalar()
+        assert job_count == 0
+
+        # Alerts wiped
+        alert_count = (await session.execute(
+            select(func.count()).select_from(Alert).where(Alert.target_id == tid)
+        )).scalar()
+        assert alert_count == 0
+
+        # Bounties preserved
+        bounty_count = (await session.execute(
+            select(func.count()).select_from(BountySubmission).where(BountySubmission.target_id == tid)
+        )).scalar()
+        assert bounty_count == 1
+
+
+@pytest.mark.anyio
+async def test_clean_slate_blocked_by_active_jobs(client, seed_running_jobs):
+    """POST /api/v1/targets/{id}/clean-slate returns 409 when jobs active."""
+    tid = seed_running_jobs
+    resp = await client.post(f"/api/v1/targets/{tid}/clean-slate")
+    assert resp.status_code == 409

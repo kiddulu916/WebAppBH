@@ -53,13 +53,19 @@ from sqlalchemy.orm import attributes, selectinload
 
 from lib_webbh import (
     Alert,
+    ApiSchema,
     Asset,
+    AssetSnapshot,
     Base,
     BountySubmission,
     CloudAsset,
     CustomPlaybook,
+    Identity,
     JobState,
     Location,
+    MobileApp,
+    Observation,
+    Parameter,
     ScheduledScan,
     ScopeViolation,
     Target,
@@ -524,6 +530,71 @@ async def rerun_target(body: RerunRequest):
 
 
 # ---------------------------------------------------------------------------
+# POST /api/v1/targets/{target_id}/clean-slate — wipe all target data
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/targets/{target_id}/clean-slate")
+async def clean_slate(target_id: int):
+    """Delete all discovered data for a target. Preserves target, config, bounties."""
+    from sqlalchemy import delete
+    active_statuses = ["RUNNING", "QUEUED", "PAUSED"]
+
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+        if not target:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+        active = (await session.execute(
+            select(func.count(JobState.id)).where(
+                JobState.target_id == target_id,
+                JobState.status.in_(active_statuses),
+            )
+        )).scalar()
+        if active > 0:
+            raise HTTPException(status_code=409, detail="Active jobs exist. Kill them first.")
+
+        # Delete in dependency order — child tables first.
+        # BountySubmission has a non-nullable FK to Vulnerability, so we must
+        # preserve vulns referenced by bounties (and the bounties themselves).
+        asset_ids = select(Asset.id).where(Asset.target_id == target_id)
+
+        bounty_vuln_ids = select(BountySubmission.vulnerability_id).where(
+            BountySubmission.target_id == target_id
+        )
+
+        # Delete vulns NOT referenced by bounties
+        await session.execute(
+            delete(Vulnerability).where(
+                Vulnerability.target_id == target_id,
+                Vulnerability.id.notin_(bounty_vuln_ids),
+            )
+        )
+
+        await session.execute(delete(Parameter).where(Parameter.asset_id.in_(asset_ids)))
+        await session.execute(delete(ApiSchema).where(ApiSchema.target_id == target_id))
+        await session.execute(delete(MobileApp).where(MobileApp.target_id == target_id))
+        await session.execute(delete(Location).where(Location.asset_id.in_(asset_ids)))
+        await session.execute(delete(Observation).where(Observation.asset_id.in_(asset_ids)))
+        await session.execute(delete(Identity).where(Identity.target_id == target_id))
+        await session.execute(delete(CloudAsset).where(CloudAsset.target_id == target_id))
+        await session.execute(delete(AssetSnapshot).where(AssetSnapshot.target_id == target_id))
+        await session.execute(delete(ScopeViolation).where(ScopeViolation.target_id == target_id))
+        await session.execute(delete(Alert).where(Alert.target_id == target_id))
+        await session.execute(delete(JobState).where(JobState.target_id == target_id))
+        await session.execute(delete(Asset).where(Asset.target_id == target_id))
+
+        await session.commit()
+
+    await push_task(f"events:{target_id}", {
+        "event": "CLEAN_SLATE",
+        "target_id": target_id,
+    })
+
+    return {"success": True, "target_id": target_id}
+
+
+# ---------------------------------------------------------------------------
 # GET /api/v1/search — Global search across assets & vulnerabilities
 # ---------------------------------------------------------------------------
 @app.get("/api/v1/search")
@@ -934,8 +1005,6 @@ async def trigger_rescan(target_id: int):
         )).scalar_one_or_none()
         if target is None:
             raise HTTPException(status_code=404, detail="Target not found")
-
-        from lib_webbh.database import AssetSnapshot
 
         max_scan = (await session.execute(
             select(func.coalesce(func.max(AssetSnapshot.scan_number), 0))
