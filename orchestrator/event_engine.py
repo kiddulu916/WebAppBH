@@ -273,7 +273,7 @@ async def _check_recon_trigger() -> None:
             select(JobState.target_id)
             .where(
                 JobState.container_name.like("webbh-recon-%"),
-                JobState.status == "COMPLETED",
+                JobState.status.in_(["COMPLETED", "KILLED"]),
             )
         ).subquery()
 

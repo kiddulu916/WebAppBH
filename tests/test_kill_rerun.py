@@ -94,6 +94,18 @@ def client():
 
 
 @pytest.mark.anyio
+async def test_single_target_enforcement(client, seed_running_jobs):
+    """POST /api/v1/targets returns 409 when another target has active jobs."""
+    with patch("orchestrator.main._generate_tool_configs"):
+        resp = await client.post("/api/v1/targets", json={
+            "company_name": "NewCorp",
+            "base_domain": "newcorp.com",
+        })
+    assert resp.status_code == 409
+    assert "active" in resp.json()["detail"].lower()
+
+
+@pytest.mark.anyio
 async def test_kill_all_workers(client, seed_running_jobs):
     """POST /api/v1/kill should SIGKILL all active containers and mark jobs KILLED."""
     tid = seed_running_jobs

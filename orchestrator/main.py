@@ -314,11 +314,24 @@ async def prometheus_metrics():
 # ---------------------------------------------------------------------------
 @app.post("/api/v1/targets", status_code=201)
 async def create_target(body: TargetCreate):
+    # Single-target enforcement
+    active_statuses = ["RUNNING", "QUEUED", "PAUSED"]
+    async with get_session() as session:
+        active_count = (await session.execute(
+            select(func.count(JobState.id)).where(JobState.status.in_(active_statuses))
+        )).scalar()
+        if active_count > 0:
+            raise HTTPException(
+                status_code=409,
+                detail="Another target is currently active. Stop it before starting a new target.",
+            )
+
     async with get_session() as session:
         target = Target(
             company_name=body.company_name,
             base_domain=body.base_domain,
             target_profile=body.target_profile,
+            last_playbook=body.playbook,
         )
         session.add(target)
         await session.commit()
