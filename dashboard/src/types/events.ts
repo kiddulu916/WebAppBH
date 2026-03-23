@@ -7,7 +7,10 @@ export type SSEEventType =
   | "WORKER_SPAWNED"
   | "RECON_DIFF"
   | "SCOPE_DRIFT"
-  | "AUTOSCALE_RECOMMENDATION";
+  | "AUTOSCALE_RECOMMENDATION"
+  | "KILL_ALL"
+  | "RERUN_STARTED"
+  | "CLEAN_SLATE";
 
 export interface SSEEvent {
   event: SSEEventType;
@@ -65,4 +68,19 @@ export interface AutoscaleEvent extends SSEEvent {
   worker: string;
   pending: number;
   action: string;
+}
+
+export interface KillAllEvent extends SSEEvent {
+  event: "KILL_ALL";
+  killed_count: number;
+  containers: string[];
+}
+
+export interface RerunStartedEvent extends SSEEvent {
+  event: "RERUN_STARTED";
+  playbook_name: string;
+}
+
+export interface CleanSlateEvent extends SSEEvent {
+  event: "CLEAN_SLATE";
 }
