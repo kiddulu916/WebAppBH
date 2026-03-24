@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ShieldCheck, ShieldAlert, Loader2 } from "lucide-react";
+import { ShieldAlert, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
 
@@ -70,10 +70,5 @@ export default function SystemCheck({ children }: { children: React.ReactNode })
     );
   }
 
-  return (
-    <div className="flex items-center gap-1.5">
-      <ShieldCheck className="hidden h-0 w-0" aria-hidden />
-      {children}
-    </div>
-  );
+  return <>{children}</>;
 }

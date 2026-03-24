@@ -2,7 +2,7 @@
 """20 SSRF / infrastructure chain templates."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from workers.chain_worker.registry import BaseChainTemplate, ChainContext, register_chain
 from workers.chain_worker.models import (
@@ -19,7 +19,7 @@ _SEV = "critical"
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.utcnow().isoformat()
 
 
 def _has_ssrf(findings: TargetFindings) -> list:

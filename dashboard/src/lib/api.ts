@@ -1,21 +1,40 @@
+import { toast } from "sonner";
 import type { JobState, TargetProfile } from "@/types/schema";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-KEY": API_KEY,
-      ...init?.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-KEY": API_KEY,
+        ...init?.headers,
+      },
+    });
+  } catch {
+    toast.error("Network error — is the orchestrator running?");
+    throw new Error("Network error: unable to reach orchestrator");
+  }
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+    let detail = `API ${res.status}`;
+    try {
+      const parsed = JSON.parse(body);
+      detail = parsed.detail ?? detail;
+    } catch {
+      if (body) detail = body;
+    }
+    toast.error(detail);
+    throw new Error(detail);
+  }
+
+  if (res.status === 204 || res.headers.get("content-length") === "0") {
+    return undefined as T;
   }
 
   return res.json() as Promise<T>;
@@ -125,7 +144,7 @@ interface AlertsResponse {
 /* ------------------------------------------------------------------ */
 
 interface TargetsResponse {
-  targets: import("@/types/schema").Target[];
+  targets: import("@/types/schema").TargetWithStats[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -521,5 +540,12 @@ export const api = {
     return request<CleanSlateResponse>(`/api/v1/targets/${targetId}/clean-slate`, {
       method: "POST",
     });
+  },
+
+  deleteTarget(targetId: number) {
+    return request<{ success: boolean; target_id: number }>(
+      `/api/v1/targets/${targetId}`,
+      { method: "DELETE" },
+    );
   },
 };

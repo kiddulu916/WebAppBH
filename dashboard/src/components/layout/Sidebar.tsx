@@ -12,11 +12,13 @@ import {
   Bug,
   GitGraph,
   Settings,
+  Crosshair,
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/campaign", label: "New Campaign", icon: Target },
+  { href: "/campaign/targets", label: "Targets", icon: Crosshair },
   { href: "/campaign/c2", label: "C2 Console", icon: Network },
   { href: "/campaign/graph", label: "Attack Graph", icon: GitGraph },
   { href: "/campaign/assets", label: "Assets", icon: Activity },

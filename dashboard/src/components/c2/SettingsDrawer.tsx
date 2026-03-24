@@ -52,7 +52,7 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
       }
       onClose();
     } catch {
-      /* error handled by API client */
+      // toast shown by api.request()
     } finally {
       setSaving(false);
     }
@@ -65,7 +65,7 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
       setCleanSlateConfirm(false);
       onClose();
     } catch {
-      /* error handled by API client */
+      // toast shown by api.request()
     } finally {
       setCleaning(false);
     }

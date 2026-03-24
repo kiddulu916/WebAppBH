@@ -1,48 +1,64 @@
 "use client";
 
 import { Check } from "lucide-react";
+import type { JobState } from "@/types/schema";
 
+/**
+ * High-level campaign phases derived from worker types.
+ * Order reflects the typical scan progression.
+ */
 const PHASES = [
-  "PASSIVE_RECON",
-  "ACTIVE_RECON",
-  "CONTENT_DISCOVERY",
-  "CLOUD_ENUM",
-  "VULN_SCAN",
-  "API_TESTING",
-  "PARAM_MINING",
-  "FUZZING",
-  "EXPLOIT",
-  "REPORTING",
-  "CLEANUP",
-  "COMPLETE",
+  "recon",
+  "cloud_testing",
+  "network",
+  "fuzzing",
+  "webapp_testing",
+  "api_testing",
+  "vuln_scanner",
+  "chain",
+  "mobile",
+  "reporting",
 ] as const;
 
 const PHASE_LABELS: Record<string, string> = {
-  PASSIVE_RECON: "Passive Recon",
-  ACTIVE_RECON: "Active Recon",
-  CONTENT_DISCOVERY: "Content Disc.",
-  CLOUD_ENUM: "Cloud Enum",
-  VULN_SCAN: "Vuln Scan",
-  API_TESTING: "API Test",
-  PARAM_MINING: "Param Mine",
-  FUZZING: "Fuzzing",
-  EXPLOIT: "Exploit",
-  REPORTING: "Reporting",
-  CLEANUP: "Cleanup",
-  COMPLETE: "Complete",
+  recon: "Recon",
+  cloud_testing: "Cloud Enum",
+  network: "Network",
+  fuzzing: "Fuzzing",
+  webapp_testing: "Webapp",
+  api_testing: "API Test",
+  vuln_scanner: "Vuln Scan",
+  chain: "Chain",
+  mobile: "Mobile",
+  reporting: "Reporting",
 };
 
-interface PhasePipelineProps {
-  currentPhase: string | null;
-  completedPhases?: string[];
+/** Extract the worker type from a container name like "webbh-recon-t1" */
+function workerType(containerName: string): string {
+  return containerName.replace("webbh-", "").replace(/-t\d+$/, "");
 }
 
-export default function PhasePipeline({
-  currentPhase,
-  completedPhases = [],
-}: PhasePipelineProps) {
-  const completedSet = new Set(completedPhases.map((p) => p.toUpperCase()));
-  const currentNorm = currentPhase?.toUpperCase() ?? null;
+interface PhasePipelineProps {
+  jobs: JobState[];
+}
+
+export default function PhasePipeline({ jobs }: PhasePipelineProps) {
+  const activeSet = new Set<string>();
+  const completedSet = new Set<string>();
+
+  for (const job of jobs) {
+    const wt = workerType(job.container_name);
+    if (job.status === "RUNNING" || job.status === "QUEUED" || job.status === "PAUSED") {
+      activeSet.add(wt);
+    } else if (job.status === "COMPLETED") {
+      completedSet.add(wt);
+    }
+  }
+
+  // A phase that is both active and completed (e.g. re-run) should show as active
+  for (const wt of activeSet) {
+    completedSet.delete(wt);
+  }
 
   return (
     <div className="rounded-lg border border-border bg-bg-secondary p-4">
@@ -50,7 +66,7 @@ export default function PhasePipeline({
       <div className="flex items-start gap-1 overflow-x-auto pb-1">
         {PHASES.map((phase, i) => {
           const isCompleted = completedSet.has(phase);
-          const isActive = currentNorm === phase;
+          const isActive = activeSet.has(phase);
           const isPending = !isCompleted && !isActive;
 
           return (

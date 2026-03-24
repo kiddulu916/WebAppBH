@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncIterator, Optional
 
-from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.types import JSON
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
@@ -113,10 +113,12 @@ class TimestampMixin:
     """Mixin that adds ``created_at`` / ``updated_at`` UTC timestamps."""
 
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         default=func.now(),
         server_default=func.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         default=func.now(),
         server_default=func.now(),
         onupdate=func.now(),
@@ -304,7 +306,7 @@ class JobState(TimestampMixin, Base):
     container_name: Mapped[str] = mapped_column(String(255))
     current_phase: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(20))
-    last_seen: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_tool_executed: Mapped[Optional[str]] = mapped_column(
         String(100), nullable=True
     )

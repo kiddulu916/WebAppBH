@@ -88,16 +88,6 @@ export default function C2Page() {
   // Merge store jobs and local jobs (local poll takes priority for freshness)
   const jobs = localJobs.length > 0 ? localJobs : storeJobs;
 
-  // Derive completed phases from jobs
-  const completedPhases = jobs
-    .filter(
-      (j) => j.status === "COMPLETED" && j.current_phase,
-    )
-    .map((j) => j.current_phase!);
-
-  const currentPhase =
-    jobs.find((j) => j.status === "RUNNING")?.current_phase ?? null;
-
   const hasActiveJobs = jobs.some((j) =>
     ["RUNNING", "QUEUED", "PAUSED"].includes(j.status),
   );
@@ -110,7 +100,7 @@ export default function C2Page() {
       setRerunOpen(false);
       setRerunMode("menu");
     } catch {
-      /* error handled by API client */
+      // toast shown by api.request()
     } finally {
       setRerunning(false);
     }
@@ -122,29 +112,23 @@ export default function C2Page() {
   }
 
   /* ---- Fetch job states periodically ---- */
+  const refreshJobs = useCallback(async () => {
+    if (!activeTarget) return;
+    try {
+      const res = await api.getStatus(activeTarget.id);
+      setLocalJobs(res.jobs);
+      setJobs(res.jobs);
+    } catch {
+      /* noop */
+    }
+  }, [activeTarget, setJobs]);
+
   useEffect(() => {
     if (!activeTarget) return;
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const res = await api.getStatus(activeTarget!.id);
-        if (!cancelled) {
-          setLocalJobs(res.jobs);
-          setJobs(res.jobs);
-        }
-      } catch {
-        /* noop */
-      }
-    }
-
-    poll();
-    const interval = setInterval(poll, 10_000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [activeTarget, setJobs]);
+    refreshJobs();
+    const interval = setInterval(refreshJobs, 10_000);
+    return () => clearInterval(interval);
+  }, [activeTarget, refreshJobs]);
 
   /* ---- Load initial asset tree from API ---- */
   useEffect(() => {
@@ -327,10 +311,7 @@ export default function C2Page() {
       </div>
 
       {/* Phase Pipeline */}
-      <PhasePipeline
-        currentPhase={currentPhase}
-        completedPhases={completedPhases}
-      />
+      <PhasePipeline jobs={jobs} />
 
       {/* Main content: Asset Tree (1/3) + Worker Grid (2/3) */}
       <div className="grid grid-cols-3 gap-5">
@@ -353,7 +334,7 @@ export default function C2Page() {
             {splitView ? (
               <SplitConsole jobs={jobs} events={events} />
             ) : (
-              <WorkerGrid jobs={jobs} events={events} />
+              <WorkerGrid jobs={jobs} events={events} onRefresh={refreshJobs} />
             )}
           </div>
         </div>

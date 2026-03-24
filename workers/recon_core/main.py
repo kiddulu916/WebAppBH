@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -80,12 +80,12 @@ async def handle_message(msg_id: str, data: dict) -> None:
                 container_name=container_name,
                 current_phase="init",
                 status="RUNNING",
-                last_seen=datetime.now(timezone.utc),
+                last_seen=datetime.utcnow(),
             )
             session.add(job)
         else:
             job.status = "RUNNING"
-            job.last_seen = datetime.now(timezone.utc)
+            job.last_seen = datetime.utcnow()
         await session.commit()
 
     # Run pipeline with heartbeat
@@ -111,7 +111,7 @@ async def handle_message(msg_id: str, data: dict) -> None:
             job = result.scalar_one_or_none()
             if job:
                 job.status = "FAILED"
-                job.last_seen = datetime.now(timezone.utc)
+                job.last_seen = datetime.utcnow()
                 await session.commit()
     finally:
         heartbeat_task.cancel()
@@ -134,7 +134,7 @@ async def _heartbeat_loop(target_id: int, container_name: str) -> None:
                 result = await session.execute(stmt)
                 job = result.scalar_one_or_none()
                 if job:
-                    job.last_seen = datetime.now(timezone.utc)
+                    job.last_seen = datetime.utcnow()
                     await session.commit()
         except Exception:
             pass

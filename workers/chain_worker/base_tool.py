@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from lib_webbh import get_session, setup_logger
@@ -49,7 +49,7 @@ class ChainTestTool(ABC):
             )
             row = (await session.execute(stmt)).scalar_one_or_none()
             if row and row.last_seen:
-                elapsed = (datetime.now(timezone.utc) - row.last_seen).total_seconds()
+                elapsed = (datetime.utcnow() - row.last_seen).total_seconds()
                 return elapsed < COOLDOWN_HOURS * 3600
         return False
 
@@ -62,7 +62,7 @@ class ChainTestTool(ABC):
             row = (await session.execute(stmt)).scalar_one_or_none()
             if row:
                 row.last_tool_executed = self.name
-                row.last_seen = datetime.now(timezone.utc)
+                row.last_seen = datetime.utcnow()
                 await session.commit()
 
     async def _save_vulnerability(self, target_id: int, asset_id: int | None, severity: str,
@@ -85,7 +85,7 @@ class ChainTestTool(ABC):
                 session.add(alert)
                 await session.commit()
                 await push_task(f"events:{target_id}", {
-                    "event": "critical_alert", "alert_type": severity,
+                    "event": "CRITICAL_ALERT", "alert_type": severity,
                     "title": title, "vulnerability_id": vuln_id,
                 })
             else:
@@ -108,7 +108,7 @@ class ChainTestTool(ABC):
             session.add(alert)
             await session.commit()
             await push_task(f"events:{target_id}", {
-                "event": "action_required", "message": message,
+                "event": "ACTION_REQUIRED", "message": message,
             })
             return alert.id
 

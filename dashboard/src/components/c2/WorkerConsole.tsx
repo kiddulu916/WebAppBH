@@ -32,6 +32,42 @@ const STATUS_DOT: Record<JobStatus, string> = {
   KILLED: "bg-danger",
 };
 
+type WorkerAction = "pause" | "stop" | "restart" | "unpause";
+
+interface ActionBtn {
+  action: WorkerAction;
+  icon: React.ElementType;
+  label: string;
+  hoverColor: string;
+}
+
+function actionButtons(status: JobStatus): ActionBtn[] {
+  switch (status) {
+    case "RUNNING":
+      return [
+        { action: "pause", icon: Pause, label: "Pause", hoverColor: "hover:text-warning" },
+        { action: "stop", icon: Square, label: "Stop", hoverColor: "hover:text-danger" },
+      ];
+    case "PAUSED":
+      return [
+        { action: "unpause", icon: Play, label: "Resume", hoverColor: "hover:text-success" },
+        { action: "stop", icon: Square, label: "Stop", hoverColor: "hover:text-danger" },
+      ];
+    case "COMPLETED":
+    case "FAILED":
+    case "STOPPED":
+      return [
+        { action: "restart", icon: RotateCcw, label: "Relaunch", hoverColor: "hover:text-success" },
+      ];
+    case "QUEUED":
+      return [
+        { action: "restart", icon: Play, label: "Start now", hoverColor: "hover:text-success" },
+      ];
+    default:
+      return [];
+  }
+}
+
 export default function WorkerConsole({ jobs }: { jobs: JobState[] }) {
   const [loading, setLoading] = useState<string | null>(null);
 
@@ -43,7 +79,7 @@ export default function WorkerConsole({ jobs }: { jobs: JobState[] }) {
     try {
       await api.controlWorker(containerName, action);
     } catch {
-      // error handled by API client
+      // toast shown by api.request()
     } finally {
       setLoading(null);
     }
@@ -90,74 +126,16 @@ export default function WorkerConsole({ jobs }: { jobs: JobState[] }) {
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin text-accent" />
               ) : (
-                <>
-                  {job.status === "RUNNING" && (
-                    <>
-                      <button
-                        onClick={() =>
-                          handleAction(job.container_name, "pause")
-                        }
-                        title="Pause"
-                        className="rounded p-1.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-warning"
-                      >
-                        <Pause className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleAction(job.container_name, "stop")
-                        }
-                        title="Stop"
-                        className="rounded p-1.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-danger"
-                      >
-                        <Square className="h-3.5 w-3.5" />
-                      </button>
-                    </>
-                  )}
-                  {job.status === "PAUSED" && (
-                    <>
-                      <button
-                        onClick={() =>
-                          handleAction(job.container_name, "unpause")
-                        }
-                        title="Resume"
-                        className="rounded p-1.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-success"
-                      >
-                        <Play className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleAction(job.container_name, "stop")
-                        }
-                        title="Stop"
-                        className="rounded p-1.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-danger"
-                      >
-                        <Square className="h-3.5 w-3.5" />
-                      </button>
-                    </>
-                  )}
-                  {(job.status === "FAILED" || job.status === "COMPLETED" || job.status === "STOPPED") && (
-                    <button
-                      onClick={() =>
-                        handleAction(job.container_name, "restart")
-                      }
-                      title="Relaunch"
-                      className="rounded p-1.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-success"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  {job.status === "QUEUED" && (
-                    <button
-                      onClick={() =>
-                        handleAction(job.container_name, "restart")
-                      }
-                      title="Start now"
-                      className="rounded p-1.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-success"
-                    >
-                      <Play className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </>
+                actionButtons(job.status).map((btn) => (
+                  <button
+                    key={btn.action}
+                    onClick={() => handleAction(job.container_name, btn.action)}
+                    title={btn.label}
+                    className={`rounded p-1.5 text-text-muted transition-colors hover:bg-bg-surface ${btn.hoverColor}`}
+                  >
+                    <btn.icon className="h-3.5 w-3.5" />
+                  </button>
+                ))
               )}
             </div>
           </div>

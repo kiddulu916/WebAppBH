@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import shutil
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -62,7 +62,7 @@ class Pipeline:
             log.info("Starting stage", extra={"stage": "data_gathering"})
             ctx = await gather_report_data(target_id)
             await self._update_phase(target_id, container_name, "data_gathering")
-            await push_task(f"events:{target_id}", {"event": "stage_complete", "stage": "data_gathering"})
+            await push_task(f"events:{target_id}", {"event": "STAGE_COMPLETE", "stage": "data_gathering"})
         else:
             ctx = await gather_report_data(target_id)
 
@@ -71,7 +71,7 @@ class Pipeline:
             log.info("Starting stage", extra={"stage": "deduplication"})
             report_data = deduplicate_and_enrich(ctx, platform=platform, formats=formats)
             await self._update_phase(target_id, container_name, "deduplication")
-            await push_task(f"events:{target_id}", {"event": "stage_complete", "stage": "deduplication"})
+            await push_task(f"events:{target_id}", {"event": "STAGE_COMPLETE", "stage": "deduplication"})
         else:
             report_data = deduplicate_and_enrich(ctx, platform=platform, formats=formats)
 
@@ -91,7 +91,7 @@ class Pipeline:
                     report_data.platform = "bugcrowd"
                 paths = renderer.render(report_data, output_dir=render_dir)
                 all_output_paths.extend(paths)
-                await push_task(f"events:{target_id}", {"event": "report_format_complete", "format": fmt})
+                await push_task(f"events:{target_id}", {"event": "REPORT_FORMAT_COMPLETE", "format": fmt})
                 log.info("Format rendered", extra={"format": fmt, "paths": paths})
 
             await self._update_phase(target_id, container_name, "rendering")
@@ -116,7 +116,7 @@ class Pipeline:
             await self._update_phase(target_id, container_name, "export")
             await self._mark_completed(target_id, container_name)
             await push_task(f"events:{target_id}", {
-                "event": "report_complete", "formats": formats,
+                "event": "REPORT_COMPLETE", "formats": formats,
             })
 
         return all_output_paths
@@ -142,7 +142,7 @@ class Pipeline:
             row = (await session.execute(stmt)).scalar_one_or_none()
             if row:
                 row.current_phase = phase
-                row.last_seen = datetime.now(timezone.utc)
+                row.last_seen = datetime.utcnow()
                 await session.commit()
 
     async def _mark_completed(self, target_id: int, container_name: str) -> None:
@@ -154,5 +154,5 @@ class Pipeline:
             row = (await session.execute(stmt)).scalar_one_or_none()
             if row:
                 row.status = "COMPLETED"
-                row.last_seen = datetime.now(timezone.utc)
+                row.last_seen = datetime.utcnow()
                 await session.commit()

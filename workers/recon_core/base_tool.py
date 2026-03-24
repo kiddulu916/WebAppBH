@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import select
@@ -81,7 +81,7 @@ class ReconTool(ABC):
 
     async def check_cooldown(self, target_id: int, container_name: str) -> bool:
         """Return True if this tool was completed within COOLDOWN_HOURS."""
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=COOLDOWN_HOURS)
+        cutoff = datetime.utcnow() - timedelta(hours=COOLDOWN_HOURS)
         async with get_session() as session:
             stmt = select(JobState).where(
                 JobState.target_id == target_id,
@@ -118,12 +118,28 @@ class ReconTool(ABC):
         try:
             log.info(f"Running {self.name}", extra={"tool": self.name})
 
+            # Emit TOOL_PROGRESS — started
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS",
+                "container": container_name,
+                "tool": self.name,
+                "progress": 0,
+                "message": f"{self.name} started",
+            })
+
             # 3. Build and run command
             cmd = self.build_command(target, headers)
             try:
                 stdout = await self.run_subprocess(cmd)
             except asyncio.TimeoutError:
                 log.warning(f"{self.name} timed out after {TOOL_TIMEOUT}s")
+                await push_task(f"events:{target_id}", {
+                    "event": "TOOL_PROGRESS",
+                    "container": container_name,
+                    "tool": self.name,
+                    "progress": 100,
+                    "message": f"{self.name} timed out",
+                })
                 return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
             except FileNotFoundError:
                 log.error(f"{self.name} binary not found — is it installed?")
@@ -156,7 +172,7 @@ class ReconTool(ABC):
                 job = result.scalar_one_or_none()
                 if job:
                     job.last_tool_executed = self.name
-                    job.last_seen = datetime.now(timezone.utc)
+                    job.last_seen = datetime.utcnow()
                     await session.commit()
 
             stats = {
@@ -165,6 +181,16 @@ class ReconTool(ABC):
                 "new": new_count,
                 "skipped_cooldown": False,
             }
+
+            # Emit TOOL_PROGRESS — finished
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS",
+                "container": container_name,
+                "tool": self.name,
+                "progress": 100,
+                "message": f"{self.name}: {new_count} new, {in_scope_count} in scope, {found} total",
+            })
+
             log.info(
                 f"{self.name} complete",
                 extra={"tool": self.name, **stats},
@@ -224,6 +250,15 @@ class ReconTool(ABC):
             )
             session.add(asset)
             await session.commit()
+
+            # Emit NEW_ASSET event for live dashboard updates
+            await push_task(f"events:{target_id}", {
+                "event": "NEW_ASSET",
+                "target_id": target_id,
+                "asset_type": scope_result.asset_type,
+                "asset_value": scope_result.normalized,
+                "source_tool": self.name,
+            })
 
             if scope_result.path:
                 await self._check_critical_path(
@@ -441,7 +476,7 @@ class ReconTool(ABC):
             alert_id = alert.id
 
         await push_task(f"events:{target_id}", {
-            "event": "critical_alert",
+            "event": "CRITICAL_ALERT",
             "alert_id": alert_id,
             "message": message,
         })

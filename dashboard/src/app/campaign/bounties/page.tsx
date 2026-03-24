@@ -64,7 +64,9 @@ export default function BountiesPage() {
       setEditingId(null);
       setEditStatus("");
       setEditPayout("");
-    } catch {}
+    } catch {
+      // toast shown by api.request()
+    }
   };
 
   if (!activeTarget) {

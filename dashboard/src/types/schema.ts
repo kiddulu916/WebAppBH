@@ -52,6 +52,13 @@ export interface Target extends Timestamps {
   last_playbook: string | null;
 }
 
+export interface TargetWithStats extends Target {
+  asset_count: number;
+  vuln_count: number;
+  status: string;
+  last_activity: string | null;
+}
+
 export interface Asset extends Timestamps {
   id: number;
   target_id: number;

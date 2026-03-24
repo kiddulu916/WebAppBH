@@ -59,7 +59,9 @@ export default function SchedulesPage() {
       setSchedules(updated);
       setShowCreate(false);
       setCronExpr("0 0 * * *");
-    } catch {}
+    } catch {
+      // toast shown by api.request()
+    }
     setCreating(false);
   };
 
@@ -71,14 +73,18 @@ export default function SchedulesPage() {
       setSchedules((prev) =>
         prev.map((s) => (s.id === schedule.id ? updated : s)),
       );
-    } catch {}
+    } catch {
+      // toast shown by api.request()
+    }
   };
 
   const handleDelete = async (id: number) => {
     try {
       await api.deleteSchedule(id);
       setSchedules((prev) => prev.filter((s) => s.id !== id));
-    } catch {}
+    } catch {
+      // toast shown by api.request()
+    }
   };
 
   if (!activeTarget) {

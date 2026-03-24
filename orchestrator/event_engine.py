@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 from uuid import uuid4
 
@@ -96,7 +96,7 @@ async def _ensure_job(
         result = await session.execute(stmt)
         job = result.scalar_one_or_none()
 
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         if job is None:
             job = JobState(
                 target_id=target_id,
@@ -213,7 +213,7 @@ async def _check_cloud_trigger() -> None:
             .having(
                 func.max(CloudAsset.created_at) > func.coalesce(
                     func.max(done_sub.c.done_at),
-                    datetime(1970, 1, 1, tzinfo=timezone.utc),
+                    datetime(1970, 1, 1),
                 )
             )
         )
@@ -374,7 +374,7 @@ async def _check_chain_trigger() -> None:
                 JobState.target_id.notin_(select(active_chain_sub.c.target_id)),
                 JobState.last_seen > func.coalesce(
                     chain_done_sub.c.done_at,
-                    datetime(1970, 1, 1, tzinfo=timezone.utc),
+                    datetime(1970, 1, 1),
                 ),
             )
             .group_by(JobState.target_id, JobState.container_name)
@@ -433,7 +433,7 @@ async def run_heartbeat() -> None:
 
 async def _heartbeat_cycle() -> None:
     """Single heartbeat iteration — batched DB access."""
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     cutoff = now - timedelta(seconds=ZOMBIE_TIMEOUT)
 
     # --- Read phase ---
@@ -461,10 +461,7 @@ async def _heartbeat_cycle() -> None:
         if info is not None and info.status == "running":
             healthy_ids.append(job.id)
         else:
-            # Normalise tz: SQLite returns naive datetimes, PostgreSQL returns aware
             last_seen = job.last_seen
-            if last_seen and last_seen.tzinfo is None:
-                last_seen = last_seen.replace(tzinfo=timezone.utc)
             if last_seen and last_seen < cutoff:
                 zombie_jobs.append(job)
             else:
@@ -572,7 +569,7 @@ async def _check_scheduled_scans() -> None:
     from lib_webbh.database import ScheduledScan
     from lib_webbh.cron_utils import next_run
 
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     async with get_session() as session:
         stmt = select(ScheduledScan).where(
             ScheduledScan.enabled == True,

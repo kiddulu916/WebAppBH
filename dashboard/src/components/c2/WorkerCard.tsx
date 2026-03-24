@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Play,
   Pause,
@@ -13,10 +13,47 @@ import {
 import { api } from "@/lib/api";
 import type { JobState, JobStatus } from "@/types/schema";
 
+type WorkerAction = "pause" | "stop" | "restart" | "unpause";
+
+interface ButtonConfig {
+  action: WorkerAction;
+  icon: React.ElementType;
+  label: string;
+  hoverColor: string;
+}
+
+function getButtons(status: JobStatus): ButtonConfig[] {
+  switch (status) {
+    case "RUNNING":
+      return [
+        { action: "pause", icon: Pause, label: "Pause", hoverColor: "hover:text-warning hover:bg-warning/10" },
+        { action: "stop", icon: Square, label: "Stop", hoverColor: "hover:text-danger hover:bg-danger/10" },
+      ];
+    case "PAUSED":
+      return [
+        { action: "unpause", icon: Play, label: "Resume", hoverColor: "hover:text-neon-green hover:bg-neon-green-glow" },
+        { action: "stop", icon: Square, label: "Stop", hoverColor: "hover:text-danger hover:bg-danger/10" },
+      ];
+    case "COMPLETED":
+    case "FAILED":
+    case "STOPPED":
+      return [
+        { action: "restart", icon: RotateCcw, label: "Restart", hoverColor: "hover:text-neon-green hover:bg-neon-green-glow" },
+      ];
+    case "QUEUED":
+      return [
+        { action: "restart", icon: Play, label: "Start", hoverColor: "hover:text-neon-green hover:bg-neon-green-glow" },
+      ];
+    default:
+      return [];
+  }
+}
+
 interface WorkerCardProps {
   job: JobState;
   progress?: number;
   discoveredCount?: number;
+  onActionComplete?: () => void;
 }
 
 const STATUS_DOT: Record<JobStatus, string> = {
@@ -43,8 +80,10 @@ export default function WorkerCard({
   job,
   progress,
   discoveredCount,
+  onActionComplete,
 }: WorkerCardProps) {
   const [loading, setLoading] = useState<string | null>(null);
+  const buttons = useMemo(() => getButtons(job.status), [job.status]);
 
   async function handleAction(
     action: "pause" | "stop" | "restart" | "unpause",
@@ -52,8 +91,9 @@ export default function WorkerCard({
     setLoading(action);
     try {
       await api.controlWorker(job.container_name, action);
+      onActionComplete?.();
     } catch {
-      /* handled by api client */
+      // toast shown by api.request()
     } finally {
       setLoading(null);
     }
@@ -136,58 +176,15 @@ export default function WorkerCard({
         {loading ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
         ) : (
-          <>
-            {job.status === "RUNNING" && (
-              <>
-                <ActionButton
-                  onClick={() => handleAction("pause")}
-                  icon={Pause}
-                  label="Pause"
-                  hoverColor="hover:text-warning hover:bg-warning/10"
-                />
-                <ActionButton
-                  onClick={() => handleAction("stop")}
-                  icon={Square}
-                  label="Stop"
-                  hoverColor="hover:text-danger hover:bg-danger/10"
-                />
-              </>
-            )}
-            {job.status === "PAUSED" && (
-              <>
-                <ActionButton
-                  onClick={() => handleAction("unpause")}
-                  icon={Play}
-                  label="Resume"
-                  hoverColor="hover:text-neon-green hover:bg-neon-green-glow"
-                />
-                <ActionButton
-                  onClick={() => handleAction("stop")}
-                  icon={Square}
-                  label="Stop"
-                  hoverColor="hover:text-danger hover:bg-danger/10"
-                />
-              </>
-            )}
-            {(job.status === "COMPLETED" ||
-              job.status === "FAILED" ||
-              job.status === "STOPPED") && (
-              <ActionButton
-                onClick={() => handleAction("restart")}
-                icon={RotateCcw}
-                label="Restart"
-                hoverColor="hover:text-neon-green hover:bg-neon-green-glow"
-              />
-            )}
-            {job.status === "QUEUED" && (
-              <ActionButton
-                onClick={() => handleAction("restart")}
-                icon={Play}
-                label="Start"
-                hoverColor="hover:text-neon-green hover:bg-neon-green-glow"
-              />
-            )}
-          </>
+          buttons.map((btn) => (
+            <ActionButton
+              key={btn.action}
+              onClick={() => handleAction(btn.action)}
+              icon={btn.icon}
+              label={btn.label}
+              hoverColor={btn.hoverColor}
+            />
+          ))
         )}
       </div>
     </div>

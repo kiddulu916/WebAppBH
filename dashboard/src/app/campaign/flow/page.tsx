@@ -13,7 +13,6 @@ import {
   Zap,
   Bug,
   FileText,
-  Trash2,
   CheckCircle2,
   Loader2,
   Eye,
@@ -38,90 +37,81 @@ interface PhaseDef {
   matchKeys: string[];
 }
 
+/** Extract the worker type from a container name like "webbh-recon-t1" */
+function workerType(containerName: string): string {
+  return containerName.replace("webbh-", "").replace(/-t\d+$/, "");
+}
+
 const PHASES: PhaseDef[] = [
   {
     id: 1,
-    name: "Passive Recon",
-    tools: ["subfinder", "amass", "assetfinder", "crt.sh"],
+    name: "Recon",
+    tools: ["subfinder", "amass", "assetfinder", "massdns", "httpx", "naabu", "katana"],
     icon: Radar,
-    matchKeys: ["passive", "recon_passive", "phase_1", "phase1"],
+    matchKeys: ["recon"],
   },
   {
     id: 2,
-    name: "Active Recon",
-    tools: ["nmap", "masscan", "naabu"],
-    icon: Wifi,
-    matchKeys: ["active", "recon_active", "phase_2", "phase2"],
+    name: "Cloud Enum",
+    tools: ["cloud_enum", "s3scanner", "trufflehog"],
+    icon: Cloud,
+    matchKeys: ["cloud_testing"],
   },
   {
     id: 3,
-    name: "Content Discovery",
-    tools: ["httpx", "katana", "gospider"],
-    icon: FolderSearch,
-    matchKeys: ["content", "discovery", "phase_3", "phase3"],
+    name: "Network",
+    tools: ["nmap", "masscan", "medusa"],
+    icon: Wifi,
+    matchKeys: ["network"],
   },
   {
     id: 4,
-    name: "Cloud Enum",
-    tools: ["cloud_enum", "s3scanner"],
-    icon: Cloud,
-    matchKeys: ["cloud", "phase_4", "phase4"],
+    name: "Fuzzing",
+    tools: ["ffuf", "feroxbuster", "arjun", "crlfuzz"],
+    icon: Zap,
+    matchKeys: ["fuzzing"],
   },
   {
     id: 5,
-    name: "Vuln Scanning",
-    tools: ["nuclei", "dalfox"],
-    icon: ShieldAlert,
-    matchKeys: ["vuln", "scanning", "phase_5", "phase5"],
+    name: "Webapp Testing",
+    tools: ["secretfinder", "dalfox", "ppmap"],
+    icon: FolderSearch,
+    matchKeys: ["webapp_testing"],
   },
   {
     id: 6,
     name: "API Testing",
-    tools: ["paramspider", "arjun"],
+    tools: ["openapi_parser", "jwt_tool", "nosqlmap"],
     icon: Code,
-    matchKeys: ["api", "testing", "phase_6", "phase6"],
+    matchKeys: ["api_testing"],
   },
   {
     id: 7,
-    name: "Parameter Mining",
-    tools: [],
-    icon: Pickaxe,
-    matchKeys: ["param", "mining", "phase_7", "phase7"],
+    name: "Vuln Scanning",
+    tools: ["nuclei", "sqlmap", "commix"],
+    icon: ShieldAlert,
+    matchKeys: ["vuln_scanner"],
   },
   {
     id: 8,
-    name: "Fuzzing",
-    tools: [],
-    icon: Zap,
-    matchKeys: ["fuzz", "phase_8", "phase8"],
+    name: "Chain Analysis",
+    tools: ["chain_evaluator", "chain_executor"],
+    icon: Bug,
+    matchKeys: ["chain"],
   },
   {
     id: 9,
-    name: "Exploit Verification",
-    tools: [],
-    icon: Bug,
-    matchKeys: ["exploit", "verif", "phase_9", "phase9"],
+    name: "Mobile",
+    tools: ["apktool", "jadx", "frida", "mobsf"],
+    icon: Pickaxe,
+    matchKeys: ["mobile"],
   },
   {
     id: 10,
     name: "Reporting",
-    tools: [],
+    tools: ["deduplicator", "renderer"],
     icon: FileText,
-    matchKeys: ["report", "phase_10", "phase10"],
-  },
-  {
-    id: 11,
-    name: "Cleanup",
-    tools: [],
-    icon: Trash2,
-    matchKeys: ["cleanup", "phase_11", "phase11"],
-  },
-  {
-    id: 12,
-    name: "Complete",
-    tools: [],
-    icon: CheckCircle2,
-    matchKeys: ["complete", "done", "phase_12", "phase12"],
+    matchKeys: ["reporting"],
   },
 ];
 
@@ -139,16 +129,10 @@ interface PhaseState {
 }
 
 function matchPhase(job: JobState): number | null {
-  const haystack = [
-    job.current_phase ?? "",
-    job.container_name,
-    job.last_tool_executed ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
+  const wt = workerType(job.container_name);
 
   for (const phase of PHASES) {
-    if (phase.matchKeys.some((k) => haystack.includes(k))) {
+    if (phase.matchKeys.some((k) => wt === k)) {
       return phase.id;
     }
   }

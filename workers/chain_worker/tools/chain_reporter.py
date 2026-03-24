@@ -1,7 +1,7 @@
 # workers/chain_worker/tools/chain_reporter.py
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from lib_webbh import setup_logger
@@ -39,7 +39,7 @@ class ChainReporter(ChainTestTool):
             "chain_category": category,
             "steps": steps_json,
             "total_steps": len(result.steps),
-            "executed_at": datetime.now(timezone.utc).isoformat(),
+            "executed_at": datetime.utcnow().isoformat(),
         }
 
     async def report(self, results: list[ChainResult], target_id: int, findings: TargetFindings) -> dict[str, int]:
@@ -63,7 +63,7 @@ class ChainReporter(ChainTestTool):
                 tech_stack = self._build_tech_stack(result, chain.category)
                 await self._save_observation(primary_asset_id, tech_stack)
             await push_task(f"events:{target_id}", {
-                "event": "chain_success", "chain": result.chain_name,
+                "event": "CHAIN_SUCCESS", "chain": result.chain_name,
                 "severity": chain.severity_on_success, "steps": len(result.steps),
                 "target_id": target_id, "vulnerability_id": vuln_id,
             })

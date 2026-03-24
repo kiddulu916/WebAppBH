@@ -38,7 +38,10 @@ export function useEventStream(targetId: number | null) {
           useCampaignStore.getState().bumpCounter("assets");
         } else if (data.event === "WORKER_SPAWNED") {
           useCampaignStore.getState().bumpCounter("workers");
-        } else if (data.event === "CRITICAL_ALERT") {
+        } else if (data.event === "CRITICAL_ALERT" || data.event === "CHAIN_SUCCESS" || data.event === "CLOUD_CREDENTIAL_LEAK") {
+          useCampaignStore.getState().incrementUnreadAlerts();
+          useCampaignStore.getState().bumpCounter("vulns");
+        } else if (data.event === "ACTION_REQUIRED") {
           useCampaignStore.getState().incrementUnreadAlerts();
         }
       } catch {
@@ -51,9 +54,16 @@ export function useEventStream(targetId: number | null) {
       "NEW_ASSET",
       "CRITICAL_ALERT",
       "WORKER_SPAWNED",
+      "STAGE_COMPLETE",
+      "PIPELINE_COMPLETE",
       "RECON_DIFF",
       "SCOPE_DRIFT",
       "AUTOSCALE_RECOMMENDATION",
+      "CHAIN_SUCCESS",
+      "ACTION_REQUIRED",
+      "CLOUD_CREDENTIAL_LEAK",
+      "REPORT_FORMAT_COMPLETE",
+      "REPORT_COMPLETE",
       "KILL_ALL",
       "RERUN_STARTED",
       "CLEAN_SLATE",

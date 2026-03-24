@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from workers.reporting_worker.models import (
@@ -84,7 +84,7 @@ def deduplicate_and_enrich(ctx: ReportContext, platform: str, formats: list[str]
         base_domain=ctx.base_domain,
         finding_groups=finding_groups,
         summary_stats=stats,
-        generation_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        generation_date=datetime.utcnow().strftime("%Y-%m-%d"),
         platform=platform,
         formats=formats,
         assets=ctx.assets,

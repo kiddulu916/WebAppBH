@@ -126,6 +126,10 @@ async def stop_worker(container_name: str, timeout: int = 10) -> bool:
     def _run() -> bool:
         try:
             container = get_client().containers.get(container_name)
+            container.reload()
+            if container.status == "exited":
+                logger.info("Worker already stopped", extra={"container": container_name})
+                return True
             container.stop(timeout=timeout)
             logger.info("Worker stopped", extra={"container": container_name})
             return True
@@ -166,6 +170,10 @@ async def pause_worker(container_name: str) -> bool:
     def _run() -> bool:
         try:
             container = get_client().containers.get(container_name)
+            container.reload()
+            if container.status == "paused":
+                logger.info("Worker already paused", extra={"container": container_name})
+                return True
             container.pause()
             logger.info("Worker paused", extra={"container": container_name})
             return True
@@ -186,6 +194,10 @@ async def unpause_worker(container_name: str) -> bool:
     def _run() -> bool:
         try:
             container = get_client().containers.get(container_name)
+            container.reload()
+            if container.status == "running":
+                logger.info("Worker already running", extra={"container": container_name})
+                return True
             container.unpause()
             logger.info("Worker unpaused", extra={"container": container_name})
             return True

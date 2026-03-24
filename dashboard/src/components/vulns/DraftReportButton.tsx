@@ -20,6 +20,7 @@ export default function DraftReportButton({ vulnId }: DraftReportButtonProps) {
       const res = await api.getDraftReport(vulnId, platform);
       setDraft(res.draft);
     } catch {
+      // toast shown by api.request()
       setDraft("Error generating draft report.");
     } finally {
       setLoading(false);

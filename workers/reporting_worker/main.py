@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -33,7 +33,7 @@ async def _heartbeat_loop(target_id: int, container_name: str) -> None:
                 )
                 row = (await session.execute(stmt)).scalar_one_or_none()
                 if row:
-                    row.last_seen = datetime.now(timezone.utc)
+                    row.last_seen = datetime.utcnow()
                     await session.commit()
         except Exception:
             pass
@@ -65,13 +65,13 @@ async def handle_message(msg_id: str, data: dict[str, Any]) -> None:
             job = JobState(
                 target_id=target_id, container_name=container_name,
                 status="RUNNING", current_phase="init",
-                last_seen=datetime.now(timezone.utc),
+                last_seen=datetime.utcnow(),
             )
             session.add(job)
         else:
             job.status = "RUNNING"
             job.current_phase = "init"
-            job.last_seen = datetime.now(timezone.utc)
+            job.last_seen = datetime.utcnow()
         await session.commit()
 
     heartbeat = asyncio.create_task(_heartbeat_loop(target_id, container_name))

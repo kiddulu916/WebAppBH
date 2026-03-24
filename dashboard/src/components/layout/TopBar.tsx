@@ -50,7 +50,7 @@ export default function TopBar() {
       await api.kill();
       setKillConfirmOpen(false);
     } catch {
-      /* error handled by API client */
+      // toast shown by api.request()
     } finally {
       setKilling(false);
     }

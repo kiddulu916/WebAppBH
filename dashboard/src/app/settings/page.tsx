@@ -149,7 +149,7 @@ function ApiKeysSection() {
       setShodanKey("");
       setSecurityTrailsKey("");
     } catch {
-      /* error handled by API client */
+      // toast shown by api.request()
     } finally {
       setSaving(false);
     }

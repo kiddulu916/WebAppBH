@@ -66,6 +66,9 @@ class JsonFormatter(logging.Formatter):
             "extra": extra,
         }
 
+        if record.exc_info and record.exc_info[1] is not None:
+            payload["traceback"] = self.formatException(record.exc_info)
+
         return json.dumps(payload, default=str)
 
 
@@ -127,6 +130,13 @@ class BoundLogger:
         """Create a LogRecord, inject context, and hand it to the logger."""
         if not self._logger.isEnabledFor(level):
             return
+        # Resolve exc_info=True to actual exception tuple (Logger._log does
+        # this automatically, but we call makeRecord directly).
+        if exc_info:
+            if isinstance(exc_info, BaseException):
+                exc_info = (type(exc_info), exc_info, exc_info.__traceback__)
+            elif not isinstance(exc_info, tuple):
+                exc_info = sys.exc_info()
         record = self._logger.makeRecord(
             name=self._logger.name,
             level=level,

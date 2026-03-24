@@ -53,11 +53,16 @@ export default function WorkerFeed({ events }: { events: SSEEvent[] }) {
 
 function eventColor(type: string): string {
   switch (type) {
-    case "WORKER_SPAWNED": return "text-success";
-    case "TOOL_PROGRESS":  return "text-accent";
-    case "NEW_ASSET":      return "text-info";
-    case "CRITICAL_ALERT": return "text-danger";
-    default:               return "text-text-muted";
+    case "WORKER_SPAWNED":     return "text-success";
+    case "TOOL_PROGRESS":      return "text-accent";
+    case "NEW_ASSET":          return "text-info";
+    case "CRITICAL_ALERT":     return "text-danger";
+    case "STAGE_COMPLETE":     return "text-neon-green";
+    case "PIPELINE_COMPLETE":  return "text-neon-green";
+    case "CHAIN_SUCCESS":      return "text-neon-orange";
+    case "ACTION_REQUIRED":    return "text-warning";
+    case "CLOUD_CREDENTIAL_LEAK": return "text-danger";
+    default:                   return "text-text-muted";
   }
 }
 
@@ -72,6 +77,16 @@ function formatEvent(evt: SSEEvent): string {
       return `${d.asset_type ?? "?"}: ${d.asset_value ?? "?"}`;
     case "CRITICAL_ALERT":
       return `${d.alert_type ?? "Alert"}: ${d.message ?? ""}`;
+    case "STAGE_COMPLETE":
+      return `Stage ${d.stage ?? "?"} complete`;
+    case "PIPELINE_COMPLETE":
+      return `Pipeline finished`;
+    case "CHAIN_SUCCESS":
+      return `Chain ${d.chain ?? "?"} succeeded (${d.severity ?? "?"})`;
+    case "ACTION_REQUIRED":
+      return `${d.message ?? "Action required"}`;
+    case "REPORT_COMPLETE":
+      return `Report ready: ${(d.formats as string[])?.join(", ") ?? "?"}`;
     default:
       return JSON.stringify(d);
   }

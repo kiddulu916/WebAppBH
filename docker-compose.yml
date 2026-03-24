@@ -66,6 +66,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       WEB_APP_BH_API_KEY: ${WEB_APP_BH_API_KEY:-}
+      CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
       SHODAN_API_KEY: ${SHODAN_API_KEY:-}
       SECURITYTRAILS_API_KEY: ${SECURITYTRAILS_API_KEY:-}
     ports:
@@ -90,6 +91,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.recon
     container_name: webbh-recon-core
+    hostname: webbh-recon-core
     restart: unless-stopped
     depends_on:
       postgres:
@@ -117,6 +119,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.webapp
     container_name: webbh-webapp-worker
+    hostname: webbh-webapp-worker
     restart: unless-stopped
     depends_on:
       postgres:
@@ -145,6 +148,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.mobile
     container_name: webbh-mobile-worker
+    hostname: webbh-mobile-worker
     restart: unless-stopped
     depends_on:
       postgres:
@@ -216,6 +220,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.network
     container_name: webbh-network-worker
+    hostname: webbh-network-worker
     restart: unless-stopped
     depends_on:
       postgres:
@@ -244,6 +249,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.chain
     container_name: webbh-chain-worker
+    hostname: webbh-chain-worker
     restart: unless-stopped
     depends_on:
       postgres:
@@ -276,6 +282,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.reporting
     container_name: webbh-reporting-worker
+    hostname: webbh-reporting-worker
     restart: unless-stopped
     depends_on:
       postgres:
@@ -302,6 +309,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.dashboard
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8001
+        NEXT_PUBLIC_API_KEY: ${WEB_APP_BH_API_KEY:-}
     container_name: webbh-dashboard
     restart: unless-stopped
     depends_on:

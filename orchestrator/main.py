@@ -10,6 +10,7 @@ GET   /api/v1/cloud_assets         – list cloud assets for a target
 GET   /api/v1/alerts               – list alerts for a target
 PATCH /api/v1/alerts/{alert_id}    – update alert read status
 PATCH /api/v1/targets/{target_id}  – update target profile (headers, rate limits)
+DELETE /api/v1/targets/{target_id} – permanently delete a target
 GET   /api/v1/status               – real-time job states
 POST  /api/v1/control              – pause / stop / restart workers
 POST  /api/v1/kill                 – hard-kill all active workers
@@ -604,6 +605,60 @@ async def clean_slate(target_id: int):
         "target_id": target_id,
     })
 
+    # Brief delay so SSE consumers receive the CLEAN_SLATE event before
+    # the stream is destroyed, then purge the Redis event stream.
+    await asyncio.sleep(0.5)
+    r = get_redis()
+    await r.delete(f"events:{target_id}")
+
+    return {"success": True, "target_id": target_id}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/v1/targets/{target_id} — permanently delete a target
+# ---------------------------------------------------------------------------
+@app.delete("/api/v1/targets/{target_id}")
+async def delete_target(target_id: int):
+    """Permanently delete a target and all associated data."""
+    from sqlalchemy import delete as sa_delete
+    import shutil
+
+    # 1. Verify target exists
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+        if not target:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+    # 2. Auto-kill any running/paused containers for this target
+    containers = await worker_manager.list_webbh_containers()
+    for c in containers:
+        if c.name.endswith(f"-t{target_id}") and c.status in ("running", "paused"):
+            await worker_manager.kill_worker(c.name)
+
+    # 3. Delete the Target row (cascades to all child tables)
+    async with get_session() as session:
+        await session.execute(
+            sa_delete(Target).where(Target.id == target_id)
+        )
+        await session.commit()
+
+    # 4. Purge Redis event stream
+    r = get_redis()
+    await r.delete(f"events:{target_id}")
+
+    # 5. Remove config directory
+    config_dir = SHARED_CONFIG / str(target_id)
+    if config_dir.exists():
+        shutil.rmtree(config_dir)
+
+    # 6. Remove reports directory
+    reports_dir = SHARED_REPORTS / str(target_id)
+    if reports_dir.exists():
+        shutil.rmtree(reports_dir)
+
+    logger.info("Target deleted", extra={"target_id": target_id})
     return {"success": True, "target_id": target_id}
 
 
@@ -716,10 +771,75 @@ async def stream_events(target_id: int, request: Request):
 # ---------------------------------------------------------------------------
 @app.get("/api/v1/targets")
 async def list_targets():
+    STATUS_PRIORITY = {
+        "running": 6,
+        "queued": 5,
+        "paused": 4,
+        "completed": 3,
+        "failed": 2,
+        "killed": 1,
+        "stopped": 1,
+    }
+
     async with get_session() as session:
+        # 1. Fetch all targets
         stmt = select(Target).order_by(Target.created_at.desc())
         result = await session.execute(stmt)
         targets = result.scalars().all()
+
+        target_ids = [t.id for t in targets]
+
+        # Initialise lookup dicts
+        asset_counts: dict[int, int] = {}
+        vuln_counts: dict[int, int] = {}
+        status_map: dict[int, str] = {}
+        activity_map: dict[int, datetime | None] = {}
+
+        if target_ids:
+            # 2. Asset counts grouped by target_id
+            asset_stmt = (
+                select(Asset.target_id, func.count(Asset.id))
+                .where(Asset.target_id.in_(target_ids))
+                .group_by(Asset.target_id)
+            )
+            asset_rows = await session.execute(asset_stmt)
+            for tid, cnt in asset_rows:
+                asset_counts[tid] = cnt
+
+            # 3. Vulnerability counts grouped by target_id
+            vuln_stmt = (
+                select(Vulnerability.target_id, func.count(Vulnerability.id))
+                .where(Vulnerability.target_id.in_(target_ids))
+                .group_by(Vulnerability.target_id)
+            )
+            vuln_rows = await session.execute(vuln_stmt)
+            for tid, cnt in vuln_rows:
+                vuln_counts[tid] = cnt
+
+            # 4. Job statuses grouped by target_id and status, with max updated_at
+            job_stmt = (
+                select(
+                    JobState.target_id,
+                    JobState.status,
+                    func.max(JobState.updated_at).label("last_activity"),
+                )
+                .where(JobState.target_id.in_(target_ids))
+                .group_by(JobState.target_id, JobState.status)
+            )
+            job_rows = await session.execute(job_stmt)
+            for tid, status, last_act in job_rows:
+                status_lower = status.lower() if status else "idle"
+                priority = STATUS_PRIORITY.get(status_lower, 0)
+                # Pick highest priority status per target
+                current_status = status_map.get(tid)
+                current_priority = STATUS_PRIORITY.get(current_status, -1) if current_status else -1
+                if priority > current_priority:
+                    status_map[tid] = status_lower
+                # Track max last_activity across all statuses
+                if last_act is not None:
+                    existing = activity_map.get(tid)
+                    if existing is None or last_act > existing:
+                        activity_map[tid] = last_act
 
     return {
         "targets": [
@@ -728,8 +848,17 @@ async def list_targets():
                 "company_name": t.company_name,
                 "base_domain": t.base_domain,
                 "target_profile": t.target_profile,
+                "last_playbook": t.last_playbook,
                 "created_at": t.created_at.isoformat() if t.created_at else None,
                 "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+                "asset_count": asset_counts.get(t.id, 0),
+                "vuln_count": vuln_counts.get(t.id, 0),
+                "status": status_map.get(t.id, "idle"),
+                "last_activity": (
+                    activity_map[t.id].isoformat()
+                    if activity_map.get(t.id) is not None
+                    else (t.updated_at.isoformat() if t.updated_at else None)
+                ),
             }
             for t in targets
         ],

@@ -58,7 +58,7 @@ export default function SystemPulse() {
       const res = await api.getQueueHealth();
       setQueues(res.queues);
     } catch {
-      /* ignore */
+      // toast shown by api.request()
     } finally {
       setLoading(false);
     }

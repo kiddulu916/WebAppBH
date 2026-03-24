@@ -34,7 +34,7 @@ export default function QueueHealthWidget() {
         const res = await api.getQueueHealth();
         if (mounted) setQueues(res.queues);
       } catch {
-        // ignore
+        // toast shown by api.request()
       } finally {
         if (mounted) setLoading(false);
       }

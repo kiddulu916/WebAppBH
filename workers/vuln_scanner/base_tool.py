@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import select, distinct, and_, or_
 
@@ -63,7 +63,7 @@ class VulnScanTool(ABC):
 
     async def check_cooldown(self, target_id: int, container_name: str) -> bool:
         """Return True if this tool was completed within COOLDOWN_HOURS."""
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=COOLDOWN_HOURS)
+        cutoff = datetime.utcnow() - timedelta(hours=COOLDOWN_HOURS)
         async with get_session() as session:
             stmt = select(JobState).where(
                 JobState.target_id == target_id,
@@ -86,7 +86,7 @@ class VulnScanTool(ABC):
             job = result.scalar_one_or_none()
             if job:
                 job.last_tool_executed = self.name
-                job.last_seen = datetime.now(timezone.utc)
+                job.last_seen = datetime.utcnow()
                 await session.commit()
 
     # ------------------------------------------------------------------
@@ -369,7 +369,7 @@ class VulnScanTool(ABC):
             alert_id = alert.id
 
         await push_task(f"events:{target_id}", {
-            "event": "critical_alert",
+            "event": "CRITICAL_ALERT",
             "alert_id": alert_id,
             "vulnerability_id": vuln_id,
             "message": message,

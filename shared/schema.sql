@@ -154,7 +154,7 @@ CREATE TABLE IF NOT EXISTS job_state (
     last_tool_executed VARCHAR(100),
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT chk_job_status CHECK (status IN ('QUEUED', 'RUNNING', 'COMPLETED', 'FAILED'))
+    CONSTRAINT chk_job_status CHECK (status IN ('QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'PAUSED', 'STOPPED', 'KILLED'))
 );
 
 CREATE INDEX IF NOT EXISTS ix_job_state_target_id ON job_state (target_id);

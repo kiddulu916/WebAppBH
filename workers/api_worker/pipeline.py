@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import select
 
@@ -105,14 +105,14 @@ class Pipeline:
 
             self.log.info(f"Stage complete: {stage.name}", extra={"stats": stats})
             await push_task(f"events:{self.target_id}", {
-                "event": "stage_complete",
+                "event": "STAGE_COMPLETE",
                 "stage": stage.name,
                 "stats": stats,
             })
 
         await self._mark_completed()
         await push_task(f"events:{self.target_id}", {
-            "event": "pipeline_complete",
+            "event": "PIPELINE_COMPLETE",
             "target_id": self.target_id,
         })
 
@@ -131,18 +131,28 @@ class Pipeline:
         """Run all tools in a stage concurrently."""
         tools = [cls() for cls in stage.tool_classes]
 
-        tasks = [
-            tool.execute(
-                target=target,
-                scope_manager=scope_manager,
-                target_id=self.target_id,
-                container_name=self.container_name,
-                headers=headers,
-                **kwargs,
+        async def _run_with_progress(tool):
+            await push_task(f"events:{self.target_id}", {
+                "event": "TOOL_PROGRESS", "container": self.container_name,
+                "tool": tool.name, "progress": 0, "message": f"{tool.name} started",
+            })
+            result = await tool.execute(
+                target=target, scope_manager=scope_manager,
+                target_id=self.target_id, container_name=self.container_name,
+                headers=headers, **kwargs,
             )
-            for tool in tools
-        ]
+            msg = f"{tool.name} complete"
+            if isinstance(result, dict):
+                parts = [f"{k}={v}" for k, v in result.items() if isinstance(v, int)]
+                if parts:
+                    msg = f"{tool.name}: {', '.join(parts)}"
+            await push_task(f"events:{self.target_id}", {
+                "event": "TOOL_PROGRESS", "container": self.container_name,
+                "tool": tool.name, "progress": 100, "message": msg,
+            })
+            return result
 
+        tasks = [_run_with_progress(tool) for tool in tools]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return self._aggregate_results(stage.name, results)
 
@@ -171,7 +181,7 @@ class Pipeline:
             job = result.scalar_one_or_none()
             if job:
                 job.current_phase = phase
-                job.last_seen = datetime.now(timezone.utc)
+                job.last_seen = datetime.utcnow()
                 await session.commit()
 
     async def _mark_completed(self) -> None:
@@ -184,7 +194,7 @@ class Pipeline:
             job = result.scalar_one_or_none()
             if job:
                 job.status = "COMPLETED"
-                job.last_seen = datetime.now(timezone.utc)
+                job.last_seen = datetime.utcnow()
                 await session.commit()
 
     # ------------------------------------------------------------------

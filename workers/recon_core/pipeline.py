@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import select
 
@@ -97,7 +97,7 @@ class Pipeline:
 
             self.log.info(f"Stage complete: {stage.name}", extra={"stats": stats})
             await push_task(f"events:{self.target_id}", {
-                "event": "stage_complete",
+                "event": "STAGE_COMPLETE",
                 "stage": stage.name,
                 "stats": stats,
             })
@@ -108,7 +108,7 @@ class Pipeline:
             await self._compute_and_emit_diff(rescan_scan_number)
 
         await push_task(f"events:{self.target_id}", {
-            "event": "pipeline_complete",
+            "event": "PIPELINE_COMPLETE",
             "target_id": self.target_id,
         })
 
@@ -169,7 +169,7 @@ class Pipeline:
             job = result.scalar_one_or_none()
             if job:
                 job.current_phase = phase
-                job.last_seen = datetime.now(timezone.utc)
+                job.last_seen = datetime.utcnow()
                 await session.commit()
 
     async def _compute_and_emit_diff(self, scan_number: int) -> None:
@@ -218,5 +218,5 @@ class Pipeline:
             job = result.scalar_one_or_none()
             if job:
                 job.status = "COMPLETED"
-                job.last_seen = datetime.now(timezone.utc)
+                job.last_seen = datetime.utcnow()
                 await session.commit()

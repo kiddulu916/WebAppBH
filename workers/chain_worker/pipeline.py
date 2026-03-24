@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from lib_webbh import get_session, setup_logger
@@ -58,11 +58,25 @@ class Pipeline:
 
                 async def _run(t: ChainTestTool = tool, s: Any = sem) -> dict:
                     async with s:
-                        return await t.execute(
+                        await push_task(f"events:{target_id}", {
+                            "event": "TOOL_PROGRESS", "container": container_name,
+                            "tool": t.name, "progress": 0, "message": f"{t.name} started",
+                        })
+                        result = await t.execute(
                             target=target, scope_manager=scope_manager,
                             target_id=target_id, container_name=container_name,
                             **kwargs,
                         )
+                        msg = f"{t.name} complete"
+                        if isinstance(result, dict):
+                            parts = [f"{k}={v}" for k, v in result.items() if isinstance(v, int)]
+                            if parts:
+                                msg = f"{t.name}: {', '.join(parts)}"
+                        await push_task(f"events:{target_id}", {
+                            "event": "TOOL_PROGRESS", "container": container_name,
+                            "tool": t.name, "progress": 100, "message": msg,
+                        })
+                        return result
 
                 tasks.append(_run())
 
@@ -76,12 +90,12 @@ class Pipeline:
 
             await self._update_phase(target_id, container_name, stage.name)
             await push_task(f"events:{target_id}", {
-                "event": "stage_complete", "stage": stage.name, "stats": stats,
+                "event": "STAGE_COMPLETE", "stage": stage.name, "stats": stats,
             })
             log.info("Stage complete", extra={"stage": stage.name, "stats": stats})
 
         await self._mark_completed(target_id, container_name)
-        await push_task(f"events:{target_id}", {"event": "pipeline_complete", "worker": "chain_worker"})
+        await push_task(f"events:{target_id}", {"event": "PIPELINE_COMPLETE", "worker": "chain_worker"})
 
     async def _get_resume_index(self, target_id: int, container_name: str) -> int:
         async with get_session() as session:
@@ -104,7 +118,7 @@ class Pipeline:
             row = (await session.execute(stmt)).scalar_one_or_none()
             if row:
                 row.current_phase = phase
-                row.last_seen = datetime.now(timezone.utc)
+                row.last_seen = datetime.utcnow()
                 await session.commit()
 
     async def _mark_completed(self, target_id: int, container_name: str) -> None:
@@ -116,5 +130,5 @@ class Pipeline:
             row = (await session.execute(stmt)).scalar_one_or_none()
             if row:
                 row.status = "COMPLETED"
-                row.last_seen = datetime.now(timezone.utc)
+                row.last_seen = datetime.utcnow()
                 await session.commit()

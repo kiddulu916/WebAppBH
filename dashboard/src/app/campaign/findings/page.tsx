@@ -173,7 +173,7 @@ export default function FindingsPage() {
         });
         setRows(unified);
       } catch {
-        /* noop */
+        // toast shown by api.request()
       } finally {
         if (!cancelled) setLoading(false);
       }

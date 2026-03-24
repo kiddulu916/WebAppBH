@@ -100,7 +100,7 @@ class CloudFeedbackerTool(CloudTestTool):
                     extra={"vuln_id": vuln.id},
                 )
                 await push_task(f"events:{target_id}", {
-                    "event": "cloud_credential_leak",
+                    "event": "CLOUD_CREDENTIAL_LEAK",
                     "vulnerability_id": vuln.id,
                     "title": vuln.title,
                     "severity": vuln.severity,

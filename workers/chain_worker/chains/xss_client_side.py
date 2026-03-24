@@ -1,7 +1,7 @@
 # workers/chain_worker/chains/xss_client_side.py
 """19 XSS/client-side chain templates."""
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime
 from workers.chain_worker.registry import BaseChainTemplate, ChainContext, register_chain
 from workers.chain_worker.models import (
     ChainViability, ChainResult, ChainStep, EvaluationResult, TargetFindings,
@@ -9,7 +9,7 @@ from workers.chain_worker.models import (
 from workers.chain_worker.base_tool import step_delay, take_screenshot
 
 def _ts() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.utcnow().isoformat()
 
 def _xss_eval(findings, *keywords):
     for kw in keywords:

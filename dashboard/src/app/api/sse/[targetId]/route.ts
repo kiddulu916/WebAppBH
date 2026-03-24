@@ -18,15 +18,22 @@ export async function GET(
   const url = `${getApiUrl()}/api/v1/stream/${targetId}`;
   const encoder = new TextEncoder();
 
+  let upstream: ReturnType<typeof http.get> | null = null;
+
   const stream = new ReadableStream({
     start(controller) {
-      // Send an SSE comment immediately to flush headers to the client.
-      // The upstream orchestrator doesn't send a heartbeat, so without this
-      // the Next.js dev server buffers until the first real event arrives.
-      controller.enqueue(encoder.encode(": connected\n\n"));
+      let closed = false;
+      function close() {
+        if (!closed) { closed = true; controller.close(); }
+      }
+      function enqueue(data: Uint8Array) {
+        if (!closed) { controller.enqueue(data); }
+      }
+
+      enqueue(encoder.encode(": connected\n\n"));
 
       const parsed = new URL(url);
-      const req = http.get(
+      upstream = http.get(
         {
           hostname: parsed.hostname,
           port: parsed.port,
@@ -38,22 +45,25 @@ export async function GET(
         },
         (res) => {
           if (res.statusCode !== 200) {
-            controller.enqueue(encoder.encode("event: error\ndata: upstream unavailable\n\n"));
-            controller.close();
+            enqueue(encoder.encode("event: error\ndata: upstream unavailable\n\n"));
+            close();
             return;
           }
           res.on("data", (chunk: Buffer) => {
-            controller.enqueue(new Uint8Array(chunk));
+            enqueue(new Uint8Array(chunk));
           });
-          res.on("end", () => controller.close());
-          res.on("error", () => controller.close());
+          res.on("end", () => close());
+          res.on("error", () => close());
         },
       );
 
-      req.on("error", () => {
-        controller.enqueue(encoder.encode("event: error\ndata: connection failed\n\n"));
-        controller.close();
+      upstream.on("error", () => {
+        enqueue(encoder.encode("event: error\ndata: connection failed\n\n"));
+        close();
       });
+    },
+    cancel() {
+      upstream?.destroy();
     },
   });
 

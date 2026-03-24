@@ -452,6 +452,7 @@ export default function ExplorerPage() {
 
         if (!cancelled) setRawData(result);
       } catch {
+        // toast shown by api.request()
         if (!cancelled) setRawData([]);
       } finally {
         if (!cancelled) setLoading(false);

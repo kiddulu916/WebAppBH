@@ -55,7 +55,7 @@ export default function PlaybookSelector({ value, onChange }: PlaybookSelectorPr
       onChange(playbook.name);
       setShowEditor(false);
     } catch {
-      // silently fail
+      // toast shown by api.request()
     }
   };
 

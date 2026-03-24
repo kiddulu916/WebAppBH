@@ -9,6 +9,7 @@ import type { SSEEvent, ToolProgressEvent } from "@/types/events";
 interface WorkerGridProps {
   jobs: JobState[];
   events: SSEEvent[];
+  onRefresh?: () => void;
 }
 
 interface WorkerProgress {
@@ -16,7 +17,7 @@ interface WorkerProgress {
   discoveredCount: number;
 }
 
-export default function WorkerGrid({ jobs, events }: WorkerGridProps) {
+export default function WorkerGrid({ jobs, events, onRefresh }: WorkerGridProps) {
   // Extract latest progress info per container from TOOL_PROGRESS events
   const progressMap = useMemo(() => {
     const map = new Map<string, WorkerProgress>();
@@ -127,6 +128,7 @@ export default function WorkerGrid({ jobs, events }: WorkerGridProps) {
                 job={job}
                 progress={wp?.progress}
                 discoveredCount={wp?.discoveredCount}
+                onActionComplete={onRefresh}
               />
             );
           })}

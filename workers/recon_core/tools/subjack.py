@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import select
 
@@ -149,7 +149,7 @@ class SubjackTool(ReconTool):
 
                 # Push alert event to Redis
                 await push_task(f"events:{target_id}", {
-                    "event": "critical_alert",
+                    "event": "CRITICAL_ALERT",
                     "alert_id": alert_id,
                     "message": msg,
                 })
@@ -164,7 +164,7 @@ class SubjackTool(ReconTool):
                 job = result.scalar_one_or_none()
                 if job:
                     job.last_tool_executed = self.name
-                    job.last_seen = datetime.now(timezone.utc)
+                    job.last_seen = datetime.utcnow()
                     await session.commit()
 
             log.info(f"{self.name} complete", extra={
