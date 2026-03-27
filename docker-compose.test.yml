@@ -1,0 +1,6 @@
+# Test-only compose override -- activates the /api/v1/test/seed endpoint.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.test.yml up -d
+services:
+  orchestrator:
+    environment:
+      - ENABLE_TEST_SEED=true
