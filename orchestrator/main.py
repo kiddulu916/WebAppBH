@@ -37,13 +37,14 @@ import csv
 import io
 import json
 import os
+import pathlib
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncIterator, Literal, Optional
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
@@ -232,6 +233,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not API_KEY:
         logger.warning("WEB_APP_BH_API_KEY is not set — all endpoints are unauthenticated")
 
+    # Load persisted intel API keys from .env.intel if available
+    env_intel_path = pathlib.Path("/app/shared/config/.env.intel")
+    if env_intel_path.exists():
+        for line in env_intel_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, value = line.partition("=")
+                key, value = key.strip(), value.strip()
+                if value and key in ("SHODAN_API_KEY", "SECURITYTRAILS_API_KEY"):
+                    os.environ.setdefault(key, value)
+        logger.info("Loaded intel API keys from .env.intel")
+
     # Start background tasks
     engine_task = asyncio.create_task(event_engine.run_event_loop(), name="event-engine")
     heartbeat_task = asyncio.create_task(event_engine.run_heartbeat(), name="heartbeat")
@@ -260,6 +273,20 @@ app = FastAPI(
     lifespan=lifespan,
     dependencies=[Depends(verify_api_key)],
 )
+
+
+# ---------------------------------------------------------------------------
+# Health endpoint — excluded from auth for Docker healthchecks
+# ---------------------------------------------------------------------------
+_health_router = APIRouter()
+
+
+@_health_router.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+app.include_router(_health_router)
 
 from orchestrator.rate_limit import rate_limit_check  # noqa: E402
 from orchestrator.metrics import metrics_response, api_latency, targets_created, bounties_submitted, scans_triggered, connected_sse_clients  # noqa: E402
@@ -1922,3 +1949,94 @@ def _generate_tool_configs(target_id: int, profile: dict) -> None:
     (config_dir / "scope.json").write_text(json.dumps(scope, indent=2))
 
     logger.info("Tool configs generated", extra={"target_id": target_id, "dir": str(config_dir)})
+
+
+# ---------------------------------------------------------------------------
+# Test seed endpoint -- inserts fixture data for e2e tests
+# ---------------------------------------------------------------------------
+ENABLE_TEST_SEED = os.environ.get("ENABLE_TEST_SEED", "").lower() == "true"
+
+
+class TestSeedRequest(BaseModel):
+    target_id: int = Field(..., gt=0)
+
+
+@app.post("/api/v1/test/seed")
+async def test_seed(body: TestSeedRequest):
+    """Insert fixture assets, vulns, cloud assets, and alerts for e2e tests.
+
+    Guarded by ENABLE_TEST_SEED=true -- returns 404 in production.
+    """
+    if not ENABLE_TEST_SEED:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    async with get_session() as session:
+        # Verify target exists
+        result = await session.execute(
+            select(Target).where(Target.id == body.target_id)
+        )
+        target = result.scalar_one_or_none()
+        if not target:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+        # --- Assets ---
+        assets_data = [
+            {"asset_type": "subdomain", "asset_value": f"sub1.{target.base_domain}", "source_tool": "e2e-seed"},
+            {"asset_type": "subdomain", "asset_value": f"sub2.{target.base_domain}", "source_tool": "e2e-seed"},
+            {"asset_type": "subdomain", "asset_value": f"admin.{target.base_domain}", "source_tool": "e2e-seed"},
+            {"asset_type": "ip", "asset_value": "10.0.0.1", "source_tool": "e2e-seed"},
+            {"asset_type": "ip", "asset_value": "10.0.0.2", "source_tool": "e2e-seed"},
+        ]
+        asset_ids = []
+        for ad in assets_data:
+            asset = Asset(target_id=body.target_id, **ad)
+            session.add(asset)
+            await session.flush()
+            asset_ids.append(asset.id)
+
+        # --- Locations (on first asset) ---
+        session.add(Location(asset_id=asset_ids[0], port=80, protocol="tcp", service="http", state="open"))
+        session.add(Location(asset_id=asset_ids[0], port=443, protocol="tcp", service="https", state="open"))
+
+        # --- Vulnerabilities ---
+        vulns_data = [
+            {"severity": "critical", "title": "SQL Injection in login", "description": "Blind SQLi via id param", "source_tool": "e2e-seed"},
+            {"severity": "medium", "title": "Reflected XSS in search", "description": "XSS via q parameter", "source_tool": "e2e-seed"},
+            {"severity": "low", "title": "Information Disclosure", "description": "Server version in headers", "source_tool": "e2e-seed"},
+        ]
+        vuln_ids = []
+        for i, vd in enumerate(vulns_data):
+            vuln = Vulnerability(target_id=body.target_id, asset_id=asset_ids[i % len(asset_ids)], **vd)
+            session.add(vuln)
+            await session.flush()
+            vuln_ids.append(vuln.id)
+
+        # --- Cloud Assets ---
+        session.add(CloudAsset(
+            target_id=body.target_id, provider="AWS", asset_type="s3_bucket",
+            url="https://test-bucket.s3.amazonaws.com", is_public=True,
+            findings={"listing": True},
+        ))
+        session.add(CloudAsset(
+            target_id=body.target_id, provider="Azure", asset_type="blob_container",
+            url="https://test.blob.core.windows.net/data", is_public=False,
+        ))
+
+        # --- Alert ---
+        session.add(Alert(
+            target_id=body.target_id, vulnerability_id=vuln_ids[0],
+            alert_type="critical_vuln",
+            message="Critical: SQL Injection in login", is_read=False,
+        ))
+
+        await session.commit()
+
+    return {
+        "seeded": True,
+        "target_id": body.target_id,
+        "assets": len(assets_data),
+        "vulnerabilities": len(vulns_data),
+        "cloud_assets": 2,
+        "alerts": 1,
+        "vuln_ids": vuln_ids,
+    }
