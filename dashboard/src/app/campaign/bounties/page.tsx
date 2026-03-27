@@ -20,10 +20,12 @@ export default function BountiesPage() {
   const [bounties, setBounties] = useState<BountyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<{
-    total: number;
-    by_status: Record<string, number>;
-    total_expected: number;
+    total_submitted: number;
+    total_accepted: number;
     total_paid: number;
+    total_payout: number;
+    by_platform: Record<string, number>;
+    by_target: Record<string, number>;
   } | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editStatus, setEditStatus] = useState("");
@@ -42,8 +44,8 @@ export default function BountiesPage() {
     ])
       .then(([bRes, sRes]) => {
         if (!cancelled) {
-          setBounties(bRes.bounties ?? []);
-          setStats(sRes.stats ?? null);
+          setBounties(bRes ?? []);
+          setStats(sRes ?? null);
         }
       })
       .catch(() => {})
@@ -99,7 +101,7 @@ export default function BountiesPage() {
               <span className="text-[10px]">SUBMITTED</span>
             </div>
             <div className="mt-1 text-xl font-bold font-mono text-text-primary">
-              {stats.total}
+              {stats.total_submitted}
             </div>
           </div>
           <div className="rounded-lg border border-border bg-bg-secondary p-3">
@@ -108,25 +110,25 @@ export default function BountiesPage() {
               <span className="text-[10px]">ACCEPTED</span>
             </div>
             <div className="mt-1 text-xl font-bold font-mono text-neon-green">
-              {stats.by_status?.accepted ?? 0}
+              {stats.total_accepted}
             </div>
           </div>
           <div className="rounded-lg border border-border bg-bg-secondary p-3">
             <div className="flex items-center gap-2 text-text-muted">
               <Clock className="h-3.5 w-3.5" />
-              <span className="text-[10px]">EXPECTED</span>
+              <span className="text-[10px]">PAID COUNT</span>
             </div>
             <div className="mt-1 text-xl font-bold font-mono text-neon-blue">
-              ${stats.total_expected?.toLocaleString() ?? "0"}
+              {stats.total_paid}
             </div>
           </div>
           <div className="rounded-lg border border-border bg-bg-secondary p-3">
             <div className="flex items-center gap-2 text-text-muted">
               <TrendingUp className="h-3.5 w-3.5" />
-              <span className="text-[10px]">PAID</span>
+              <span className="text-[10px]">TOTAL PAYOUT</span>
             </div>
             <div className="mt-1 text-xl font-bold font-mono text-neon-orange">
-              ${stats.total_paid?.toLocaleString() ?? "0"}
+              ${stats.total_payout?.toLocaleString() ?? "0"}
             </div>
           </div>
         </div>
@@ -181,7 +183,7 @@ export default function BountiesPage() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-left text-sm">
+          <table data-testid="bounties-table" className="w-full text-left text-sm">
             <thead className="bg-bg-surface text-xs text-text-secondary">
               <tr>
                 <th className="px-4 py-3 font-medium">ID</th>
@@ -202,7 +204,7 @@ export default function BountiesPage() {
                 </tr>
               ) : (
                 bounties.map((b) => (
-                  <tr key={b.id} className="bg-bg-secondary transition-colors hover:bg-bg-tertiary">
+                  <tr key={b.id} data-testid={`bounty-row-${b.id}`} className="bg-bg-secondary transition-colors hover:bg-bg-tertiary">
                     <td className="px-4 py-2.5 font-mono text-xs text-text-muted">#{b.id}</td>
                     <td className="px-4 py-2.5 text-xs text-text-primary">{b.platform}</td>
                     <td className="px-4 py-2.5">
@@ -217,7 +219,7 @@ export default function BountiesPage() {
                           ))}
                         </select>
                       ) : (
-                        <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[b.status] ?? STATUS_COLORS.submitted}`}>
+                        <span data-testid={`bounty-status-${b.id}`} className={`rounded-md border px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[b.status] ?? STATUS_COLORS.submitted}`}>
                           {b.status}
                         </span>
                       )}
@@ -239,11 +241,9 @@ export default function BountiesPage() {
                       )}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-text-muted">
-                      {b.submitted_at
-                        ? new Date(b.submitted_at).toLocaleDateString()
-                        : b.created_at
-                          ? new Date(b.created_at).toLocaleDateString()
-                          : "\u2014"}
+                      {b.submission_url
+                        ? b.submission_url
+                        : "\u2014"}
                     </td>
                     <td className="px-4 py-2.5">
                       {editingId === b.id ? (
@@ -263,6 +263,7 @@ export default function BountiesPage() {
                         </div>
                       ) : (
                         <button
+                          data-testid={`bounty-edit-${b.id}`}
                           onClick={() => setEditingId(b.id)}
                           className="rounded px-2 py-0.5 text-[10px] text-text-muted hover:bg-bg-surface hover:text-text-primary"
                         >

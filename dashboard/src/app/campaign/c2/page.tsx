@@ -108,7 +108,7 @@ export default function C2Page() {
 
   function openPlaybookPicker() {
     setRerunMode("pick");
-    api.getPlaybooks().then((res) => setPlaybooks(res.playbooks)).catch(() => {});
+    api.getPlaybooks().then((res) => setPlaybooks(res)).catch(() => {});
   }
 
   /* ---- Fetch job states periodically ---- */
@@ -311,12 +311,14 @@ export default function C2Page() {
       </div>
 
       {/* Phase Pipeline */}
-      <PhasePipeline jobs={jobs} />
+      <div data-testid="c2-phase-pipeline">
+        <PhasePipeline jobs={jobs} />
+      </div>
 
       {/* Main content: Asset Tree (1/3) + Worker Grid (2/3) */}
       <div className="grid grid-cols-3 gap-5">
         {/* Left -- Asset Tree */}
-        <div className="col-span-1">
+        <div className="col-span-1" data-testid="c2-asset-tree">
           <div className="rounded-lg border border-border bg-bg-secondary p-4">
             <div className="section-label mb-3">ASSET TREE</div>
             <div className="max-h-[600px] overflow-y-auto">
@@ -329,7 +331,7 @@ export default function C2Page() {
         </div>
 
         {/* Right -- Worker Grid / Split Console */}
-        <div className="col-span-2">
+        <div className="col-span-2" data-testid="c2-worker-grid">
           <div className="rounded-lg border border-border bg-bg-secondary p-4">
             {splitView ? (
               <SplitConsole jobs={jobs} events={events} />
@@ -344,7 +346,9 @@ export default function C2Page() {
       <SystemPulse />
 
       {/* Campaign Timeline */}
-      <CampaignTimeline jobs={jobs} />
+      <div data-testid="c2-timeline">
+        <CampaignTimeline jobs={jobs} />
+      </div>
 
       {/* Diff Timeline + Scope Drift Alerts */}
       <div className="grid grid-cols-2 gap-5">

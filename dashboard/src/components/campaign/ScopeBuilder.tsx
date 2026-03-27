@@ -193,7 +193,7 @@ export default function ScopeBuilder() {
   /* ================================================================ */
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div data-testid="scope-builder" className="mx-auto max-w-4xl space-y-6">
       {/* ── Step indicator ── */}
       <nav className="flex items-center justify-center gap-0">
         {STEPS.map((s, i) => {
@@ -214,6 +214,7 @@ export default function ScopeBuilder() {
 
               {/* Step circle + label */}
               <button
+                data-testid={`scope-step-${i}`}
                 type="button"
                 onClick={() => {
                   if (i <= step) setStep(i as Step);
@@ -268,6 +269,7 @@ export default function ScopeBuilder() {
             <div>
               <label className="section-label mb-1.5 block">Company Name</label>
               <input
+                data-testid="scope-company-input"
                 type="text"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
@@ -279,6 +281,7 @@ export default function ScopeBuilder() {
             <div>
               <label className="section-label mb-1.5 block">Base Domain</label>
               <input
+                data-testid="scope-domain-input"
                 type="text"
                 value={baseDomain}
                 onChange={(e) => setBaseDomain(e.target.value)}
@@ -590,6 +593,7 @@ export default function ScopeBuilder() {
         {/* ── Navigation ── */}
         <div className="mt-6 flex items-center justify-between">
           <button
+            data-testid="scope-back-btn"
             type="button"
             onClick={goBack}
             disabled={step === 0}
@@ -601,6 +605,7 @@ export default function ScopeBuilder() {
 
           {step < 4 ? (
             <button
+              data-testid="scope-next-btn"
               type="button"
               onClick={goNext}
               disabled={!canNext}
@@ -611,6 +616,7 @@ export default function ScopeBuilder() {
             </button>
           ) : (
             <button
+              data-testid="scope-submit-btn"
               type="button"
               onClick={handleSubmit}
               disabled={loading}

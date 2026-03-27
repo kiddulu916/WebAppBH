@@ -177,7 +177,7 @@ export default function SchedulesPage() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-left text-sm">
+          <table data-testid="schedules-table" className="w-full text-left text-sm">
             <thead className="bg-bg-surface text-xs text-text-secondary">
               <tr>
                 <th className="px-4 py-3 font-medium">Status</th>
@@ -202,6 +202,7 @@ export default function SchedulesPage() {
                 schedules.map((s) => (
                   <tr
                     key={s.id}
+                    data-testid={`schedule-row-${s.id}`}
                     className="bg-bg-secondary transition-colors hover:bg-bg-tertiary"
                   >
                     <td className="px-4 py-2.5">
@@ -239,6 +240,7 @@ export default function SchedulesPage() {
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-1">
                         <button
+                          data-testid="schedule-toggle"
                           onClick={() => handleToggle(s)}
                           className={`rounded p-1 transition-colors ${
                             s.enabled

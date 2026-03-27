@@ -104,6 +104,7 @@ export default function WorkerCard({
 
   return (
     <div
+      data-testid={`worker-card-${job.container_name}`}
       className={`rounded-lg border bg-bg-tertiary p-3 transition-all ${
         isRunning
           ? "animate-pulse-green border-neon-green/20"
@@ -183,6 +184,15 @@ export default function WorkerCard({
               icon={btn.icon}
               label={btn.label}
               hoverColor={btn.hoverColor}
+              testId={
+                btn.action === "pause"
+                  ? "worker-pause-btn"
+                  : btn.action === "stop"
+                    ? "worker-stop-btn"
+                    : btn.action === "unpause"
+                      ? "worker-resume-btn"
+                      : undefined
+              }
             />
           ))
         )}
@@ -196,16 +206,19 @@ function ActionButton({
   icon: Icon,
   label,
   hoverColor,
+  testId,
 }: {
   onClick: () => void;
   icon: React.ElementType;
   label: string;
   hoverColor: string;
+  testId?: string;
 }) {
   return (
     <button
       onClick={onClick}
       title={label}
+      data-testid={testId}
       className={`flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium text-text-muted transition-colors ${hoverColor}`}
     >
       <Icon className="h-3 w-3" />

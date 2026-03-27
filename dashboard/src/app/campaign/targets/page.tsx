@@ -12,6 +12,7 @@ import {
   MoreVertical,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useCampaignStore } from "@/stores/campaign";
 import type { TargetWithStats } from "@/types/schema";
 
 type SortKey = "company_name" | "base_domain" | "status" | "asset_count" | "vuln_count" | "last_activity";
@@ -29,6 +30,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export default function TargetsPage() {
+  const { activeTarget, setActiveTarget } = useCampaignStore();
   const [data, setData] = useState<TargetWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -118,6 +120,9 @@ export default function TargetsPage() {
     setDeleting(true);
     try {
       await api.deleteTarget(deleteTargetState.id);
+      if (activeTarget?.id === deleteTargetState.id) {
+        setActiveTarget(null);
+      }
       await fetchTargets();
     } catch {
       // toast shown by api.request()
@@ -167,6 +172,7 @@ export default function TargetsPage() {
               setPage(0);
             }}
             placeholder="Search targets..."
+            data-testid="target-search-input"
             className="h-8 w-56 rounded-md border border-border bg-bg-secondary pl-9 pr-3 text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
           />
         </div>
@@ -174,7 +180,7 @@ export default function TargetsPage() {
 
       {/* Table */}
       <div className="overflow-x-auto rounded-lg border border-border bg-bg-secondary">
-        <table className="w-full text-sm">
+        <table data-testid="targets-table" className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
               <th className="px-4 py-3 text-left"><SortHeader label="Company" field="company_name" /></th>
@@ -190,7 +196,7 @@ export default function TargetsPage() {
           </thead>
           <tbody>
             {paged.map((t) => (
-              <tr key={t.id} className="border-b border-border/50 last:border-0 hover:bg-bg-tertiary/50">
+              <tr key={t.id} data-testid={`target-row-${t.id}`} className="border-b border-border/50 last:border-0 hover:bg-bg-tertiary/50">
                 <td className="px-4 py-3 font-medium text-text-primary">{t.company_name}</td>
                 <td className="px-4 py-3 font-mono text-xs text-text-secondary">{t.base_domain}</td>
                 <td className="px-4 py-3">
@@ -221,6 +227,7 @@ export default function TargetsPage() {
                           Erase Data
                         </button>
                         <button
+                          data-testid={`target-delete-btn-${t.id}`}
                           onClick={() => { setDeleteTargetState(t); setMenuOpen(null); }}
                           className="flex w-full items-center gap-2 px-3 py-2 text-xs text-text-secondary hover:bg-bg-tertiary hover:text-danger"
                         >

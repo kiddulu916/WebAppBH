@@ -11,10 +11,10 @@ interface CampaignTimelineProps {
 export default function CampaignTimeline({ jobs }: CampaignTimelineProps) {
   const { entries, timeRange } = useMemo(() => {
     if (jobs.length === 0) return { entries: [], timeRange: { min: 0, max: 1 } };
-
+    // eslint-disable-next-line react-hooks/purity -- intentional snapshot for timeline end boundaries
     const now = Date.now();
     const parsed = jobs
-      .filter((j) => j.created_at)
+      .filter((j): j is JobState & { created_at: string } => !!j.created_at)
       .map((j) => ({
         container: j.container_name,
         phase: j.current_phase ?? "unknown",
@@ -85,7 +85,7 @@ export default function CampaignTimeline({ jobs }: CampaignTimelineProps) {
           );
 
           return (
-            <div key={i} className="flex items-center gap-2">
+            <div key={i} data-testid="timeline-entry" className="flex items-center gap-2">
               <span className="w-28 shrink-0 truncate font-mono text-[10px] text-text-muted">
                 {entry.container}
               </span>

@@ -76,7 +76,7 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/50" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 z-50 w-96 border-l border-border bg-bg-secondary shadow-lg">
+      <div data-testid="settings-drawer" className="fixed inset-y-0 right-0 z-50 w-96 border-l border-border bg-bg-secondary shadow-lg">
         <div className="flex h-14 items-center justify-between border-b border-border px-4">
           <span className="text-sm font-semibold text-text-primary">Campaign Settings</span>
           <button onClick={onClose} className="rounded p-1 text-text-muted hover:bg-bg-surface hover:text-text-primary">
@@ -89,12 +89,14 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
             {headers.map((h, i) => (
               <div key={i} className="flex items-center gap-2">
                 <input
+                  data-testid={`settings-header-key-${i}`}
                   value={h.key}
                   onChange={(e) => updateHeader(i, "key", e.target.value)}
                   placeholder="Header name"
                   className="flex-1 rounded border border-border bg-bg-tertiary px-2 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
                 />
                 <input
+                  data-testid={`settings-header-value-${i}`}
                   value={h.value}
                   onChange={(e) => updateHeader(i, "value", e.target.value)}
                   placeholder="Value"
@@ -112,6 +114,7 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
           <div className="space-y-2">
             <label className="text-xs font-medium text-text-secondary">Rate Limit (Packets Per Second)</label>
             <input
+              data-testid="settings-rate-input"
               type="number"
               value={pps}
               onChange={(e) => setPps(e.target.value)}
@@ -120,6 +123,7 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
             />
           </div>
           <button
+            data-testid="settings-save-btn"
             onClick={handleSave}
             disabled={saving}
             className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"

@@ -13,7 +13,6 @@ import CorrelationView from "@/components/findings/CorrelationView";
 import DataTable from "@/components/findings/DataTable";
 import { api } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
-import type { AssetWithLocations } from "@/lib/api";
 import type { VulnSeverity } from "@/types/schema";
 import { type ColumnDef } from "@tanstack/react-table";
 
@@ -162,7 +161,7 @@ export default function FindingsPage() {
             label: c.asset_type,
             detail: `${c.provider} — ${c.url ?? "no url"}`,
             source: c.is_public ? "PUBLIC" : "private",
-            created_at: c.created_at,
+            created_at: c.created_at ?? null,
           });
         }
 
@@ -242,13 +241,13 @@ export default function FindingsPage() {
       </div>
 
       {/* Correlated findings */}
-      <div>
+      <div data-testid="correlation-view">
         <p className="section-label mb-3">Correlation Analysis</p>
         <CorrelationView />
       </div>
 
       {/* Unified data table */}
-      <div>
+      <div data-testid="findings-table">
         <p className="section-label mb-3">All Data</p>
         {loading ? (
           <div className="flex h-32 items-center justify-center">

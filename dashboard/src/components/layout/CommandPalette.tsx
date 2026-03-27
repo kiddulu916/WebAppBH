@@ -54,7 +54,7 @@ export default function CommandPalette() {
   // Focus input when opening
   useEffect(() => {
     if (commandPaletteOpen) {
-      setQuery("");
+      queueMicrotask(() => setQuery(""));
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [commandPaletteOpen]);
@@ -119,7 +119,7 @@ export default function CommandPalette() {
   const [selectedIdx, setSelectedIdx] = useState(0);
 
   useEffect(() => {
-    setSelectedIdx(0);
+    queueMicrotask(() => setSelectedIdx(0));
   }, [query]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -147,12 +147,13 @@ export default function CommandPalette() {
       />
 
       {/* Palette */}
-      <div className="fixed left-1/2 top-[20%] z-50 w-full max-w-md -translate-x-1/2 animate-fade-in">
+      <div data-testid="command-palette" className="fixed left-1/2 top-[20%] z-50 w-full max-w-md -translate-x-1/2 animate-fade-in">
         <div className="rounded-lg border border-border-accent bg-bg-secondary shadow-2xl overflow-hidden">
           {/* Search input */}
           <div className="flex items-center gap-2 border-b border-border px-3 py-2">
             <Search className="h-4 w-4 text-text-muted" />
             <input
+              data-testid="command-input"
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -185,6 +186,7 @@ export default function CommandPalette() {
                         return (
                           <button
                             key={item.id}
+                            data-testid="command-result"
                             onClick={() => {
                               item.action();
                               setCommandPaletteOpen(false);

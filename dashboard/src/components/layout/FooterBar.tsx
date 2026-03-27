@@ -1,23 +1,24 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCampaignStore } from "@/stores/campaign";
 
 export default function FooterBar() {
   const { counters, jobs, connected } = useCampaignStore();
   const prevCounters = useRef(counters);
+  const [changed, setChanged] = useState({ assets: false, vulns: false, workers: false });
 
   const runningCount = jobs.filter((j) => j.status === "RUNNING").length;
   const queuedCount = jobs.filter((j) => j.status === "QUEUED").length;
 
   // Track which counters just changed for the bump animation
-  const changed = {
-    assets: counters.assets !== prevCounters.current.assets,
-    vulns: counters.vulns !== prevCounters.current.vulns,
-    workers: counters.workers !== prevCounters.current.workers,
-  };
-
   useEffect(() => {
+    const prev = prevCounters.current;
+    setChanged({
+      assets: counters.assets !== prev.assets,
+      vulns: counters.vulns !== prev.vulns,
+      workers: counters.workers !== prev.workers,
+    });
     prevCounters.current = counters;
   }, [counters]);
 
@@ -31,18 +32,22 @@ export default function FooterBar() {
           color="text-neon-green"
           bump={changed.workers}
         />
-        <Stat
-          label="Assets"
-          value={counters.assets}
-          color="text-neon-blue"
-          bump={changed.assets}
-        />
-        <Stat
-          label="Vulns"
-          value={counters.vulns}
-          color="text-neon-orange"
-          bump={changed.vulns}
-        />
+        <span className="contents" data-testid="footer-asset-count">
+          <Stat
+            label="Assets"
+            value={counters.assets}
+            color="text-neon-blue"
+            bump={changed.assets}
+          />
+        </span>
+        <span className="contents" data-testid="footer-vuln-count">
+          <Stat
+            label="Vulns"
+            value={counters.vulns}
+            color="text-neon-orange"
+            bump={changed.vulns}
+          />
+        </span>
       </div>
 
       <div className="flex items-center gap-3 text-text-muted">
