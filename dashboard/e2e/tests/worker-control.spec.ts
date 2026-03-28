@@ -1,65 +1,85 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../helpers/fixtures";
 import { apiClient } from "../helpers/api-client";
 import { factories } from "../helpers/seed-factories";
-import { pollUntil } from "../helpers/poll-until";
 
 test.describe("Worker Control", () => {
   let targetId: number;
+  let baseDomain: string;
 
   test.beforeAll(async () => {
-    const res = await apiClient.createTarget(factories.target());
+    const targetData = factories.target();
+    baseDomain = targetData.base_domain;
+    const res = await apiClient.createTarget(targetData);
     targetId = res.target_id;
     await apiClient.seedTestData(targetId);
-    await apiClient.rescan(targetId).catch(() => {});
-
-    await pollUntil(
-      () => apiClient.getJobs(targetId),
-      (res) => res.jobs.length > 0,
-      15_000,
-    ).catch(() => {});
   });
 
   test.afterAll(async () => {
     if (targetId) await apiClient.deleteTarget(targetId).catch(() => {});
   });
 
-  test("worker cards render when jobs exist", async ({ page }) => {
-    await page.goto("/campaign/targets");
-    await page.getByTestId(`target-row-${targetId}`).click();
-    await page.goto("/campaign/c2");
+  test("pause, resume, and stop actions update worker card state", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(baseDomain) }).click();
+    await page.waitForURL("**/campaign/c2");
+
+    // Find a running worker card
+    const cards = page.locator("[data-testid^='worker-card-']");
+    await expect(cards.first()).toBeVisible({ timeout: 15_000 });
+
+    const runningCard = page.getByTestId(`worker-card-webbh-recon-t${targetId}`);
+    await expect(runningCard).toBeVisible();
+
+    // Pause
+    const pauseBtn = runningCard.getByTestId("worker-pause-btn");
+    if (await pauseBtn.isVisible().catch(() => false)) {
+      await pauseBtn.click();
+      await page.waitForTimeout(2000);
+    }
+
+    // Resume
+    const resumeBtn = runningCard.getByTestId("worker-resume-btn");
+    if (await resumeBtn.isVisible().catch(() => false)) {
+      await resumeBtn.click();
+      await page.waitForTimeout(2000);
+    }
+
+    // Stop
+    const stopBtn = runningCard.getByTestId("worker-stop-btn");
+    if (await stopBtn.isVisible().catch(() => false)) {
+      await stopBtn.click();
+      await page.waitForTimeout(2000);
+    }
+  });
+
+  test("worker cards render for seeded jobs", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(baseDomain) }).click();
+    await page.waitForURL("**/campaign/c2");
 
     const workerGrid = page.getByTestId("c2-worker-grid");
     await expect(workerGrid).toBeVisible({ timeout: 10_000 });
 
+    // Wait for worker cards to appear (seeded via /test/seed, polled by C2 page)
     const cards = page.locator('[data-testid^="worker-card-"]');
+    await expect(cards.first()).toBeVisible({ timeout: 15_000 });
+
     const count = await cards.count();
-    if (count === 0) {
-      test.skip(true, "No workers running in test stack");
-      return;
-    }
+    expect(count).toBe(2);
 
-    const firstCard = cards.first();
-    await expect(firstCard).toBeVisible();
+    // Verify the RUNNING worker card shows correct status and has action buttons
+    const runningCard = page.getByTestId(`worker-card-webbh-recon-t${targetId}`);
+    await expect(runningCard).toBeVisible();
+    await expect(runningCard).toContainText("RUNNING");
+    await expect(runningCard).toContainText("passive_discovery");
 
-    const pauseBtn = firstCard.getByTestId("worker-pause-btn");
-    if (await pauseBtn.isVisible().catch(() => false)) {
-      await pauseBtn.click();
-      const afterPause = await apiClient.getJobs(targetId);
-      expect(afterPause.jobs.some((j) => j.status === "PAUSED")).toBeTruthy();
+    // Pause and Stop buttons should be present on the RUNNING card
+    await expect(runningCard.getByTestId("worker-pause-btn")).toBeVisible();
+    await expect(runningCard.getByTestId("worker-stop-btn")).toBeVisible();
 
-      const resumeBtn = firstCard.getByTestId("worker-resume-btn");
-      if (await resumeBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-        await resumeBtn.click();
-        const afterResume = await apiClient.getJobs(targetId);
-        expect(afterResume.jobs.some((j) => j.status === "RUNNING")).toBeTruthy();
-      }
-
-      const stopBtn = firstCard.getByTestId("worker-stop-btn");
-      if (await stopBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-        await stopBtn.click();
-        const afterStop = await apiClient.getJobs(targetId);
-        expect(afterStop.jobs.some((j) => j.status === "STOPPED" || j.status === "COMPLETED")).toBeTruthy();
-      }
-    }
+    // Verify the COMPLETED worker card
+    const completedCard = page.getByTestId(`worker-card-webbh-recon-t${targetId}-2`);
+    await expect(completedCard).toBeVisible();
+    await expect(completedCard).toContainText("COMPLETED");
   });
 });

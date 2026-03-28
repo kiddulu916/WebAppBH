@@ -1,12 +1,15 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../helpers/fixtures";
 import { apiClient } from "../helpers/api-client";
 import { factories } from "../helpers/seed-factories";
 
 test.describe("Findings Browser", () => {
   let targetId: number;
+  let baseDomain: string;
 
   test.beforeAll(async () => {
-    const res = await apiClient.createTarget(factories.target());
+    const targetData = factories.target();
+    baseDomain = targetData.base_domain;
+    const res = await apiClient.createTarget(targetData);
     targetId = res.target_id;
     await apiClient.seedTestData(targetId);
   });
@@ -16,9 +19,10 @@ test.describe("Findings Browser", () => {
   });
 
   test("shows seeded findings", async ({ page }) => {
-    await page.goto("/campaign/targets");
-    await page.getByTestId(`target-row-${targetId}`).click();
-    await page.goto("/campaign/findings");
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(baseDomain) }).click();
+    await page.waitForURL("**/campaign/c2");
+    await page.getByRole("link", { name: "Findings" }).click();
 
     const table = page.getByTestId("findings-table");
     await expect(table).toBeVisible({ timeout: 10_000 });
@@ -27,9 +31,10 @@ test.describe("Findings Browser", () => {
   });
 
   test("severity filter narrows results", async ({ page }) => {
-    await page.goto("/campaign/targets");
-    await page.getByTestId(`target-row-${targetId}`).click();
-    await page.goto("/campaign/findings");
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(baseDomain) }).click();
+    await page.waitForURL("**/campaign/c2");
+    await page.getByRole("link", { name: "Findings" }).click();
 
     await expect(page.getByTestId("findings-table")).toBeVisible({ timeout: 10_000 });
 
@@ -41,9 +46,10 @@ test.describe("Findings Browser", () => {
   });
 
   test("clicking a finding row opens CorrelationView", async ({ page }) => {
-    await page.goto("/campaign/targets");
-    await page.getByTestId(`target-row-${targetId}`).click();
-    await page.goto("/campaign/findings");
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(baseDomain) }).click();
+    await page.waitForURL("**/campaign/c2");
+    await page.getByRole("link", { name: "Findings" }).click();
 
     const table = page.getByTestId("findings-table");
     await expect(table).toBeVisible({ timeout: 10_000 });
@@ -54,6 +60,37 @@ test.describe("Findings Browser", () => {
     const correlationView = page.getByTestId("correlation-view");
     if (await correlationView.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await expect(correlationView).toBeVisible();
+    }
+  });
+
+  test("shows empty state when no findings exist", async ({ page }) => {
+    // Create a fresh target with no seed data
+    const freshTarget = factories.target();
+    const res = await apiClient.createTarget(freshTarget);
+    try {
+      await page.goto("/");
+      await page.getByRole("button", { name: new RegExp(freshTarget.base_domain) }).click();
+      await page.waitForURL("**/campaign/c2");
+      await page.getByRole("link", { name: "Findings" }).click();
+      await expect(page.getByTestId("findings-empty-state")).toBeVisible({ timeout: 10_000 });
+    } finally {
+      await apiClient.deleteTarget(res.target_id).catch(() => {});
+    }
+  });
+
+  test("filter returning no results shows no-match message", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(baseDomain) }).click();
+    await page.waitForURL("**/campaign/c2");
+    await page.getByRole("link", { name: "Findings" }).click();
+    await expect(page.getByTestId("findings-table")).toBeVisible({ timeout: 10_000 });
+
+    // Filter by a severity that has no results
+    const filter = page.getByTestId("severity-filter");
+    if (await filter.isVisible().catch(() => false)) {
+      await filter.fill("info");
+      // No info-level vulns seeded — table should show empty or no-match
+      await expect(page.getByText(/no.*found/i).or(page.getByText(/no.*match/i)).or(page.getByTestId("findings-empty-state"))).toBeVisible({ timeout: 5_000 });
     }
   });
 });
