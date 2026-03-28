@@ -28,9 +28,10 @@ test.describe("SSE Live Updates", () => {
 
     await apiClient.rescan(targetId).catch(() => {});
 
-    await expect(page.getByTestId("timeline-entry").last()).toBeVisible({
-      timeout: 15_000,
-    });
+    await expect(page.getByTestId("timeline-entry").last()).toContainText(
+      /RERUN_STARTED|recon|RUNNING/i,
+      { timeout: 15_000 },
+    );
 
     await expect(page.getByTestId("footer-asset-count")).toBeVisible();
 

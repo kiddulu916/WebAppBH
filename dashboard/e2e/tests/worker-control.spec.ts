@@ -44,8 +44,22 @@ test.describe("Worker Control", () => {
     const pauseBtn = firstCard.getByTestId("worker-pause-btn");
     if (await pauseBtn.isVisible().catch(() => false)) {
       await pauseBtn.click();
-      const { jobs } = await apiClient.getJobs(targetId);
-      expect(jobs.some((j) => j.status === "PAUSED")).toBeTruthy();
+      const afterPause = await apiClient.getJobs(targetId);
+      expect(afterPause.jobs.some((j) => j.status === "PAUSED")).toBeTruthy();
+
+      const resumeBtn = firstCard.getByTestId("worker-resume-btn");
+      if (await resumeBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+        await resumeBtn.click();
+        const afterResume = await apiClient.getJobs(targetId);
+        expect(afterResume.jobs.some((j) => j.status === "RUNNING")).toBeTruthy();
+      }
+
+      const stopBtn = firstCard.getByTestId("worker-stop-btn");
+      if (await stopBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+        await stopBtn.click();
+        const afterStop = await apiClient.getJobs(targetId);
+        expect(afterStop.jobs.some((j) => j.status === "STOPPED" || j.status === "COMPLETED")).toBeTruthy();
+      }
     }
   });
 });

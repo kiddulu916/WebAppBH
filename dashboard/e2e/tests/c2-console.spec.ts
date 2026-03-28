@@ -15,12 +15,18 @@ test.describe("C2 Console", () => {
     if (targetId) await apiClient.deleteTarget(targetId).catch(() => {});
   });
 
-  test("displays asset tree and phase pipeline", async ({ page }) => {
+  test("displays asset tree, phase pipeline, worker grid, and timeline", async ({ page }) => {
     await page.goto("/campaign/targets");
     await page.getByTestId(`target-row-${targetId}`).click();
     await page.goto("/campaign/c2");
     await expect(page.getByTestId("c2-asset-tree")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("c2-phase-pipeline")).toBeVisible();
+    await expect(page.getByTestId("c2-worker-grid")).toBeVisible();
+
+    const timeline = page.getByTestId("c2-timeline");
+    if (await timeline.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await expect(page.getByTestId("timeline-entry").first()).toBeVisible();
+    }
   });
 
   test("shows seeded assets in asset tree", async ({ page }) => {

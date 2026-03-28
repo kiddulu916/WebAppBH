@@ -52,8 +52,31 @@ test.describe("Schedule Scan", () => {
     if (await toggle.isVisible().catch(() => false)) {
       await toggle.click();
       const schedules = await apiClient.getSchedules(targetId);
-      const updated = schedules.find((s) => s.id === schedId);
+      const updated = schedules.find((s: { id: number }) => s.id === schedId);
       expect(updated).toBeTruthy();
     }
+  });
+
+  test("delete schedule and confirm via API", async ({ page }) => {
+    const sched = await apiClient.createSchedule(factories.schedule(targetId));
+    const schedId = sched.id;
+
+    await page.goto("/campaign/targets");
+    await page.getByTestId(`target-row-${targetId}`).click();
+    await page.goto("/campaign/schedules");
+
+    await expect(page.getByTestId(`schedule-row-${schedId}`)).toBeVisible({
+      timeout: 10_000,
+    });
+
+    await apiClient.deleteSchedule(schedId);
+
+    await page.reload();
+    await expect(page.getByTestId(`schedule-row-${schedId}`)).not.toBeVisible({
+      timeout: 5_000,
+    });
+
+    const remaining = await apiClient.getSchedules(targetId);
+    expect(remaining.find((s: { id: number }) => s.id === schedId)).toBeUndefined();
   });
 });
