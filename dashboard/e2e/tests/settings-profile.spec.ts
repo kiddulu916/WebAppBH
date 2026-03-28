@@ -1,12 +1,15 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../helpers/fixtures";
 import { apiClient } from "../helpers/api-client";
 import { factories } from "../helpers/seed-factories";
 
 test.describe("Settings & Profile", () => {
   let targetId: number;
+  let baseDomain: string;
 
   test.beforeAll(async () => {
-    const res = await apiClient.createTarget(factories.target());
+    const targetData = factories.target();
+    baseDomain = targetData.base_domain;
+    const res = await apiClient.createTarget(targetData);
     targetId = res.target_id;
   });
 
@@ -15,14 +18,14 @@ test.describe("Settings & Profile", () => {
   });
 
   test("edit headers and rate limits, verify persistence", async ({ page }) => {
-    await page.goto("/campaign/targets");
-    await page.getByTestId(`target-row-${targetId}`).click();
-    await page.goto("/campaign/c2");
+    // Select target via CampaignPicker (navigates to /campaign/c2)
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(baseDomain) }).click();
+    await page.waitForURL("**/campaign/c2");
 
-    const settingsBtn = page
-      .locator('button:has-text("Settings")')
-      .or(page.locator('[aria-label="Settings"]'));
-    await settingsBtn.first().click();
+    // The Settings button is icon-only with title="Settings"
+    const settingsBtn = page.getByRole("button", { name: "Settings" });
+    await settingsBtn.click();
     await expect(page.getByTestId("settings-drawer")).toBeVisible({ timeout: 5000 });
 
     await page.getByTestId("settings-header-key-0").fill("Authorization");
@@ -33,7 +36,7 @@ test.describe("Settings & Profile", () => {
     await expect(page.getByTestId("settings-drawer")).not.toBeVisible({ timeout: 5000 });
 
     // Reopen and verify persistence
-    await settingsBtn.first().click();
+    await settingsBtn.click();
     await expect(page.getByTestId("settings-drawer")).toBeVisible({ timeout: 5000 });
     await expect(page.getByTestId("settings-header-key-0")).toHaveValue("Authorization");
     await expect(page.getByTestId("settings-header-value-0")).toHaveValue(

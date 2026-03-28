@@ -67,6 +67,7 @@ services:
       REDIS_PORT: "6379"
       WEB_APP_BH_API_KEY: ${WEB_APP_BH_API_KEY:-}
       CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
+      ENABLE_TEST_SEED: ${ENABLE_TEST_SEED:-true}
       SHODAN_API_KEY: ${SHODAN_API_KEY:-}
       SECURITYTRAILS_API_KEY: ${SECURITYTRAILS_API_KEY:-}
     ports:
@@ -75,7 +76,7 @@ services:
       - ./shared:/app/shared
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/docs')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5

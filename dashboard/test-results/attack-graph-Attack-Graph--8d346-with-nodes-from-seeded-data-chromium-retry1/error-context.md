@@ -1,0 +1,191 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e5]
+        - generic [ref=e7]: WebAppBH
+      - navigation [ref=e8]:
+        - link "Dashboard" [ref=e9] [cursor=pointer]:
+          - /url: /
+          - img [ref=e10]
+          - generic [ref=e15]: Dashboard
+        - link "New Campaign" [ref=e16] [cursor=pointer]:
+          - /url: /campaign
+          - img [ref=e17]
+          - generic [ref=e21]: New Campaign
+        - link "Targets" [ref=e22] [cursor=pointer]:
+          - /url: /campaign/targets
+          - img [ref=e23]
+          - generic [ref=e25]: Targets
+        - link "C2 Console" [ref=e26] [cursor=pointer]:
+          - /url: /campaign/c2
+          - img [ref=e27]
+          - generic [ref=e33]: C2 Console
+        - link "Phase Flow" [ref=e34] [cursor=pointer]:
+          - /url: /campaign/flow
+          - img [ref=e35]
+          - generic [ref=e39]: Phase Flow
+        - link "Attack Graph" [active] [ref=e40] [cursor=pointer]:
+          - /url: /campaign/graph
+          - img [ref=e41]
+          - generic [ref=e46]: Attack Graph
+        - link "Assets" [ref=e47] [cursor=pointer]:
+          - /url: /campaign/assets
+          - img [ref=e48]
+          - generic [ref=e50]: Assets
+        - link "Cloud" [ref=e51] [cursor=pointer]:
+          - /url: /campaign/cloud
+          - img [ref=e52]
+          - generic [ref=e54]: Cloud
+        - link "Vulnerabilities" [ref=e55] [cursor=pointer]:
+          - /url: /campaign/vulns
+          - img [ref=e56]
+          - generic [ref=e65]: Vulnerabilities
+        - link "Findings" [ref=e66] [cursor=pointer]:
+          - /url: /campaign/findings
+          - img [ref=e67]
+          - generic [ref=e70]: Findings
+        - link "Bounties" [ref=e71] [cursor=pointer]:
+          - /url: /campaign/bounties
+          - img [ref=e72]
+          - generic [ref=e74]: Bounties
+        - link "Schedules" [ref=e75] [cursor=pointer]:
+          - /url: /campaign/schedules
+          - img [ref=e76]
+          - generic [ref=e80]: Schedules
+      - link "Settings" [ref=e82] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e83]
+        - generic [ref=e86]: Settings
+    - generic [ref=e87]:
+      - banner [ref=e88]:
+        - generic [ref=e90]:
+          - 'button "Target: e2e-mnal76ij8ujm.example.com" [ref=e91]':
+            - generic [ref=e92]: "Target:"
+            - generic [ref=e93]: e2e-mnal76ij8ujm.example.com
+            - img [ref=e94]
+          - generic [ref=e96]: 1 running
+        - generic [ref=e100]:
+          - button "KILL" [ref=e101]:
+            - img [ref=e102]
+            - generic [ref=e104]: KILL
+          - button "K" [ref=e105]:
+            - img [ref=e106]
+            - generic [ref=e108]: K
+          - button "1" [ref=e110]:
+            - img [ref=e111]
+            - generic [ref=e114]: "1"
+          - img [ref=e116]
+      - main [ref=e120]:
+        - generic [ref=e121]:
+          - application [ref=e122]:
+            - generic [ref=e124]:
+              - generic:
+                - generic:
+                  - img:
+                    - group "Edge from target-9 to asset-34" [ref=e125] [cursor=pointer]
+                  - img:
+                    - group "Edge from asset-34 to loc-34" [ref=e128] [cursor=pointer]
+                  - img:
+                    - group "Edge from asset-34 to loc-35" [ref=e131] [cursor=pointer]
+                  - img:
+                    - group "Edge from target-9 to asset-35" [ref=e134] [cursor=pointer]
+                  - img:
+                    - group "Edge from target-9 to asset-33" [ref=e137] [cursor=pointer]
+                  - img:
+                    - group "Edge from target-9 to asset-31" [ref=e140] [cursor=pointer]
+                  - img:
+                    - group "Edge from asset-31 to loc-31" [ref=e143] [cursor=pointer]
+                  - img:
+                    - group "Edge from asset-31 to loc-32" [ref=e146] [cursor=pointer]
+                  - img:
+                    - group "Edge from target-9 to asset-32" [ref=e149] [cursor=pointer]
+                  - img:
+                    - group "Edge from asset-32 to loc-33" [ref=e152] [cursor=pointer]
+                  - img:
+                    - group "Edge from asset-31 to vuln-19" [ref=e155] [cursor=pointer]
+                  - img:
+                    - group "Edge from asset-32 to vuln-20" [ref=e158] [cursor=pointer]
+                  - img:
+                    - group "Edge from asset-33 to vuln-21" [ref=e161] [cursor=pointer]
+                - generic:
+                  - group [ref=e164]: e2e-mnal76ij8ujm.example.com
+                  - group [ref=e167]: 10.0.0.1
+                  - group [ref=e170]: 10.0.0.2
+                  - group [ref=e173]: admin.e2e-mnal76ij8ujm.example.com
+                  - group [ref=e176]: sub1.e2e-mnal76ij8ujm.example.com
+                  - group [ref=e179]: sub2.e2e-mnal76ij8ujm.example.com
+                  - group [ref=e182]: :22/ssh
+                  - group [ref=e185]: :443/https
+                  - group [ref=e188]: :80/http
+                  - group [ref=e191]: :443/https
+                  - group [ref=e194]: :8080/http-alt
+                  - group [ref=e197]: SQL Injection in login
+                  - group [ref=e200]: Reflected XSS in search
+                  - group [ref=e203]: Information Disclosure
+            - img
+            - generic "Control Panel" [ref=e206]:
+              - button "Zoom In" [ref=e207] [cursor=pointer]:
+                - img [ref=e208]
+              - button "Zoom Out" [ref=e210] [cursor=pointer]:
+                - img [ref=e211]
+              - button "Fit View" [ref=e213] [cursor=pointer]:
+                - img [ref=e214]
+              - button "Toggle Interactivity" [ref=e216] [cursor=pointer]:
+                - img [ref=e217]
+            - img "Mini Map" [ref=e220]
+          - generic [ref=e236]:
+            - generic [ref=e237]: "Target: e2e-mnal76ij8ujm.example.com"
+            - generic [ref=e238]:
+              - generic [ref=e239]: Attack Paths
+              - button [ref=e240]
+            - generic [ref=e242]:
+              - text: Filter by Type
+              - generic [ref=e243] [cursor=pointer]:
+                - checkbox "subdomain" [checked] [ref=e244]
+                - generic [ref=e245]: subdomain
+              - generic [ref=e246] [cursor=pointer]:
+                - checkbox "ip" [checked] [ref=e247]
+                - generic [ref=e248]: ip
+              - generic [ref=e249] [cursor=pointer]:
+                - checkbox "cloud" [checked] [ref=e250]
+                - generic [ref=e251]: cloud
+            - generic [ref=e252]:
+              - generic [ref=e253]:
+                - generic [ref=e254]: Min Severity
+                - generic [ref=e255]: All
+              - slider [ref=e256]: "0"
+            - generic [ref=e257]:
+              - text: Layout
+              - combobox [ref=e258]:
+                - option "Hierarchical" [selected]
+                - option "Force-Directed"
+                - option "Radial"
+            - generic [ref=e259]:
+              - button "Fit to view" [ref=e260]:
+                - img [ref=e261]
+              - button "Reset layout" [ref=e266]:
+                - img [ref=e267]
+      - button "Live Feed 0" [ref=e272]:
+        - img [ref=e273]
+        - generic [ref=e275]: Live Feed
+        - generic [ref=e276]: "0"
+        - img [ref=e278]
+      - contentinfo [ref=e280]:
+        - generic [ref=e281]:
+          - generic [ref=e282]:
+            - generic [ref=e283]: "Workers:"
+            - generic [ref=e284]: "1"
+          - generic [ref=e286]:
+            - generic [ref=e287]: "Assets:"
+            - generic [ref=e288]: "0"
+          - generic [ref=e290]:
+            - generic [ref=e291]: "Vulns:"
+            - generic [ref=e292]: "0"
+        - generic [ref=e294]: "SSE: connected"
+  - region "Notifications alt+T"
+  - alert [ref=e295]
+```

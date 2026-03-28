@@ -28,12 +28,14 @@ export default function CorrelationView() {
 
   useEffect(() => {
     if (!activeTarget) return;
-    setLoading(true);
+    let cancelled = false;
+    queueMicrotask(() => setLoading(true));
     api
       .getCorrelations(activeTarget.id)
-      .then((res) => setGroups(res.groups))
+      .then((res) => { if (!cancelled) setGroups(res.groups); })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [activeTarget]);
 
   if (loading) {

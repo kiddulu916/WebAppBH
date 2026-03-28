@@ -28,7 +28,7 @@ export const factories = {
 
   schedule: (targetId: number, overrides: Record<string, unknown> = {}) => ({
     target_id: targetId,
-    cron_expression: "0 0 * * *",
+    cron_expression: `${Math.floor(Math.random() * 60)} 0 * * *`,
     playbook: "wide_recon",
     ...overrides,
   }),

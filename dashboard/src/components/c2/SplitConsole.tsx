@@ -23,7 +23,7 @@ export default function SplitConsole({ events, jobs }: SplitConsoleProps) {
   // Sync initial selection when containers first appear
   useEffect(() => {
     if (selected.length === 0 && containers.length > 0) {
-      setSelected(containers.slice(0, 2));
+      queueMicrotask(() => setSelected(containers.slice(0, 2)));
     }
   }, [containers, selected.length]);
 

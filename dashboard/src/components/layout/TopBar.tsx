@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Wifi, WifiOff, Command, Power } from "lucide-react";
+import { ChevronDown, Wifi, WifiOff, Command, Power, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
 import { useUIStore } from "@/stores/ui";
@@ -19,6 +19,7 @@ export default function TopBar() {
   const ref = useRef<HTMLDivElement>(null);
   const [killConfirmOpen, setKillConfirmOpen] = useState(false);
   const [killing, setKilling] = useState(false);
+  const [hasTargets, setHasTargets] = useState(true);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -30,13 +31,17 @@ export default function TopBar() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  // Fetch targets when dropdown opens, or when activeTarget is cleared
   useEffect(() => {
-    if (!open) return;
+    if (!open && activeTarget) return;
     api
       .getTargets()
-      .then((res) => setTargets(res.targets))
+      .then((res) => {
+        setTargets(res.targets);
+        setHasTargets(res.targets.length > 0);
+      })
       .catch(() => {});
-  }, [open]);
+  }, [open, activeTarget]);
 
   function switchCampaign(target: Target) {
     setActiveTarget(target);
@@ -105,8 +110,38 @@ export default function TopBar() {
               </span>
             )}
           </div>
+        ) : hasTargets ? (
+          <div ref={ref} className="relative">
+            <button
+              onClick={() => setOpen(!open)}
+              className="flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors hover:bg-bg-surface"
+            >
+              <span className="text-text-muted">Select a target</span>
+              <ChevronDown className="h-3 w-3 text-text-muted" />
+            </button>
+            {open && (
+              <div className="absolute left-0 top-full mt-1 w-60 rounded-md border border-border bg-bg-secondary shadow-lg animate-fade-in">
+                {targets.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => switchCampaign(t)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-bg-surface text-text-primary"
+                  >
+                    <span className="truncate font-mono">{t.base_domain}</span>
+                    <span className="ml-auto text-text-muted">{t.company_name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
-          <span className="text-xs text-text-muted">No active campaign</span>
+          <button
+            onClick={() => router.push("/campaign")}
+            className="flex items-center gap-1.5 rounded bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
+          >
+            <Plus className="h-3 w-3" />
+            New Target
+          </button>
         )}
       </div>
 

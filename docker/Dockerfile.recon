@@ -13,6 +13,7 @@ RUN apt-get update && \
 
 RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
     go install github.com/tomnomnom/assetfinder@latest && \
+    go install github.com/tomnomnom/waybackurls@latest && \
     go install github.com/projectdiscovery/chaos-client/cmd/chaos@latest && \
     go install github.com/owasp-amass/amass/v4/...@latest && \
     go install github.com/projectdiscovery/httpx/cmd/httpx@latest && \
@@ -98,6 +99,7 @@ COPY --from=go-builder /go/bin/hakrawler /usr/local/bin/
 COPY --from=go-builder /go/bin/gauplus /usr/local/bin/
 COPY --from=go-builder /go/bin/webanalyze /usr/local/bin/
 COPY --from=go-builder /go/bin/subjack /usr/local/bin/
+COPY --from=go-builder /go/bin/waybackurls /usr/local/bin/
 COPY --from=go-builder /opt/fingerprints.json /opt/fingerprints.json
 
 # Python tools

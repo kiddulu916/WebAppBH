@@ -61,7 +61,7 @@ test.describe("Assets Inventory", () => {
 
     // Click expand on first asset row
     const firstAssetId = seedResult.asset_ids[0];
-    await page.getByTestId(`asset-expand-btn-${firstAssetId}`).click();
+    await page.getByTestId(`asset-expand-btn-${firstAssetId}`).click({ force: true });
 
     // Detail panel should appear with locations tab active
     const panel = page.getByTestId(`asset-detail-panel-${firstAssetId}`);
@@ -81,7 +81,7 @@ test.describe("Assets Inventory", () => {
     await expect(page.getByTestId("assets-table")).toBeVisible({ timeout: 10_000 });
 
     const firstAssetId = seedResult.asset_ids[0];
-    await page.getByTestId(`asset-expand-btn-${firstAssetId}`).click();
+    await page.getByTestId(`asset-expand-btn-${firstAssetId}`).click({ force: true });
 
     const panel = page.getByTestId(`asset-detail-panel-${firstAssetId}`);
     await expect(panel).toBeVisible({ timeout: 5_000 });

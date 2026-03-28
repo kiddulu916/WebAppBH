@@ -1,15 +1,16 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../helpers/fixtures";
 import { apiClient } from "../helpers/api-client";
 import { factories } from "../helpers/seed-factories";
 
 test.describe("Target Management", () => {
   const targetIds: number[] = [];
+  const baseDomains: string[] = [];
 
   test.beforeAll(async () => {
     for (let i = 0; i < 3; i++) {
-      const res = await apiClient.createTarget(
-        factories.target({ company_name: `E2E-Mgmt-${i}-${Date.now()}` }),
-      );
+      const targetData = factories.target({ company_name: `E2E-Mgmt-${i}-${Date.now()}` });
+      baseDomains.push(targetData.base_domain);
+      const res = await apiClient.createTarget(targetData);
       targetIds.push(res.target_id);
     }
   });
@@ -38,20 +39,18 @@ test.describe("Target Management", () => {
   test("delete removes target from table", async ({ page }) => {
     await page.goto("/campaign/targets");
     const toDelete = targetIds[2];
+    const domainToDelete = baseDomains[2];
     await expect(page.getByTestId(`target-row-${toDelete}`)).toBeVisible();
 
+    // Open context menu then click delete
+    await page.getByTestId(`target-menu-btn-${toDelete}`).click();
     await page.getByTestId(`target-delete-btn-${toDelete}`).click();
 
-    // Handle confirmation dialog if present
-    const confirmInput = page
-      .locator('input[placeholder*="company"]')
-      .or(page.locator('input[placeholder*="name"]'));
-    if (await confirmInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-      const { targets } = await apiClient.getTargets();
-      const t = targets.find((t) => t.id === toDelete);
-      if (t) await confirmInput.fill(t.company_name);
-      await page.locator('button:has-text("Delete")').click();
-    }
+    // Handle confirmation dialog — type the base_domain to confirm
+    const confirmInput = page.locator(`input[placeholder="${domainToDelete}"]`);
+    await expect(confirmInput).toBeVisible({ timeout: 3000 });
+    await confirmInput.fill(domainToDelete);
+    await page.getByRole("button", { name: "Delete Target" }).click();
 
     await expect(page.getByTestId(`target-row-${toDelete}`)).not.toBeVisible({
       timeout: 5000,

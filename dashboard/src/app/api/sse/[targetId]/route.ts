@@ -11,12 +11,13 @@ function getApiKey() {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ targetId: string }> },
 ) {
   const { targetId } = await params;
   const url = `${getApiUrl()}/api/v1/stream/${targetId}`;
   const encoder = new TextEncoder();
+  const lastEventId = request.headers.get("Last-Event-ID");
 
   let upstream: ReturnType<typeof http.get> | null = null;
 
@@ -33,19 +34,24 @@ export async function GET(
       enqueue(encoder.encode(": connected\n\n"));
 
       const parsed = new URL(url);
+      const upstreamHeaders: Record<string, string> = {
+        "X-API-KEY": getApiKey(),
+        Accept: "text/event-stream",
+      };
+      if (lastEventId) {
+        upstreamHeaders["Last-Event-ID"] = lastEventId;
+      }
+
       upstream = http.get(
         {
           hostname: parsed.hostname,
           port: parsed.port,
           path: parsed.pathname,
-          headers: {
-            "X-API-KEY": getApiKey(),
-            Accept: "text/event-stream",
-          },
+          headers: upstreamHeaders,
         },
         (res) => {
           if (res.statusCode !== 200) {
-            enqueue(encoder.encode("event: error\ndata: upstream unavailable\n\n"));
+            enqueue(encoder.encode("event: error\ndata: upstream unavailable\nretry: 5000\n\n"));
             close();
             return;
           }

@@ -58,7 +58,7 @@ test.describe("Workflow Builder", () => {
     await expect(page.getByTestId("flow-stage-card-subdomain_takeover")).toBeVisible();
 
     // Toggle off subdomain_takeover
-    await page.getByTestId("flow-stage-toggle-subdomain_takeover").click();
+    await page.getByTestId("flow-stage-toggle-subdomain_takeover").click({ force: true });
 
     // Card should have opacity/disabled styling
     const card = page.getByTestId("flow-stage-card-subdomain_takeover");

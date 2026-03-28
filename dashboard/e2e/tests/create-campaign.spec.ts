@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../helpers/fixtures";
 import { apiClient } from "../helpers/api-client";
 
 test.describe("Create Campaign", () => {

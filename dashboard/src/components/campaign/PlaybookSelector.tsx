@@ -47,7 +47,7 @@ export default function PlaybookSelector({ value, onChange }: PlaybookSelectorPr
   const handleSaveCustom = async (playbook: {
     name: string;
     description: string;
-    stages: any[];
+    stages: import("@/lib/api").StageConfig[];
     concurrency: { heavy: number; light: number };
   }) => {
     try {

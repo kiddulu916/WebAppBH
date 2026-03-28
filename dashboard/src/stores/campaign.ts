@@ -44,6 +44,7 @@ interface CampaignState {
 
 const MAX_EVENTS = 500;
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export const useCampaignStore = create<CampaignState>()(
   persist(
     (set) => ({
@@ -84,3 +85,8 @@ export const useCampaignStore = create<CampaignState>()(
     },
   ),
 );
+
+// Expose store on window for e2e testing (Playwright page.evaluate access)
+if (typeof window !== "undefined") {
+  (window as any).__campaignStore = useCampaignStore;
+}

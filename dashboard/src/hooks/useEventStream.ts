@@ -11,7 +11,6 @@ import type { SSEEvent } from "@/types/events";
  */
 export function useEventStream(targetId: number | null) {
   const sourceRef = useRef<EventSource | null>(null);
-  const { setConnected, pushEvent, bumpCounter } = useCampaignStore.getState();
 
   useEffect(() => {
     if (targetId == null) {

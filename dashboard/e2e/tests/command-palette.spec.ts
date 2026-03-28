@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../helpers/fixtures";
 import { apiClient } from "../helpers/api-client";
 import { factories } from "../helpers/seed-factories";
 
@@ -16,7 +16,10 @@ test.describe("Command Palette", () => {
 
   test("open with Ctrl+K, search, navigate", async ({ page }) => {
     await page.goto("/");
-    await page.keyboard.press("Control+k");
+
+    // Click the ⌘K button in the TopBar to open the command palette
+    // (Chromium intercepts the native Ctrl+K keyboard shortcut)
+    await page.getByRole("button", { name: "K", exact: true }).click();
     await expect(page.getByTestId("command-palette")).toBeVisible({ timeout: 3000 });
 
     await page.getByTestId("command-input").fill("C2 Console");
@@ -30,7 +33,8 @@ test.describe("Command Palette", () => {
 
   test("close with Escape", async ({ page }) => {
     await page.goto("/");
-    await page.keyboard.press("Control+k");
+
+    await page.getByRole("button", { name: "K", exact: true }).click();
     await expect(page.getByTestId("command-palette")).toBeVisible({ timeout: 3000 });
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("command-palette")).not.toBeVisible();

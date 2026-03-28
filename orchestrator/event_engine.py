@@ -546,9 +546,10 @@ async def _handle_zombie(job: JobState, now: datetime) -> None:
         })
     else:
         backoff_seconds = 30 * (2 ** retry_count)
-        asyncio.get_event_loop().call_later(
+        loop = asyncio.get_running_loop()
+        loop.call_later(
             backoff_seconds,
-            lambda j=job: asyncio.ensure_future(_delayed_restart(j)),
+            lambda j=job: asyncio.create_task(_delayed_restart(j)),
         )
 
 
@@ -704,9 +705,9 @@ QUEUE_PRESSURE_THRESHOLD = int(os.environ.get("QUEUE_PRESSURE_THRESHOLD", "50"))
 QUEUE_TO_WORKER = {
     "recon_queue": "recon",
     "fuzzing_queue": "fuzzing",
-    "webapp_queue": "webapp_testing",
-    "cloud_queue": "cloud_testing",
-    "api_queue": "api_testing",
+    "webapp_queue": "webapp",
+    "cloud_queue": "cloud",
+    "api_queue": "api",
 }
 
 

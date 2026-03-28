@@ -1,12 +1,15 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../helpers/fixtures";
 import { apiClient } from "../helpers/api-client";
 import { factories } from "../helpers/seed-factories";
 
 test.describe("C2 Console", () => {
   let targetId: number;
+  let baseDomain: string;
 
   test.beforeAll(async () => {
-    const res = await apiClient.createTarget(factories.target());
+    const targetData = factories.target();
+    baseDomain = targetData.base_domain;
+    const res = await apiClient.createTarget(targetData);
     targetId = res.target_id;
     await apiClient.seedTestData(targetId);
   });
@@ -16,9 +19,11 @@ test.describe("C2 Console", () => {
   });
 
   test("displays asset tree, phase pipeline, worker grid, and timeline", async ({ page }) => {
-    await page.goto("/campaign/targets");
-    await page.getByTestId(`target-row-${targetId}`).click();
-    await page.goto("/campaign/c2");
+    // Select target via CampaignPicker (navigates to /campaign/c2)
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(baseDomain) }).click();
+    await page.waitForURL("**/campaign/c2");
+
     await expect(page.getByTestId("c2-asset-tree")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("c2-phase-pipeline")).toBeVisible();
     await expect(page.getByTestId("c2-worker-grid")).toBeVisible();
@@ -30,9 +35,9 @@ test.describe("C2 Console", () => {
   });
 
   test("shows seeded assets in asset tree", async ({ page }) => {
-    await page.goto("/campaign/targets");
-    await page.getByTestId(`target-row-${targetId}`).click();
-    await page.goto("/campaign/c2");
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(baseDomain) }).click();
+    await page.waitForURL("**/campaign/c2");
 
     const tree = page.getByTestId("c2-asset-tree");
     await expect(tree).toBeVisible({ timeout: 10_000 });

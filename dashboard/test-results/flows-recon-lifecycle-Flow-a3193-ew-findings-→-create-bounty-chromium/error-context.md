@@ -1,0 +1,271 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e5]
+        - generic [ref=e7]: WebAppBH
+      - navigation [ref=e8]:
+        - link "Dashboard" [ref=e9] [cursor=pointer]:
+          - /url: /
+          - img [ref=e10]
+          - generic [ref=e15]: Dashboard
+        - link "New Campaign" [ref=e16] [cursor=pointer]:
+          - /url: /campaign
+          - img [ref=e17]
+          - generic [ref=e21]: New Campaign
+        - link "Targets" [ref=e22] [cursor=pointer]:
+          - /url: /campaign/targets
+          - img [ref=e23]
+          - generic [ref=e25]: Targets
+        - link "C2 Console" [ref=e26] [cursor=pointer]:
+          - /url: /campaign/c2
+          - img [ref=e27]
+          - generic [ref=e33]: C2 Console
+        - link "Phase Flow" [ref=e34] [cursor=pointer]:
+          - /url: /campaign/flow
+          - img [ref=e35]
+          - generic [ref=e39]: Phase Flow
+        - link "Attack Graph" [ref=e40] [cursor=pointer]:
+          - /url: /campaign/graph
+          - img [ref=e41]
+          - generic [ref=e46]: Attack Graph
+        - link "Assets" [ref=e47] [cursor=pointer]:
+          - /url: /campaign/assets
+          - img [ref=e48]
+          - generic [ref=e50]: Assets
+        - link "Cloud" [ref=e51] [cursor=pointer]:
+          - /url: /campaign/cloud
+          - img [ref=e52]
+          - generic [ref=e54]: Cloud
+        - link "Vulnerabilities" [ref=e55] [cursor=pointer]:
+          - /url: /campaign/vulns
+          - img [ref=e56]
+          - generic [ref=e65]: Vulnerabilities
+        - link "Findings" [active] [ref=e66] [cursor=pointer]:
+          - /url: /campaign/findings
+          - img [ref=e67]
+          - generic [ref=e70]: Findings
+        - link "Bounties" [ref=e71] [cursor=pointer]:
+          - /url: /campaign/bounties
+          - img [ref=e72]
+          - generic [ref=e74]: Bounties
+        - link "Schedules" [ref=e75] [cursor=pointer]:
+          - /url: /campaign/schedules
+          - img [ref=e76]
+          - generic [ref=e80]: Schedules
+      - link "Settings" [ref=e82] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e83]
+        - generic [ref=e86]: Settings
+    - generic [ref=e87]:
+      - banner [ref=e88]:
+        - 'button "Target: e2e-mnalaqpulwj8.example.com" [ref=e91]':
+          - generic [ref=e92]: "Target:"
+          - generic [ref=e93]: e2e-mnalaqpulwj8.example.com
+          - img [ref=e94]
+        - generic [ref=e96]:
+          - button "KILL" [ref=e97]:
+            - img [ref=e98]
+            - generic [ref=e100]: KILL
+          - button "K" [ref=e101]:
+            - img [ref=e102]
+            - generic [ref=e104]: K
+          - button [ref=e106]:
+            - img [ref=e107]
+          - img [ref=e111]
+      - main [ref=e115]:
+        - generic [ref=e116]:
+          - generic [ref=e117]:
+            - heading "All Findings" [level=1] [ref=e118]:
+              - img [ref=e119]
+              - text: All Findings
+            - paragraph [ref=e123]: Browse all discovered data across every phase
+          - generic [ref=e124]:
+            - generic [ref=e125]: Assets 5
+            - generic [ref=e126]: Vulns 3
+            - generic [ref=e127]: Cloud 2
+            - generic [ref=e128]: Total 10
+          - generic [ref=e129]:
+            - link "Assets View all assets" [ref=e130] [cursor=pointer]:
+              - /url: /campaign/assets
+              - img [ref=e131]
+              - generic [ref=e134]:
+                - heading "Assets" [level=3] [ref=e135]
+                - paragraph [ref=e136]: View all assets
+            - link "Vulnerabilities View all vulnerabilities" [ref=e137] [cursor=pointer]:
+              - /url: /campaign/vulns
+              - img [ref=e138]
+              - generic [ref=e140]:
+                - heading "Vulnerabilities" [level=3] [ref=e141]
+                - paragraph [ref=e142]: View all vulnerabilities
+            - link "Cloud View all cloud" [ref=e143] [cursor=pointer]:
+              - /url: /campaign/cloud
+              - img [ref=e144]
+              - generic [ref=e146]:
+                - heading "Cloud" [level=3] [ref=e147]
+                - paragraph [ref=e148]: View all cloud
+          - generic [ref=e149]:
+            - paragraph [ref=e150]: Correlation Analysis
+            - generic [ref=e151]:
+              - generic [ref=e152]:
+                - img [ref=e153]
+                - generic [ref=e156]: Correlated Findings (3 groups)
+              - generic [ref=e157]:
+                - generic [ref=e158]:
+                  - generic [ref=e159]:
+                    - generic [ref=e160]:
+                      - img [ref=e161]
+                      - generic [ref=e163]: sub1.e2e-mnalaqpulwj8.example.com
+                    - generic [ref=e164]:
+                      - generic [ref=e165]: CRITICAL
+                      - generic [ref=e166]: 1 vulns
+                  - paragraph [ref=e167]: SQL Injection in login
+                - generic [ref=e168]:
+                  - generic [ref=e169]:
+                    - generic [ref=e170]:
+                      - img [ref=e171]
+                      - generic [ref=e173]: sub2.e2e-mnalaqpulwj8.example.com
+                    - generic [ref=e174]:
+                      - generic [ref=e175]: MEDIUM
+                      - generic [ref=e176]: 1 vulns
+                  - paragraph [ref=e177]: Reflected XSS in search
+                - generic [ref=e178]:
+                  - generic [ref=e179]:
+                    - generic [ref=e180]:
+                      - img [ref=e181]
+                      - generic [ref=e183]: admin.e2e-mnalaqpulwj8.example.com
+                    - generic [ref=e184]:
+                      - generic [ref=e185]: LOW
+                      - generic [ref=e186]: 1 vulns
+                  - paragraph [ref=e187]: Information Disclosure
+          - generic [ref=e188]:
+            - paragraph [ref=e189]: All Data
+            - generic [ref=e190]:
+              - generic [ref=e191]:
+                - img [ref=e192]
+                - textbox "Search..." [ref=e195]
+              - table [ref=e197]:
+                - rowgroup [ref=e198]:
+                  - row "Category Name Detail Source Found" [ref=e199]:
+                    - columnheader "Category" [ref=e200]:
+                      - button "Category" [ref=e201]:
+                        - text: Category
+                        - img [ref=e202]
+                    - columnheader "Name" [ref=e205]:
+                      - button "Name" [ref=e206]:
+                        - text: Name
+                        - img [ref=e207]
+                    - columnheader "Detail" [ref=e210]:
+                      - button "Detail" [ref=e211]:
+                        - text: Detail
+                        - img [ref=e212]
+                    - columnheader "Source" [ref=e215]:
+                      - button "Source" [ref=e216]:
+                        - text: Source
+                        - img [ref=e217]
+                    - columnheader "Found" [ref=e220]:
+                      - button "Found" [ref=e221]:
+                        - text: Found
+                        - img [ref=e222]
+                - rowgroup [ref=e225]:
+                  - row "asset sub1.e2e-mnalaqpulwj8.example.com subdomain e2e-seed 3/28/2026, 10:13:59 AM" [ref=e226]:
+                    - cell "asset" [ref=e227]:
+                      - generic [ref=e228]: asset
+                    - cell "sub1.e2e-mnalaqpulwj8.example.com" [ref=e229]
+                    - cell "subdomain" [ref=e230]
+                    - cell "e2e-seed" [ref=e231]
+                    - cell "3/28/2026, 10:13:59 AM" [ref=e232]
+                  - row "asset sub2.e2e-mnalaqpulwj8.example.com subdomain e2e-seed 3/28/2026, 10:13:59 AM" [ref=e233]:
+                    - cell "asset" [ref=e234]:
+                      - generic [ref=e235]: asset
+                    - cell "sub2.e2e-mnalaqpulwj8.example.com" [ref=e236]
+                    - cell "subdomain" [ref=e237]
+                    - cell "e2e-seed" [ref=e238]
+                    - cell "3/28/2026, 10:13:59 AM" [ref=e239]
+                  - row "asset admin.e2e-mnalaqpulwj8.example.com subdomain e2e-seed 3/28/2026, 10:13:59 AM" [ref=e240]:
+                    - cell "asset" [ref=e241]:
+                      - generic [ref=e242]: asset
+                    - cell "admin.e2e-mnalaqpulwj8.example.com" [ref=e243]
+                    - cell "subdomain" [ref=e244]
+                    - cell "e2e-seed" [ref=e245]
+                    - cell "3/28/2026, 10:13:59 AM" [ref=e246]
+                  - row "asset 10.0.0.1 ip e2e-seed 3/28/2026, 10:13:59 AM" [ref=e247]:
+                    - cell "asset" [ref=e248]:
+                      - generic [ref=e249]: asset
+                    - cell "10.0.0.1" [ref=e250]
+                    - cell "ip" [ref=e251]
+                    - cell "e2e-seed" [ref=e252]
+                    - cell "3/28/2026, 10:13:59 AM" [ref=e253]
+                  - row "asset 10.0.0.2 ip e2e-seed 3/28/2026, 10:13:59 AM" [ref=e254]:
+                    - cell "asset" [ref=e255]:
+                      - generic [ref=e256]: asset
+                    - cell "10.0.0.2" [ref=e257]
+                    - cell "ip" [ref=e258]
+                    - cell "e2e-seed" [ref=e259]
+                    - cell "3/28/2026, 10:13:59 AM" [ref=e260]
+                  - row "vuln SQL Injection in login CRITICAL — sub1.e2e-mnalaqpulwj8.example.com e2e-seed 3/28/2026, 10:13:59 AM" [ref=e261]:
+                    - cell "vuln" [ref=e262]:
+                      - generic [ref=e263]: vuln
+                    - cell "SQL Injection in login" [ref=e264]
+                    - cell "CRITICAL — sub1.e2e-mnalaqpulwj8.example.com" [ref=e265]
+                    - cell "e2e-seed" [ref=e266]
+                    - cell "3/28/2026, 10:13:59 AM" [ref=e267]
+                  - row "vuln Reflected XSS in search MEDIUM — sub2.e2e-mnalaqpulwj8.example.com e2e-seed 3/28/2026, 10:13:59 AM" [ref=e268]:
+                    - cell "vuln" [ref=e269]:
+                      - generic [ref=e270]: vuln
+                    - cell "Reflected XSS in search" [ref=e271]
+                    - cell "MEDIUM — sub2.e2e-mnalaqpulwj8.example.com" [ref=e272]
+                    - cell "e2e-seed" [ref=e273]
+                    - cell "3/28/2026, 10:13:59 AM" [ref=e274]
+                  - row "vuln Information Disclosure LOW — admin.e2e-mnalaqpulwj8.example.com e2e-seed 3/28/2026, 10:13:59 AM" [ref=e275]:
+                    - cell "vuln" [ref=e276]:
+                      - generic [ref=e277]: vuln
+                    - cell "Information Disclosure" [ref=e278]
+                    - cell "LOW — admin.e2e-mnalaqpulwj8.example.com" [ref=e279]
+                    - cell "e2e-seed" [ref=e280]
+                    - cell "3/28/2026, 10:13:59 AM" [ref=e281]
+                  - row "cloud s3_bucket AWS — https://test-bucket.s3.amazonaws.com PUBLIC 3/28/2026, 10:13:59 AM" [ref=e282]:
+                    - cell "cloud" [ref=e283]:
+                      - generic [ref=e284]: cloud
+                    - cell "s3_bucket" [ref=e285]
+                    - cell "AWS — https://test-bucket.s3.amazonaws.com" [ref=e286]
+                    - cell "PUBLIC" [ref=e287]
+                    - cell "3/28/2026, 10:13:59 AM" [ref=e288]
+                  - row "cloud blob_container Azure — https://test.blob.core.windows.net/data private 3/28/2026, 10:13:59 AM" [ref=e289]:
+                    - cell "cloud" [ref=e290]:
+                      - generic [ref=e291]: cloud
+                    - cell "blob_container" [ref=e292]
+                    - cell "Azure — https://test.blob.core.windows.net/data" [ref=e293]
+                    - cell "private" [ref=e294]
+                    - cell "3/28/2026, 10:13:59 AM" [ref=e295]
+              - generic [ref=e296]:
+                - generic [ref=e297]: 10 result(s)
+                - generic [ref=e298]:
+                  - button [disabled] [ref=e299]:
+                    - img [ref=e300]
+                  - generic [ref=e302]: Page 1 of 1
+                  - button [disabled] [ref=e303]:
+                    - img [ref=e304]
+      - button "Live Feed 0" [ref=e307]:
+        - img [ref=e308]
+        - generic [ref=e310]: Live Feed
+        - generic [ref=e311]: "0"
+        - img [ref=e313]
+      - contentinfo [ref=e315]:
+        - generic [ref=e316]:
+          - generic [ref=e317]:
+            - generic [ref=e318]: "Workers:"
+            - generic [ref=e319]: "0"
+          - generic [ref=e321]:
+            - generic [ref=e322]: "Assets:"
+            - generic [ref=e323]: "0"
+          - generic [ref=e325]:
+            - generic [ref=e326]: "Vulns:"
+            - generic [ref=e327]: "0"
+        - generic [ref=e329]: "SSE: connected"
+  - region "Notifications alt+T"
+  - alert [ref=e330]
+```

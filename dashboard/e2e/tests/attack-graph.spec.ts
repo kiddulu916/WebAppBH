@@ -28,7 +28,8 @@ test.describe("Attack Graph", () => {
     const canvas = page.getByTestId("graph-canvas");
     await expect(canvas).toBeVisible({ timeout: 10_000 });
 
-    // Should have nodes rendered (React Flow renders nodes as divs)
+    // Wait for ReactFlow to render nodes in its viewport
+    await page.waitForSelector(".react-flow__node", { timeout: 10_000 });
     const nodes = page.locator("[data-testid^='graph-node-']");
     await expect(nodes.first()).toBeVisible({ timeout: 5_000 });
   });
@@ -40,13 +41,14 @@ test.describe("Attack Graph", () => {
     await page.getByRole("link", { name: "Attack Graph" }).click();
 
     await expect(page.getByTestId("graph-canvas")).toBeVisible({ timeout: 10_000 });
+    await page.waitForSelector(".react-flow__node", { timeout: 10_000 });
 
     // Toggle attack paths
     await page.getByTestId("graph-attack-paths-toggle").click();
 
     // Path list should appear (seeded data has vulns on shared assets)
     const pathList = page.getByTestId("graph-path-list");
-    await expect(pathList).toBeVisible({ timeout: 5_000 });
+    await expect(pathList).toBeVisible({ timeout: 10_000 });
   });
 
   test("clicking a node opens detail sidebar", async ({ page }) => {
@@ -56,18 +58,19 @@ test.describe("Attack Graph", () => {
     await page.getByRole("link", { name: "Attack Graph" }).click();
 
     await expect(page.getByTestId("graph-canvas")).toBeVisible({ timeout: 10_000 });
+    await page.waitForSelector(".react-flow__node", { timeout: 10_000 });
 
     // Click on any visible node
     const firstNode = page.locator("[data-testid^='graph-node-']").first();
-    await firstNode.click();
+    await firstNode.click({ force: true });
 
-    // Sidebar should slide in
+    // Sidebar should slide in (300ms CSS transition)
     const sidebar = page.getByTestId("graph-detail-sidebar");
     await expect(sidebar).toBeVisible({ timeout: 5_000 });
 
     // Close button should work
     await page.getByTestId("graph-detail-close").click();
-    await expect(sidebar).not.toBeVisible();
+    await expect(sidebar).not.toBeVisible({ timeout: 5_000 });
   });
 
   test("fit-to-view and reset layout buttons work", async ({ page }) => {

@@ -1,0 +1,204 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e5]
+        - generic [ref=e7]: WebAppBH
+      - navigation [ref=e8]:
+        - link "Dashboard" [ref=e9] [cursor=pointer]:
+          - /url: /
+          - img [ref=e10]
+          - generic [ref=e15]: Dashboard
+        - link "New Campaign" [ref=e16] [cursor=pointer]:
+          - /url: /campaign
+          - img [ref=e17]
+          - generic [ref=e21]: New Campaign
+        - link "Targets" [ref=e22] [cursor=pointer]:
+          - /url: /campaign/targets
+          - img [ref=e23]
+          - generic [ref=e25]: Targets
+        - link "C2 Console" [ref=e26] [cursor=pointer]:
+          - /url: /campaign/c2
+          - img [ref=e27]
+          - generic [ref=e33]: C2 Console
+        - link "Phase Flow" [active] [ref=e34] [cursor=pointer]:
+          - /url: /campaign/flow
+          - img [ref=e35]
+          - generic [ref=e39]: Phase Flow
+        - link "Attack Graph" [ref=e40] [cursor=pointer]:
+          - /url: /campaign/graph
+          - img [ref=e41]
+          - generic [ref=e46]: Attack Graph
+        - link "Assets" [ref=e47] [cursor=pointer]:
+          - /url: /campaign/assets
+          - img [ref=e48]
+          - generic [ref=e50]: Assets
+        - link "Cloud" [ref=e51] [cursor=pointer]:
+          - /url: /campaign/cloud
+          - img [ref=e52]
+          - generic [ref=e54]: Cloud
+        - link "Vulnerabilities" [ref=e55] [cursor=pointer]:
+          - /url: /campaign/vulns
+          - img [ref=e56]
+          - generic [ref=e65]: Vulnerabilities
+        - link "Findings" [ref=e66] [cursor=pointer]:
+          - /url: /campaign/findings
+          - img [ref=e67]
+          - generic [ref=e70]: Findings
+        - link "Bounties" [ref=e71] [cursor=pointer]:
+          - /url: /campaign/bounties
+          - img [ref=e72]
+          - generic [ref=e74]: Bounties
+        - link "Schedules" [ref=e75] [cursor=pointer]:
+          - /url: /campaign/schedules
+          - img [ref=e76]
+          - generic [ref=e80]: Schedules
+      - link "Settings" [ref=e82] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e83]
+        - generic [ref=e86]: Settings
+    - generic [ref=e87]:
+      - banner [ref=e88]:
+        - generic [ref=e90]:
+          - 'button "Target: e2e-mnalbra0flhg.example.com" [ref=e91]':
+            - generic [ref=e92]: "Target:"
+            - generic [ref=e93]: e2e-mnalbra0flhg.example.com
+            - img [ref=e94]
+          - generic [ref=e96]: 1 running
+        - generic [ref=e100]:
+          - button "KILL" [ref=e101]:
+            - img [ref=e102]
+            - generic [ref=e104]: KILL
+          - button "K" [ref=e105]:
+            - img [ref=e106]
+            - generic [ref=e108]: K
+          - button "1" [ref=e110]:
+            - img [ref=e111]
+            - generic [ref=e114]: "1"
+          - img [ref=e116]
+      - main [ref=e120]:
+        - generic [ref=e121]:
+          - generic [ref=e122]:
+            - generic [ref=e123]:
+              - heading "Phase Flow" [level=1] [ref=e124]:
+                - img [ref=e125]
+                - text: Phase Flow
+              - paragraph [ref=e129]: Configure scan playbooks and monitor pipeline execution
+            - generic [ref=e130]: e2e-mnalbra0flhg.example.com
+          - generic [ref=e131]:
+            - generic [ref=e132]:
+              - heading "Playbook Configurator" [level=2] [ref=e133]
+              - combobox [ref=e134]:
+                - option "Select a playbook..." [selected]
+                - option "wide_recon (built-in)"
+                - option "deep_webapp (built-in)"
+                - option "api_focused (built-in)"
+                - option "cloud_first (built-in)"
+              - generic [ref=e135]:
+                - img [ref=e136]
+                - paragraph [ref=e138]: Select a playbook to configure your scan pipeline
+            - generic [ref=e139]:
+              - generic [ref=e140]:
+                - heading "Execution Monitor" [level=2] [ref=e141]
+                - generic [ref=e142]:
+                  - generic [ref=e143]: "Monitoring:"
+                  - generic [ref=e144]: e2e-mnalbra0flhg.example.com
+              - generic [ref=e145]:
+                - img [ref=e146]
+                - generic [ref=e148]: Connection lost — retrying...
+                - img [ref=e149]
+              - generic [ref=e154]:
+                - generic [ref=e155]:
+                  - img [ref=e156]
+                  - generic [ref=e160]: "Playbook:"
+                  - generic [ref=e161]: wide_recon
+                - generic [ref=e162]:
+                  - img [ref=e164]
+                  - generic [ref=e166]:
+                    - generic [ref=e167]:
+                      - generic [ref=e168]: passive_discovery
+                      - generic [ref=e169]: running
+                    - generic [ref=e170]: "Running: subfinder"
+                  - link "View Logs" [ref=e171] [cursor=pointer]:
+                    - /url: /campaign/c2
+                - generic [ref=e172]:
+                  - img [ref=e174]
+                  - generic [ref=e177]:
+                    - generic [ref=e178]:
+                      - generic [ref=e179]: active_discovery
+                      - generic [ref=e180]: pending
+                    - text: Waiting...
+                  - link "View Logs" [ref=e181] [cursor=pointer]:
+                    - /url: /campaign/c2
+                - generic [ref=e182]:
+                  - img [ref=e184]
+                  - generic [ref=e187]:
+                    - generic [ref=e188]:
+                      - generic [ref=e189]: liveness_dns
+                      - generic [ref=e190]: pending
+                    - text: Waiting...
+                  - link "View Logs" [ref=e191] [cursor=pointer]:
+                    - /url: /campaign/c2
+                - generic [ref=e192]:
+                  - img [ref=e194]
+                  - generic [ref=e197]:
+                    - generic [ref=e198]:
+                      - generic [ref=e199]: subdomain_takeover
+                      - generic [ref=e200]: pending
+                    - text: Waiting...
+                  - link "View Logs" [ref=e201] [cursor=pointer]:
+                    - /url: /campaign/c2
+                - generic [ref=e202]:
+                  - img [ref=e204]
+                  - generic [ref=e207]:
+                    - generic [ref=e208]:
+                      - generic [ref=e209]: fingerprinting
+                      - generic [ref=e210]: pending
+                    - text: Waiting...
+                  - link "View Logs" [ref=e211] [cursor=pointer]:
+                    - /url: /campaign/c2
+                - generic [ref=e212]:
+                  - img [ref=e214]
+                  - generic [ref=e217]:
+                    - generic [ref=e218]:
+                      - generic [ref=e219]: port_mapping
+                      - generic [ref=e220]: pending
+                    - text: Waiting...
+                  - link "View Logs" [ref=e221] [cursor=pointer]:
+                    - /url: /campaign/c2
+                - generic [ref=e222]:
+                  - img [ref=e224]
+                  - generic [ref=e227]:
+                    - generic [ref=e228]:
+                      - generic [ref=e229]: deep_recon
+                      - generic [ref=e230]: pending
+                    - text: Waiting...
+                  - link "View Logs" [ref=e231] [cursor=pointer]:
+                    - /url: /campaign/c2
+      - button "Live Feed 0" [ref=e233]:
+        - img [ref=e234]
+        - generic [ref=e236]: Live Feed
+        - generic [ref=e237]: "0"
+        - img [ref=e239]
+      - contentinfo [ref=e241]:
+        - generic [ref=e242]:
+          - generic [ref=e243]:
+            - generic [ref=e244]: "Workers:"
+            - generic [ref=e245]: "1"
+          - generic [ref=e247]:
+            - generic [ref=e248]: "Assets:"
+            - generic [ref=e249]: "0"
+          - generic [ref=e251]:
+            - generic [ref=e252]: "Vulns:"
+            - generic [ref=e253]: "0"
+        - generic [ref=e255]: "SSE: connected"
+  - region "Notifications alt+T":
+    - list:
+      - listitem [ref=e256]:
+        - img [ref=e258]
+        - generic [ref=e261]: Network error — is the orchestrator running?
+  - alert [ref=e262]
+```

@@ -116,7 +116,7 @@ export default function AlertDropdown() {
                       {alert.message}
                     </p>
                     <span className="text-[10px] text-text-muted">
-                      {timeAgo(alert.created_at)}
+                      {alert.created_at ? timeAgo(alert.created_at) : ""}
                     </span>
                   </div>
                   {!alert.is_read && (

@@ -46,6 +46,7 @@ export default function OnboardingTour() {
     }
   }, [hasSeenTour]);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- syncing external DOM measurements into state */
   useEffect(() => {
     const current = TOUR_STEPS[step];
     if (!current?.selector) {
@@ -61,6 +62,7 @@ export default function OnboardingTour() {
       });
     }
   }, [step]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const close = useCallback(() => {
     setVisible(false);
