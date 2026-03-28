@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   Globe,
@@ -110,79 +110,74 @@ export default function FindingsPage() {
   const activeTarget = useCampaignStore((s) => s.activeTarget);
   const [rows, setRows] = useState<UnifiedRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [counts, setCounts] = useState({ assets: 0, vulns: 0, cloud: 0 });
 
-  useEffect(() => {
+  const fetchAll = useCallback(async () => {
     if (!activeTarget) {
       setLoading(false);
       return;
     }
 
-    let cancelled = false;
+    try {
+      setError(null);
+      const [assetsRes, vulnsRes, cloudRes] = await Promise.all([
+        api.getAssets(activeTarget.id),
+        api.getVulnerabilities(activeTarget.id),
+        api.getCloudAssets(activeTarget.id),
+      ]);
 
-    async function fetchAll() {
-      try {
-        const [assetsRes, vulnsRes, cloudRes] = await Promise.all([
-          api.getAssets(activeTarget!.id),
-          api.getVulnerabilities(activeTarget!.id),
-          api.getCloudAssets(activeTarget!.id),
-        ]);
+      const unified: UnifiedRow[] = [];
 
-        if (cancelled) return;
-
-        const unified: UnifiedRow[] = [];
-
-        for (const a of assetsRes.assets) {
-          unified.push({
-            id: `a-${a.id}`,
-            category: "asset",
-            label: a.asset_value,
-            detail: a.asset_type,
-            source: a.source_tool ?? "—",
-            created_at: a.created_at,
-          });
-        }
-
-        for (const v of vulnsRes.vulnerabilities) {
-          unified.push({
-            id: `v-${v.id}`,
-            category: "vuln",
-            label: v.title,
-            detail: `${(v.severity as VulnSeverity).toUpperCase()} — ${v.asset_value ?? "N/A"}`,
-            source: v.source_tool ?? "—",
-            created_at: v.created_at,
-          });
-        }
-
-        for (const c of cloudRes.cloud_assets) {
-          unified.push({
-            id: `c-${c.id}`,
-            category: "cloud",
-            label: c.asset_type,
-            detail: `${c.provider} — ${c.url ?? "no url"}`,
-            source: c.is_public ? "PUBLIC" : "private",
-            created_at: c.created_at ?? null,
-          });
-        }
-
-        setCounts({
-          assets: assetsRes.assets.length,
-          vulns: vulnsRes.vulnerabilities.length,
-          cloud: cloudRes.cloud_assets.length,
+      for (const a of assetsRes.assets) {
+        unified.push({
+          id: `a-${a.id}`,
+          category: "asset",
+          label: a.asset_value,
+          detail: a.asset_type,
+          source: a.source_tool ?? "—",
+          created_at: a.created_at,
         });
-        setRows(unified);
-      } catch {
-        // toast shown by api.request()
-      } finally {
-        if (!cancelled) setLoading(false);
       }
-    }
 
-    fetchAll();
-    return () => {
-      cancelled = true;
-    };
+      for (const v of vulnsRes.vulnerabilities) {
+        unified.push({
+          id: `v-${v.id}`,
+          category: "vuln",
+          label: v.title,
+          detail: `${(v.severity as VulnSeverity).toUpperCase()} — ${v.asset_value ?? "N/A"}`,
+          source: v.source_tool ?? "—",
+          created_at: v.created_at,
+        });
+      }
+
+      for (const c of cloudRes.cloud_assets) {
+        unified.push({
+          id: `c-${c.id}`,
+          category: "cloud",
+          label: c.asset_type,
+          detail: `${c.provider} — ${c.url ?? "no url"}`,
+          source: c.is_public ? "PUBLIC" : "private",
+          created_at: c.created_at ?? null,
+        });
+      }
+
+      setCounts({
+        assets: assetsRes.assets.length,
+        vulns: vulnsRes.vulnerabilities.length,
+        cloud: cloudRes.cloud_assets.length,
+      });
+      setRows(unified);
+    } catch {
+      setError("Failed to load findings");
+    } finally {
+      setLoading(false);
+    }
   }, [activeTarget]);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -252,6 +247,21 @@ export default function FindingsPage() {
         {loading ? (
           <div className="flex h-32 items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-neon-orange" />
+          </div>
+        ) : error ? (
+          <div data-testid="findings-error-state" className="flex h-32 flex-col items-center justify-center gap-3">
+            <p className="text-sm text-danger">{error}</p>
+            <button
+              data-testid="findings-retry-btn"
+              onClick={() => { setLoading(true); fetchAll(); }}
+              className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-surface"
+            >
+              Retry
+            </button>
+          </div>
+        ) : rows.length === 0 ? (
+          <div data-testid="findings-empty-state" className="flex h-32 items-center justify-center">
+            <p className="text-sm text-text-muted">No findings yet. Run a scan to discover assets and vulnerabilities.</p>
           </div>
         ) : (
           <DataTable data={rows} columns={columns} />

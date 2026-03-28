@@ -212,7 +212,7 @@ export default function C2Page() {
   /* ---- No active campaign ---- */
   if (!activeTarget) {
     return (
-      <div className="flex h-64 items-center justify-center">
+      <div data-testid="c2-empty-state" className="flex h-64 items-center justify-center">
         <p className="text-text-muted">
           No active campaign. Launch one from the{" "}
           <a href="/campaign" className="text-accent underline">

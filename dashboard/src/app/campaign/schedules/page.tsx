@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   CalendarClock,
@@ -18,6 +18,7 @@ export default function SchedulesPage() {
   const activeTarget = useCampaignStore((s) => s.activeTarget);
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Create form state
   const [showCreate, setShowCreate] = useState(false);
@@ -25,25 +26,26 @@ export default function SchedulesPage() {
   const [playbook, setPlaybook] = useState("wide_recon");
   const [creating, setCreating] = useState(false);
 
+  const fetchSchedules = useCallback(async () => {
+    if (!activeTarget) return;
+    try {
+      setError(null);
+      const res = await api.getSchedules(activeTarget.id);
+      setSchedules(res);
+    } catch {
+      setError("Failed to load schedules");
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTarget]);
+
   useEffect(() => {
     if (!activeTarget) {
       router.push("/");
       return;
     }
-    let cancelled = false;
-    api
-      .getSchedules(activeTarget.id)
-      .then((res) => {
-        if (!cancelled) setSchedules(res);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTarget, router]);
+    fetchSchedules();
+  }, [activeTarget, router, fetchSchedules]);
 
   const handleCreate = async () => {
     if (!activeTarget || !cronExpr.trim()) return;
@@ -175,6 +177,17 @@ export default function SchedulesPage() {
         <div className="flex h-32 items-center justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-neon-blue" />
         </div>
+      ) : error ? (
+        <div data-testid="schedules-error-state" className="flex h-32 flex-col items-center justify-center gap-3">
+          <p className="text-sm text-danger">{error}</p>
+          <button
+            data-testid="schedules-retry-btn"
+            onClick={() => { setLoading(true); fetchSchedules(); }}
+            className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-surface"
+          >
+            Retry
+          </button>
+        </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table data-testid="schedules-table" className="w-full text-left text-sm">
@@ -190,7 +203,7 @@ export default function SchedulesPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {schedules.length === 0 ? (
-                <tr>
+                <tr data-testid="schedules-empty-state">
                   <td
                     colSpan={6}
                     className="px-4 py-8 text-center text-text-muted"

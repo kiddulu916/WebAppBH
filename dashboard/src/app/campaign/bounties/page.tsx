@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { DollarSign, Loader2, TrendingUp, CheckCircle2, Clock, Send } from "lucide-react";
 import { api, type BountyRow } from "@/lib/api";
@@ -19,6 +19,7 @@ export default function BountiesPage() {
   const activeTarget = useCampaignStore((s) => s.activeTarget);
   const [bounties, setBounties] = useState<BountyRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<{
     total_submitted: number;
     total_accepted: number;
@@ -31,30 +32,30 @@ export default function BountiesPage() {
   const [editStatus, setEditStatus] = useState("");
   const [editPayout, setEditPayout] = useState("");
 
+  const fetchBounties = useCallback(async () => {
+    if (!activeTarget) return;
+    try {
+      setError(null);
+      const [bRes, sRes] = await Promise.all([
+        api.getBounties(activeTarget.id),
+        api.getBountyStats(),
+      ]);
+      setBounties(bRes ?? []);
+      setStats(sRes ?? null);
+    } catch {
+      setError("Failed to load bounties");
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTarget]);
+
   useEffect(() => {
     if (!activeTarget) {
       router.push("/");
       return;
     }
-    let cancelled = false;
-
-    Promise.all([
-      api.getBounties(activeTarget.id),
-      api.getBountyStats(),
-    ])
-      .then(([bRes, sRes]) => {
-        if (!cancelled) {
-          setBounties(bRes ?? []);
-          setStats(sRes ?? null);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [activeTarget, router]);
+    fetchBounties();
+  }, [activeTarget, router, fetchBounties]);
 
   const handleUpdate = async (id: number) => {
     try {
@@ -181,6 +182,17 @@ export default function BountiesPage() {
         <div className="flex h-32 items-center justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-neon-orange" />
         </div>
+      ) : error ? (
+        <div data-testid="bounties-error-state" className="flex h-32 flex-col items-center justify-center gap-3">
+          <p className="text-sm text-danger">{error}</p>
+          <button
+            data-testid="bounties-retry-btn"
+            onClick={() => { setLoading(true); fetchBounties(); }}
+            className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-surface"
+          >
+            Retry
+          </button>
+        </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table data-testid="bounties-table" className="w-full text-left text-sm">
@@ -197,7 +209,7 @@ export default function BountiesPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {bounties.length === 0 ? (
-                <tr>
+                <tr data-testid="bounties-empty-state">
                   <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
                     No bounty submissions yet
                   </td>

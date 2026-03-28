@@ -169,7 +169,7 @@ export default function VulnsPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
-                <tr>
+                <tr data-testid="vulns-empty-state">
                   <td
                     colSpan={6}
                     className="px-4 py-8 text-center text-text-muted"

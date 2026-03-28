@@ -33,6 +33,7 @@ export default function TargetsPage() {
   const { activeTarget, setActiveTarget } = useCampaignStore();
   const [data, setData] = useState<TargetWithStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("last_activity");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -49,10 +50,11 @@ export default function TargetsPage() {
 
   const fetchTargets = useCallback(async () => {
     try {
+      setError(null);
       const res = await api.getTargets();
       setData(res.targets);
     } catch {
-      // toast shown by api.request()
+      setError("Failed to load targets");
     } finally {
       setLoading(false);
     }
@@ -151,6 +153,21 @@ export default function TargetsPage() {
     );
   }
 
+  if (error) {
+    return (
+      <div data-testid="targets-error-state" className="flex h-64 flex-col items-center justify-center gap-3">
+        <p className="text-sm text-danger">{error}</p>
+        <button
+          data-testid="targets-retry-btn"
+          onClick={() => { setLoading(true); fetchTargets(); }}
+          className="rounded-md border border-border px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-surface"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 p-6">
       {/* Header */}
@@ -212,6 +229,7 @@ export default function TargetsPage() {
                 <td className="px-4 py-3 text-right">
                   <div className="relative inline-block">
                     <button
+                      data-testid={`target-menu-btn-${t.id}`}
                       onClick={() => setMenuOpen(menuOpen === t.id ? null : t.id)}
                       className="rounded p-1 text-text-muted hover:bg-bg-surface hover:text-text-primary"
                     >
@@ -241,7 +259,7 @@ export default function TargetsPage() {
               </tr>
             ))}
             {paged.length === 0 && (
-              <tr>
+              <tr data-testid="targets-empty-state">
                 <td colSpan={7} className="px-4 py-8 text-center text-sm text-text-muted">
                   {search ? "No targets match your search." : "No targets yet."}
                 </td>
