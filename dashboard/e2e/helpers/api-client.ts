@@ -146,7 +146,7 @@ export const apiClient = {
     req<void>(`/schedules/${id}`, { method: "DELETE" }),
 
   seedTestData: (targetId: number) =>
-    req<{ seeded: boolean; vuln_ids: number[]; job_ids: number[] }>("/test/seed", {
+    req<{ seeded: boolean; asset_ids: number[]; vuln_ids: number[]; job_ids: number[] }>("/test/seed", {
       method: "POST",
       body: JSON.stringify({ target_id: targetId }),
     }),

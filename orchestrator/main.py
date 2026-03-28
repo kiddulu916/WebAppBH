@@ -2194,6 +2194,11 @@ async def test_seed(body: TestSeedRequest):
         session.add(Location(asset_id=asset_ids[0], port=80, protocol="tcp", service="http", state="open"))
         session.add(Location(asset_id=asset_ids[0], port=443, protocol="tcp", service="https", state="open"))
 
+        # --- Additional locations on other assets ---
+        session.add(Location(asset_id=asset_ids[1], port=8080, protocol="tcp", service="http-alt", state="open"))
+        session.add(Location(asset_id=asset_ids[3], port=22, protocol="tcp", service="ssh", state="open"))
+        session.add(Location(asset_id=asset_ids[3], port=443, protocol="tcp", service="https", state="open"))
+
         # --- Vulnerabilities ---
         vulns_data = [
             {"severity": "critical", "title": "SQL Injection in login", "description": "Blind SQLi via id param", "source_tool": "e2e-seed"},
@@ -2251,6 +2256,7 @@ async def test_seed(body: TestSeedRequest):
         "vulnerabilities": len(vulns_data),
         "cloud_assets": 2,
         "alerts": 1,
+        "asset_ids": asset_ids,
         "vuln_ids": vuln_ids,
         "job_ids": job_ids,
     }
