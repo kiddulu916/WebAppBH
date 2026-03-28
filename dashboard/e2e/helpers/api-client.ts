@@ -146,13 +146,57 @@ export const apiClient = {
     req<void>(`/schedules/${id}`, { method: "DELETE" }),
 
   seedTestData: (targetId: number) =>
-    req<{ seeded: boolean; vuln_ids: number[] }>("/test/seed", {
+    req<{ seeded: boolean; vuln_ids: number[]; job_ids: number[] }>("/test/seed", {
       method: "POST",
       body: JSON.stringify({ target_id: targetId }),
+    }),
+
+  emitTestEvent: (targetId: number, eventData: Record<string, unknown>) =>
+    req<{ emitted: boolean }>("/test/emit-event", {
+      method: "POST",
+      body: JSON.stringify({ target_id: targetId, event_data: eventData }),
     }),
 
   search: (targetId: number, query: string) =>
     req<{ results: Array<{ type: string; id: number; value: string }> }>(
       `/search?target_id=${targetId}&q=${encodeURIComponent(query)}`,
     ),
+
+  getPlaybooks: () =>
+    req<Array<{ id?: number; name: string; stages: Array<{ name: string; enabled: boolean }> }>>(
+      "/playbooks",
+    ),
+
+  applyPlaybook: (targetId: number, playbookName: string) =>
+    req<{ applied: boolean }>(`/targets/${targetId}/apply-playbook`, {
+      method: "POST",
+      body: JSON.stringify({ playbook_name: playbookName }),
+    }),
+
+  getExecutionState: (targetId: number) =>
+    req<{ stages: Array<{ name: string; status: string; tool: string | null }> }>(
+      `/targets/${targetId}/execution`,
+    ),
+
+  getAttackGraph: (targetId: number) =>
+    req<{ nodes: Array<{ id: string; label: string; type: string }>; edges: Array<{ source: string; target: string }> }>(
+      `/targets/${targetId}/graph`,
+    ),
+
+  getAttackPaths: (targetId: number) =>
+    req<{ paths: Array<{ id: number; severity: string; steps: Array<{ vuln_id: number; title: string }> }> }>(
+      `/targets/${targetId}/attack-paths`,
+    ),
+
+  controlWorker: (containerName: string, action: string) =>
+    req<{ success: boolean }>("/control", {
+      method: "POST",
+      body: JSON.stringify({ container_name: containerName, action }),
+    }),
+
+  updateSchedule: (id: number, data: { enabled?: boolean }) =>
+    req<{ id: number; enabled: boolean }>(`/schedules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
 };

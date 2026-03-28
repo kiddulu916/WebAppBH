@@ -88,6 +88,7 @@ export interface AssetWithLocations {
   source_tool: string | null;
   created_at: string | null;
   updated_at: string | null;
+  tech: Record<string, unknown> | null;
   locations: {
     id: number;
     port: number;
@@ -157,11 +158,10 @@ export interface BountyRow {
   vulnerability_id: number;
   platform: string;
   status: string;
+  submission_url: string | null;
   expected_payout: number | null;
   actual_payout: number | null;
-  submitted_at: string | null;
-  created_at: string | null;
-  updated_at: string | null;
+  notes: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -176,7 +176,6 @@ export interface ScheduleRow {
   enabled: boolean;
   last_run_at: string | null;
   next_run_at: string | null;
-  created_at: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -190,13 +189,12 @@ export interface StageConfig {
 }
 
 export interface PlaybookRow {
-  id: number;
+  id?: number;
   name: string;
   description: string | null;
   stages: StageConfig[];
   concurrency: { heavy: number; light: number } | null;
-  created_at: string | null;
-  updated_at: string | null;
+  builtin: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -205,7 +203,6 @@ export interface PlaybookRow {
 
 export interface ScopeViolationRow {
   id: number;
-  target_id: number;
   tool_name: string;
   input_value: string;
   violation_type: string;
@@ -326,6 +323,43 @@ export const api = {
     }>(`/api/v1/targets/${targetId}/graph`);
   },
 
+  getAttackPaths(targetId: number) {
+    return request<{ target_id: number; paths: import("@/types/schema").AttackPath[] }>(
+      `/api/v1/targets/${targetId}/attack-paths`,
+    );
+  },
+
+  getExecutionState(targetId: number) {
+    return request<import("@/types/schema").ExecutionState>(
+      `/api/v1/targets/${targetId}/execution`,
+    );
+  },
+
+  applyPlaybook(targetId: number, playbookName: string) {
+    return request<{ target_id: number; playbook_name: string; applied: boolean }>(
+      `/api/v1/targets/${targetId}/apply-playbook`,
+      { method: "POST", body: JSON.stringify({ playbook_name: playbookName }) },
+    );
+  },
+
+  getAssetLocations(assetId: number) {
+    return request<{ asset_id: number; locations: import("@/types/schema").Location[] }>(
+      `/api/v1/assets/${assetId}/locations`,
+    );
+  },
+
+  getAssetVulnerabilities(assetId: number) {
+    return request<{ asset_id: number; vulnerabilities: import("@/types/schema").Vulnerability[] }>(
+      `/api/v1/assets/${assetId}/vulnerabilities`,
+    );
+  },
+
+  getAssetCloud(assetId: number) {
+    return request<{ asset_id: number; cloud_assets: import("@/types/schema").CloudAsset[] }>(
+      `/api/v1/assets/${assetId}/cloud`,
+    );
+  },
+
   getCorrelations(targetId: number) {
     return request<{
       target_id: number;
@@ -368,7 +402,7 @@ export const api = {
   getBounties(targetId: number, status?: string) {
     let qs = `?target_id=${targetId}`;
     if (status) qs += `&status=${status}`;
-    return request<{ bounties: BountyRow[] }>(`/api/v1/bounties${qs}`);
+    return request<BountyRow[]>(`/api/v1/bounties${qs}`);
   },
 
   updateBounty(id: number, data: { status?: string; actual_payout?: number }) {
@@ -380,12 +414,12 @@ export const api = {
 
   getBountyStats() {
     return request<{
-      stats: {
-        total: number;
-        by_status: Record<string, number>;
-        total_expected: number;
-        total_paid: number;
-      };
+      total_submitted: number;
+      total_accepted: number;
+      total_paid: number;
+      total_payout: number;
+      by_platform: Record<string, number>;
+      by_target: Record<string, number>;
     }>("/api/v1/bounties/stats");
   },
 
@@ -442,7 +476,18 @@ export const api = {
   },
 
   enrichTarget(targetId: number) {
-    return request<{ target_id: number; enrichment: unknown[] }>(
+    return request<{
+      target_id: number;
+      domain: string;
+      sources: {
+        shodan: { subdomains: number; ips: number; ports: number };
+        securitytrails: { subdomains: number; ips: number };
+      };
+      total_subdomains: number;
+      total_ips: number;
+      inserted_subdomains: number;
+      inserted_ips: number;
+    }>(
       `/api/v1/targets/${targetId}/enrich`,
       { method: "POST" },
     );
@@ -453,7 +498,7 @@ export const api = {
   /* ------------------------------------------------------------------ */
 
   getPlaybooks() {
-    return request<{ playbooks: PlaybookRow[] }>("/api/v1/playbooks");
+    return request<PlaybookRow[]>("/api/v1/playbooks");
   },
 
   createPlaybook(data: {

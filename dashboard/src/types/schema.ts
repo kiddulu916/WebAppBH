@@ -21,9 +21,9 @@ export type AssetType = "subdomain" | "ip" | "cidr" | "url" | string;
 // Shared timestamp fields (present on every row)
 // ---------------------------------------------------------------------------
 
-interface Timestamps {
-  created_at: string; // ISO-8601
-  updated_at: string; // ISO-8601
+export interface Timestamps {
+  created_at?: string; // ISO-8601 — not all endpoints return these
+  updated_at?: string; // ISO-8601
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +65,7 @@ export interface Asset extends Timestamps {
   asset_type: AssetType;
   asset_value: string;
   source_tool: string | null;
+  tech: Record<string, unknown> | null;
 }
 
 export interface Identity extends Timestamps {
@@ -120,6 +121,7 @@ export interface Vulnerability extends Timestamps {
   description: string | null;
   poc: string | null;
   source_tool: string | null;
+  cvss_score: number | null;
 }
 
 export interface JobState extends Timestamps {
@@ -139,4 +141,49 @@ export interface Alert extends Timestamps {
   alert_type: string;
   message: string;
   is_read: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Attack paths & execution state
+// ---------------------------------------------------------------------------
+
+export interface AttackPathStep {
+  vuln_id: number;
+  title: string;
+  severity: VulnSeverity;
+  asset_id: number | null;
+  asset_value: string | null;
+}
+
+export interface AttackPath {
+  id: number;
+  severity: VulnSeverity;
+  steps: AttackPathStep[];
+  description: string;
+}
+
+export interface StageExecution {
+  name: string;
+  status: "pending" | "running" | "completed" | "failed" | "paused" | "stopped";
+  tool: string | null;
+  started_at: string | null;
+  last_seen: string | null;
+}
+
+export interface ExecutionState {
+  target_id: number;
+  playbook: string;
+  stages: StageExecution[];
+}
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  type: "target" | "subdomain" | "ip" | "cidr" | "port" | "vulnerability";
+  severity?: VulnSeverity;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
 }

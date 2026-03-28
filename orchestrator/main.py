@@ -21,6 +21,12 @@ GET   /api/v1/targets/{id}/reports/{filename} – download a report
 POST  /api/v1/targets/{id}/rescan  – snapshot assets and queue rescan
 GET   /api/v1/vulnerabilities/{id}/draft – draft vuln report for platform
 GET   /api/v1/targets/{id}/graph   – attack graph (nodes + edges)
+GET   /api/v1/targets/{id}/attack-paths – exploitable vuln chains by asset
+GET   /api/v1/targets/{id}/execution    – pipeline execution state
+POST  /api/v1/targets/{id}/apply-playbook – apply a playbook to a target
+GET   /api/v1/assets/{id}/locations      – locations for an asset
+GET   /api/v1/assets/{id}/vulnerabilities – vulns for an asset
+GET   /api/v1/assets/{id}/cloud          – cloud assets for an asset's target
 GET   /api/v1/targets/{id}/correlations – correlated vulnerability groups
 GET   /api/v1/queue_health            – queue depth health status
 POST  /api/v1/bounties               – create a bounty submission
@@ -423,6 +429,8 @@ async def get_status(target_id: int | None = None):
                 "status": j.status,
                 "last_seen": j.last_seen.isoformat() if j.last_seen else None,
                 "last_tool_executed": j.last_tool_executed,
+                "created_at": j.created_at.isoformat() if j.created_at else None,
+                "updated_at": j.updated_at.isoformat() if j.updated_at else None,
             }
             for j in jobs
         ],
@@ -650,7 +658,7 @@ async def delete_target(target_id: int):
     from sqlalchemy import delete as sa_delete
     import shutil
 
-    # 1. Verify target exists
+    # 1. Load target with relationships for ORM cascade delete
     async with get_session() as session:
         target = (await session.execute(
             select(Target).where(Target.id == target_id)
@@ -664,11 +672,36 @@ async def delete_target(target_id: int):
         if c.name.endswith(f"-t{target_id}") and c.status in ("running", "paused"):
             await worker_manager.kill_worker(c.name)
 
-    # 3. Delete the Target row (cascades to all child tables)
+    # 3. Delete all child rows in dependency order, then the target.
+    #    No FK has ON DELETE CASCADE, so we must do this explicitly.
     async with get_session() as session:
-        await session.execute(
-            sa_delete(Target).where(Target.id == target_id)
-        )
+        asset_ids = select(Asset.id).where(Asset.target_id == target_id)
+
+        # Grandchildren (FK → assets)
+        await session.execute(sa_delete(Parameter).where(Parameter.asset_id.in_(asset_ids)))
+        await session.execute(sa_delete(Location).where(Location.asset_id.in_(asset_ids)))
+        await session.execute(sa_delete(Observation).where(Observation.asset_id.in_(asset_ids)))
+
+        # Children with FK → vulnerabilities
+        await session.execute(sa_delete(BountySubmission).where(BountySubmission.target_id == target_id))
+        await session.execute(sa_delete(Alert).where(Alert.target_id == target_id))
+
+        # Children with FK → assets (nullable) or FK → targets
+        await session.execute(sa_delete(Vulnerability).where(Vulnerability.target_id == target_id))
+        await session.execute(sa_delete(ApiSchema).where(ApiSchema.target_id == target_id))
+        await session.execute(sa_delete(MobileApp).where(MobileApp.target_id == target_id))
+        await session.execute(sa_delete(Asset).where(Asset.target_id == target_id))
+
+        # Direct children of target
+        await session.execute(sa_delete(Identity).where(Identity.target_id == target_id))
+        await session.execute(sa_delete(CloudAsset).where(CloudAsset.target_id == target_id))
+        await session.execute(sa_delete(AssetSnapshot).where(AssetSnapshot.target_id == target_id))
+        await session.execute(sa_delete(JobState).where(JobState.target_id == target_id))
+        await session.execute(sa_delete(ScheduledScan).where(ScheduledScan.target_id == target_id))
+        await session.execute(sa_delete(ScopeViolation).where(ScopeViolation.target_id == target_id))
+
+        # Finally the target itself
+        await session.execute(sa_delete(Target).where(Target.id == target_id))
         await session.commit()
 
     # 4. Purge Redis event stream
@@ -1268,6 +1301,164 @@ async def get_attack_graph(target_id: int):
             else:
                 edges.append({"source": f"target-{target.id}", "target": vuln_id})
     return {"nodes": nodes, "edges": edges}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/targets/{target_id}/attack-paths — exploitable vuln chains
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/targets/{target_id}/attack-paths")
+async def get_attack_paths(target_id: int):
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+        vulns = (await session.execute(
+            select(Vulnerability).where(Vulnerability.target_id == target_id)
+            .options(selectinload(Vulnerability.asset))
+        )).scalars().all()
+
+        paths = []
+        asset_vulns: dict[int, list] = {}
+        for v in vulns:
+            if v.asset_id:
+                asset_vulns.setdefault(v.asset_id, []).append(v)
+
+        sev_order = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
+        path_id = 0
+        for asset_id, avulns in asset_vulns.items():
+            if len(avulns) < 2:
+                continue
+            sorted_vulns = sorted(avulns, key=lambda v: sev_order.get(v.severity, 0), reverse=True)
+            path_id += 1
+            steps = []
+            for v in sorted_vulns:
+                steps.append({
+                    "vuln_id": v.id, "title": v.title, "severity": v.severity,
+                    "asset_id": v.asset_id,
+                    "asset_value": v.asset.asset_value if v.asset else None,
+                })
+            paths.append({
+                "id": path_id, "severity": sorted_vulns[0].severity,
+                "steps": steps,
+                "description": f"Chain of {len(steps)} vulnerabilities on {steps[0]['asset_value'] or 'unknown'}",
+            })
+    return {"target_id": target_id, "paths": paths}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/targets/{target_id}/execution — pipeline execution state
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/targets/{target_id}/execution")
+async def get_execution_state(target_id: int):
+    from lib_webbh.playbooks import _ALL_RECON_STAGES
+
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+        jobs = (await session.execute(
+            select(JobState).where(JobState.target_id == target_id)
+            .order_by(JobState.last_seen.desc())
+        )).scalars().all()
+
+    stages = []
+    for stage_name in _ALL_RECON_STAGES:
+        matching_jobs = [j for j in jobs if j.current_phase and stage_name in j.current_phase]
+        if matching_jobs:
+            job = matching_jobs[0]
+            stages.append({
+                "name": stage_name, "status": job.status.lower(),
+                "tool": job.last_tool_executed,
+                "started_at": job.created_at.isoformat() if job.created_at else None,
+                "last_seen": job.last_seen.isoformat() if job.last_seen else None,
+            })
+        else:
+            stages.append({"name": stage_name, "status": "pending", "tool": None, "started_at": None, "last_seen": None})
+
+    return {"target_id": target_id, "playbook": target.last_playbook or "wide_recon", "stages": stages}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/targets/{target_id}/apply-playbook — apply a playbook
+# ---------------------------------------------------------------------------
+class ApplyPlaybookRequest(BaseModel):
+    playbook_name: str
+
+
+@app.post("/api/v1/targets/{target_id}/apply-playbook")
+async def apply_playbook(target_id: int, body: ApplyPlaybookRequest):
+    from lib_webbh.playbooks import get_playbook
+
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Target not found")
+        playbook = get_playbook(body.playbook_name)
+        target.last_playbook = body.playbook_name
+        await session.flush()
+
+    config_dir = f"shared/config/{target_id}"
+    os.makedirs(config_dir, exist_ok=True)
+    with open(f"{config_dir}/playbook.json", "w") as f:
+        json.dump(playbook.to_dict(), f, indent=2)
+
+    return {"target_id": target_id, "playbook_name": body.playbook_name, "applied": True}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/assets/{asset_id}/locations — locations for an asset
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/assets/{asset_id}/locations")
+async def get_asset_locations(asset_id: int):
+    async with get_session() as session:
+        locs = (await session.execute(
+            select(Location).where(Location.asset_id == asset_id)
+        )).scalars().all()
+    return {"asset_id": asset_id, "locations": [
+        {"id": l.id, "port": l.port, "protocol": l.protocol, "service": l.service, "state": l.state}
+        for l in locs
+    ]}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/assets/{asset_id}/vulnerabilities — vulns for an asset
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/assets/{asset_id}/vulnerabilities")
+async def get_asset_vulns(asset_id: int):
+    async with get_session() as session:
+        vulns = (await session.execute(
+            select(Vulnerability).where(Vulnerability.asset_id == asset_id)
+        )).scalars().all()
+    return {"asset_id": asset_id, "vulnerabilities": [
+        {"id": v.id, "severity": v.severity, "title": v.title, "description": v.description, "source_tool": v.source_tool}
+        for v in vulns
+    ]}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/assets/{asset_id}/cloud — cloud assets for an asset's target
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/assets/{asset_id}/cloud")
+async def get_asset_cloud(asset_id: int):
+    async with get_session() as session:
+        asset = (await session.execute(select(Asset).where(Asset.id == asset_id))).scalar_one_or_none()
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        clouds = (await session.execute(
+            select(CloudAsset).where(CloudAsset.target_id == asset.target_id)
+        )).scalars().all()
+    return {"asset_id": asset_id, "cloud_assets": [
+        {"id": c.id, "provider": c.provider, "asset_type": c.asset_type, "url": c.url, "is_public": c.is_public}
+        for c in clouds
+    ]}
 
 
 # ---------------------------------------------------------------------------
@@ -1961,6 +2152,11 @@ class TestSeedRequest(BaseModel):
     target_id: int = Field(..., gt=0)
 
 
+class TestEmitEventRequest(BaseModel):
+    target_id: int = Field(..., gt=0)
+    event_data: dict = Field(...)
+
+
 @app.post("/api/v1/test/seed")
 async def test_seed(body: TestSeedRequest):
     """Insert fixture assets, vulns, cloud assets, and alerts for e2e tests.
@@ -2029,6 +2225,23 @@ async def test_seed(body: TestSeedRequest):
             message="Critical: SQL Injection in login", is_read=False,
         ))
 
+        # --- Jobs (simulated worker states) ---
+        now = datetime.now(timezone.utc)
+        jobs_data = [
+            {"container_name": f"webbh-recon-t{body.target_id}",
+             "current_phase": "passive_discovery", "status": "RUNNING",
+             "last_tool_executed": "subfinder", "last_seen": now},
+            {"container_name": f"webbh-recon-t{body.target_id}-2",
+             "current_phase": "active_probing", "status": "COMPLETED",
+             "last_tool_executed": "httpx", "last_seen": now},
+        ]
+        job_ids = []
+        for jd in jobs_data:
+            job = JobState(target_id=body.target_id, **jd)
+            session.add(job)
+            await session.flush()
+            job_ids.append(job.id)
+
         await session.commit()
 
     return {
@@ -2039,4 +2252,18 @@ async def test_seed(body: TestSeedRequest):
         "cloud_assets": 2,
         "alerts": 1,
         "vuln_ids": vuln_ids,
+        "job_ids": job_ids,
     }
+
+
+@app.post("/api/v1/test/emit-event")
+async def test_emit_event(body: TestEmitEventRequest):
+    """Push an SSE event to a target's event stream for e2e testing.
+
+    Guarded by ENABLE_TEST_SEED=true -- returns 404 in production.
+    """
+    if not ENABLE_TEST_SEED:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    await push_task(f"events:{body.target_id}", body.event_data)
+    return {"emitted": True}
