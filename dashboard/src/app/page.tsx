@@ -129,10 +129,10 @@ export default function DashboardHome() {
             desc="Visualize attack surface"
           />
           <QuickLink
-            href="/campaign/findings"
+            href="/campaign/assets"
             icon={<Database className="h-5 w-5 text-neon-blue" />}
-            title="Data Explorer"
-            desc="Browse all collected data"
+            title="Asset Inventory"
+            desc="Browse all discovered assets"
           />
         </div>
       </div>

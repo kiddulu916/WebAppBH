@@ -10,7 +10,6 @@ const SHORTCUTS = [
   { keys: "g g", desc: "Attack Graph" },
   { keys: "g a", desc: "Assets" },
   { keys: "g v", desc: "Vulnerabilities" },
-  { keys: "g e", desc: "Data Explorer" },
   { keys: "\u2318 K", desc: "Command Palette" },
   { keys: "l", desc: "Toggle Live Feed" },
   { keys: "p", desc: "Toggle System Pulse" },

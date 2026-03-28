@@ -12,7 +12,6 @@ import {
   Activity,
   Cloud,
   Bug,
-  Database,
   Pause,
   Download,
   RotateCcw,
@@ -69,7 +68,6 @@ export default function CommandPalette() {
       { id: "nav-assets", label: "Assets", category: "nav", icon: Activity, action: () => router.push("/campaign/assets") },
       { id: "nav-cloud", label: "Cloud Assets", category: "nav", icon: Cloud, action: () => router.push("/campaign/cloud") },
       { id: "nav-vulns", label: "Vulnerabilities", category: "nav", icon: Bug, action: () => router.push("/campaign/vulns") },
-      { id: "nav-explorer", label: "Data Explorer", category: "nav", icon: Database, action: () => router.push("/campaign/explorer") },
     ];
 
     const actions: PaletteItem[] = [];

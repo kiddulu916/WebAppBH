@@ -38,7 +38,6 @@ export function useKeyboardShortcuts() {
           g: "/campaign/graph",
           a: "/campaign/assets",
           v: "/campaign/vulns",
-          e: "/campaign/explorer",
         };
 
         if (routes[key]) {
