@@ -117,7 +117,7 @@ export default function DashboardHome() {
             desc="Monitor and control workers"
           />
           <QuickLink
-            href="/campaign/c2"
+            href="/campaign/flow"
             icon={<GitBranch className="h-5 w-5 text-neon-blue" />}
             title="Phase Flow"
             desc="Track pipeline stage progress"

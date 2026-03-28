@@ -1,366 +1,205 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
-  Radar,
-  Wifi,
-  FolderSearch,
-  Cloud,
-  ShieldAlert,
-  Code,
-  Pickaxe,
-  Zap,
-  Bug,
-  FileText,
+  Workflow,
   CheckCircle2,
   Loader2,
+  XCircle,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Play,
+  Save,
+  RefreshCw,
+  Clock,
   Eye,
-  SkipForward,
-  Pause,
-  Database,
 } from "lucide-react";
 import { useCampaignStore } from "@/stores/campaign";
 import { api } from "@/lib/api";
-import type { JobState } from "@/types/schema";
+import type { PlaybookRow, StageConfig } from "@/lib/api";
+import type { ExecutionState, StageExecution } from "@/types/schema";
 
 /* ------------------------------------------------------------------ */
-/* Phase definitions                                                   */
+/* Default recon stages (used when a playbook has no stages defined)    */
 /* ------------------------------------------------------------------ */
 
-interface PhaseDef {
-  id: number;
-  name: string;
-  tools: string[];
-  icon: React.ComponentType<{ className?: string }>;
-  /** Keywords to match against job current_phase / container_name */
-  matchKeys: string[];
-}
-
-/** Extract the worker type from a container name like "webbh-recon-t1" */
-function workerType(containerName: string): string {
-  return containerName.replace("webbh-", "").replace(/-t\d+$/, "");
-}
-
-const PHASES: PhaseDef[] = [
-  {
-    id: 1,
-    name: "Recon",
-    tools: ["subfinder", "amass", "assetfinder", "massdns", "httpx", "naabu", "katana"],
-    icon: Radar,
-    matchKeys: ["recon"],
-  },
-  {
-    id: 2,
-    name: "Cloud Enum",
-    tools: ["cloud_enum", "s3scanner", "trufflehog"],
-    icon: Cloud,
-    matchKeys: ["cloud_testing"],
-  },
-  {
-    id: 3,
-    name: "Network",
-    tools: ["nmap", "masscan", "medusa"],
-    icon: Wifi,
-    matchKeys: ["network"],
-  },
-  {
-    id: 4,
-    name: "Fuzzing",
-    tools: ["ffuf", "feroxbuster", "arjun", "crlfuzz"],
-    icon: Zap,
-    matchKeys: ["fuzzing"],
-  },
-  {
-    id: 5,
-    name: "Webapp Testing",
-    tools: ["secretfinder", "dalfox", "ppmap"],
-    icon: FolderSearch,
-    matchKeys: ["webapp_testing"],
-  },
-  {
-    id: 6,
-    name: "API Testing",
-    tools: ["openapi_parser", "jwt_tool", "nosqlmap"],
-    icon: Code,
-    matchKeys: ["api_testing"],
-  },
-  {
-    id: 7,
-    name: "Vuln Scanning",
-    tools: ["nuclei", "sqlmap", "commix"],
-    icon: ShieldAlert,
-    matchKeys: ["vuln_scanner"],
-  },
-  {
-    id: 8,
-    name: "Chain Analysis",
-    tools: ["chain_evaluator", "chain_executor"],
-    icon: Bug,
-    matchKeys: ["chain"],
-  },
-  {
-    id: 9,
-    name: "Mobile",
-    tools: ["apktool", "jadx", "frida", "mobsf"],
-    icon: Pickaxe,
-    matchKeys: ["mobile"],
-  },
-  {
-    id: 10,
-    name: "Reporting",
-    tools: ["deduplicator", "renderer"],
-    icon: FileText,
-    matchKeys: ["reporting"],
-  },
+const DEFAULT_STAGES: StageConfig[] = [
+  { name: "passive_discovery", enabled: true, tool_timeout: 300 },
+  { name: "active_discovery", enabled: true, tool_timeout: 300 },
+  { name: "port_scanning", enabled: true, tool_timeout: 600 },
+  { name: "service_detection", enabled: true, tool_timeout: 300 },
+  { name: "web_crawling", enabled: true, tool_timeout: 300 },
+  { name: "vulnerability_scanning", enabled: true, tool_timeout: 600 },
+  { name: "exploitation", enabled: false, tool_timeout: 600 },
 ];
 
 /* ------------------------------------------------------------------ */
-/* Helpers                                                             */
+/* Stage Card (Configurator)                                           */
 /* ------------------------------------------------------------------ */
 
-type PhaseStatus = "completed" | "active" | "pending";
-
-interface PhaseState {
-  status: PhaseStatus;
-  assetCount: number;
-  toolCount: number;
-  duration: string | null;
-}
-
-function matchPhase(job: JobState): number | null {
-  const wt = workerType(job.container_name);
-
-  for (const phase of PHASES) {
-    if (phase.matchKeys.some((k) => wt === k)) {
-      return phase.id;
-    }
-  }
-  return null;
-}
-
-function derivePhaseStates(jobs: JobState[]): Record<number, PhaseState> {
-  const states: Record<number, PhaseState> = {};
-
-  // Initialize all phases as pending
-  for (const p of PHASES) {
-    states[p.id] = {
-      status: "pending",
-      assetCount: 0,
-      toolCount: p.tools.length,
-      duration: null,
-    };
-  }
-
-  // Determine which phase each job belongs to
-  let highestCompleted = 0;
-  let activePhaseId: number | null = null;
-
-  for (const job of jobs) {
-    const phaseId = matchPhase(job);
-    if (!phaseId) continue;
-
-    if (job.status === "COMPLETED") {
-      if (phaseId > highestCompleted) highestCompleted = phaseId;
-      states[phaseId].status = "completed";
-      // Approximate duration from timestamps
-      if (job.created_at && job.last_seen) {
-        const start = new Date(job.created_at).getTime();
-        const end = new Date(job.last_seen).getTime();
-        const diffMs = end - start;
-        if (diffMs > 0) {
-          const mins = Math.floor(diffMs / 60000);
-          const secs = Math.floor((diffMs % 60000) / 1000);
-          states[phaseId].duration =
-            mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-        }
-      }
-    } else if (job.status === "RUNNING") {
-      states[phaseId].status = "active";
-      activePhaseId = phaseId;
-    }
-  }
-
-  // Mark all phases before the highest completed as completed
-  for (let i = 1; i <= highestCompleted; i++) {
-    if (states[i].status === "pending") {
-      states[i].status = "completed";
-    }
-  }
-
-  // If there is an active phase, mark everything before it as completed
-  if (activePhaseId) {
-    for (let i = 1; i < activePhaseId; i++) {
-      if (states[i].status === "pending") {
-        states[i].status = "completed";
-      }
-    }
-  }
-
-  return states;
-}
-
-/* ------------------------------------------------------------------ */
-/* Phase Card                                                          */
-/* ------------------------------------------------------------------ */
-
-function PhaseCard({
-  phase,
-  state,
+function StageCard({
+  stage,
+  onToggle,
+  onTimeoutChange,
 }: {
-  phase: PhaseDef;
-  state: PhaseState;
+  stage: StageConfig;
+  onToggle: () => void;
+  onTimeoutChange: (v: number) => void;
 }) {
-  const Icon = phase.icon;
-
-  const borderClass =
-    state.status === "completed"
-      ? "border-l-neon-green border-l-2 border-t border-r border-b border-border glow-green"
-      : state.status === "active"
-        ? "border-l-neon-orange border-l-2 border-t border-r border-b border-border animate-pulse-orange"
-        : "border border-dashed border-border-accent opacity-50";
-
-  const bgClass =
-    state.status === "completed"
-      ? "bg-bg-secondary"
-      : state.status === "active"
-        ? "bg-bg-secondary"
-        : "bg-bg-tertiary";
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div
-      className={`rounded-lg p-4 transition-all ${borderClass} ${bgClass} animate-fade-in`}
+      data-testid={`flow-stage-card-${stage.name}`}
+      className={`rounded-lg border border-border bg-bg-secondary p-4 transition-all ${
+        !stage.enabled ? "opacity-50" : ""
+      }`}
     >
-      {/* Header */}
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Icon
-            className={`h-4 w-4 ${
-              state.status === "completed"
-                ? "text-neon-green"
-                : state.status === "active"
-                  ? "text-neon-orange"
-                  : "text-text-muted"
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {/* Toggle switch */}
+          <button
+            type="button"
+            data-testid={`flow-stage-toggle-${stage.name}`}
+            onClick={onToggle}
+            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+              stage.enabled ? "bg-neon-green" : "bg-border-accent"
             }`}
-          />
-          <span className="section-label">Phase {phase.id}</span>
+            aria-label={`Toggle ${stage.name}`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                stage.enabled ? "translate-x-4" : ""
+              }`}
+            />
+          </button>
+
+          <span className="font-mono text-sm text-text-primary">
+            {stage.name}
+          </span>
         </div>
-        <StatusBadge status={state.status} />
+
+        <button
+          type="button"
+          data-testid={`flow-stage-expand-${stage.name}`}
+          onClick={() => setExpanded(!expanded)}
+          className="rounded p-1 text-text-muted hover:bg-bg-tertiary hover:text-text-primary"
+          aria-label={`Expand ${stage.name}`}
+        >
+          {expanded ? (
+            <ChevronUp className="h-4 w-4" />
+          ) : (
+            <ChevronDown className="h-4 w-4" />
+          )}
+        </button>
       </div>
 
-      {/* Name */}
-      <h3
-        className={`text-sm font-semibold ${
-          state.status === "pending" ? "text-text-muted" : "text-text-primary"
-        }`}
-      >
-        {phase.name}
-      </h3>
-
-      {/* Tools list */}
-      {phase.tools.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {phase.tools.map((tool) => (
-            <span
-              key={tool}
-              className="rounded bg-bg-surface px-1.5 py-0.5 font-mono text-[10px] text-text-muted"
-            >
-              {tool}
+      {/* Expanded: tool timeout parameter */}
+      {expanded && (
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="flex items-center gap-3">
+            <label className="text-xs text-text-muted">Tool Timeout:</label>
+            <input
+              type="range"
+              min={60}
+              max={1200}
+              step={60}
+              value={stage.tool_timeout ?? 300}
+              onChange={(e) => onTimeoutChange(Number(e.target.value))}
+              className="flex-1 accent-neon-orange"
+            />
+            <span className="w-12 text-right font-mono text-xs text-text-secondary">
+              {stage.tool_timeout ?? 300}s
             </span>
-          ))}
+          </div>
         </div>
       )}
-
-      {/* Stats row */}
-      <div className="mt-3 flex items-center gap-4 text-[11px]">
-        <span className="text-text-muted">
-          Tools:{" "}
-          <span className="font-mono text-text-secondary">
-            {state.toolCount}
-          </span>
-        </span>
-        <span className="text-text-muted">
-          Assets:{" "}
-          <span className="font-mono text-text-secondary">
-            {state.assetCount}
-          </span>
-        </span>
-        {state.duration && (
-          <span className="text-text-muted">
-            Time:{" "}
-            <span className="font-mono text-text-secondary">
-              {state.duration}
-            </span>
-          </span>
-        )}
-      </div>
-
-      {/* Action button */}
-      <div className="mt-3">
-        {state.status === "completed" && (
-          <Link
-            href="/campaign/findings"
-            className="inline-flex items-center gap-1.5 rounded bg-neon-green/10 px-2.5 py-1 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20"
-          >
-            <Eye className="h-3 w-3" />
-            View Results
-          </Link>
-        )}
-        {state.status === "active" && (
-          <Link
-            href="/campaign/c2"
-            className="inline-flex items-center gap-1.5 rounded bg-neon-orange/10 px-2.5 py-1 text-xs font-medium text-neon-orange transition-colors hover:bg-neon-orange/20"
-          >
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Live View
-          </Link>
-        )}
-      </div>
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Status badge                                                        */
+/* Monitor Stage Entry                                                 */
 /* ------------------------------------------------------------------ */
 
-function StatusBadge({ status }: { status: PhaseStatus }) {
-  if (status === "completed") {
-    return (
-      <span className="flex items-center gap-1 rounded-full bg-neon-green/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-neon-green">
-        <CheckCircle2 className="h-3 w-3" />
-        Done
-      </span>
-    );
-  }
-  if (status === "active") {
-    return (
-      <span className="flex items-center gap-1 rounded-full bg-neon-orange/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-neon-orange">
-        <Loader2 className="h-3 w-3 animate-spin" />
-        Active
-      </span>
-    );
-  }
+function MonitorStageEntry({ stage }: { stage: StageExecution }) {
+  const statusColor =
+    stage.status === "running"
+      ? "text-neon-orange"
+      : stage.status === "completed"
+        ? "text-neon-green"
+        : stage.status === "failed"
+          ? "text-danger"
+          : "text-text-muted";
+
+  const StatusIcon =
+    stage.status === "completed"
+      ? CheckCircle2
+      : stage.status === "failed"
+        ? XCircle
+        : stage.status === "running"
+          ? Loader2
+          : Clock;
+
   return (
-    <span className="rounded-full bg-bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-      Pending
-    </span>
-  );
-}
+    <div
+      data-testid={`flow-monitor-stage-${stage.name}`}
+      className={`flex items-center gap-4 rounded-lg border border-border bg-bg-secondary p-3 transition-all ${
+        stage.status === "running" ? "animate-pulse-orange" : ""
+      }`}
+    >
+      {/* Timeline dot / icon */}
+      <div className={`shrink-0 ${statusColor}`}>
+        <StatusIcon
+          className={`h-5 w-5 ${stage.status === "running" ? "animate-spin" : ""}`}
+        />
+      </div>
 
-/* ------------------------------------------------------------------ */
-/* Connector arrow (vertical between rows)                             */
-/* ------------------------------------------------------------------ */
-
-function ConnectorRow() {
-  return (
-    <div className="flex items-center justify-center gap-[calc(33.333%-2rem)] py-1">
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="flex flex-col items-center">
-          <div className="h-4 w-px bg-border-accent" />
-          <div className="h-0 w-0 border-l-[4px] border-r-[4px] border-t-[5px] border-l-transparent border-r-transparent border-t-border-accent" />
+      {/* Stage info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-sm text-text-primary">
+            {stage.name}
+          </span>
+          <span
+            data-testid={`flow-monitor-status-${stage.name}`}
+            className={`text-xs font-semibold uppercase ${statusColor}`}
+          >
+            {stage.status}
+          </span>
         </div>
-      ))}
+        {stage.tool && (
+          <span
+            data-testid={`flow-monitor-tool-${stage.name}`}
+            className="text-xs text-text-muted"
+          >
+            Running: <span className="font-mono text-neon-orange">{stage.tool}</span>
+          </span>
+        )}
+        {!stage.tool && (
+          <span
+            data-testid={`flow-monitor-tool-${stage.name}`}
+            className="text-xs text-text-muted"
+          >
+            {stage.status === "completed"
+              ? "All tools finished"
+              : stage.status === "failed"
+                ? "Stage failed"
+                : "Waiting..."}
+          </span>
+        )}
+      </div>
+
+      {/* View logs link */}
+      <Link
+        href="/campaign/c2"
+        data-testid={`flow-monitor-logs-link-${stage.name}`}
+        className="shrink-0 text-xs text-neon-blue hover:underline"
+      >
+        View Logs
+      </Link>
     </div>
   );
 }
@@ -370,32 +209,129 @@ function ConnectorRow() {
 /* ------------------------------------------------------------------ */
 
 export default function FlowPage() {
-  const { activeTarget, jobs: storeJobs } = useCampaignStore();
-  const [jobs, setJobs] = useState<JobState[]>(storeJobs);
-  const [loading, setLoading] = useState(!!activeTarget);
+  const activeTarget = useCampaignStore((s) => s.activeTarget);
 
+  /* ---- Configurator state ---- */
+  const [playbooks, setPlaybooks] = useState<PlaybookRow[]>([]);
+  const [playbooksLoading, setPlaybooksLoading] = useState(true);
+  const [playbooksError, setPlaybooksError] = useState<string | null>(null);
+  const [selectedPlaybook, setSelectedPlaybook] = useState<string>("");
+  const [stages, setStages] = useState<StageConfig[]>([]);
+
+  /* ---- Monitor state ---- */
+  const [execution, setExecution] = useState<ExecutionState | null>(null);
+  const [pollError, setPollError] = useState(false);
+
+  /* ---- Fetch playbooks on mount ---- */
+  useEffect(() => {
+    let cancelled = false;
+    setPlaybooksLoading(true);
+    setPlaybooksError(null);
+
+    api
+      .getPlaybooks()
+      .then((res) => {
+        if (!cancelled) {
+          setPlaybooks(res);
+          setPlaybooksLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setPlaybooksError(
+            err instanceof Error ? err.message : "Failed to load playbooks",
+          );
+          setPlaybooksLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /* ---- Handle playbook selection ---- */
+  const handlePlaybookChange = useCallback(
+    (name: string) => {
+      setSelectedPlaybook(name);
+      if (!name) {
+        setStages([]);
+        return;
+      }
+      const pb = playbooks.find((p) => p.name === name);
+      if (pb && pb.stages && pb.stages.length > 0) {
+        setStages(pb.stages.map((s) => ({ ...s })));
+      } else {
+        setStages(DEFAULT_STAGES.map((s) => ({ ...s })));
+      }
+    },
+    [playbooks],
+  );
+
+  /* ---- Stage toggle ---- */
+  const toggleStage = useCallback((index: number) => {
+    setStages((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, enabled: !s.enabled } : s)),
+    );
+  }, []);
+
+  /* ---- Stage timeout change ---- */
+  const updateTimeout = useCallback((index: number, value: number) => {
+    setStages((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, tool_timeout: value } : s)),
+    );
+  }, []);
+
+  /* ---- Save as custom playbook ---- */
+  const handleSavePlaybook = useCallback(async () => {
+    const name = `custom_${Date.now()}`;
+    try {
+      const result = await api.createPlaybook({
+        name,
+        description: `Custom playbook based on ${selectedPlaybook}`,
+        stages,
+      });
+      setPlaybooks((prev) => [...prev, result]);
+      setSelectedPlaybook(result.name);
+    } catch {
+      // toast shown by api.request()
+    }
+  }, [selectedPlaybook, stages]);
+
+  /* ---- Apply playbook to target ---- */
+  const handleApply = useCallback(async () => {
+    if (!activeTarget || !selectedPlaybook) return;
+    try {
+      await api.applyPlaybook(activeTarget.id, selectedPlaybook);
+    } catch {
+      // toast shown by api.request()
+    }
+  }, [activeTarget, selectedPlaybook]);
+
+  /* ---- Poll execution state ---- */
   useEffect(() => {
     if (!activeTarget) return;
     let cancelled = false;
-    setLoading(true);
-    api
-      .getStatus(activeTarget.id)
-      .then((res) => {
-        if (!cancelled) setJobs(res.jobs);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
 
-    const interval = setInterval(() => {
+    const fetchExecution = () => {
       api
-        .getStatus(activeTarget.id)
+        .getExecutionState(activeTarget.id)
         .then((res) => {
-          if (!cancelled) setJobs(res.jobs);
+          if (!cancelled) {
+            setExecution(res);
+            setPollError(false);
+          }
         })
-        .catch(() => {});
-    }, 10_000);
+        .catch(() => {
+          if (!cancelled) {
+            setPollError(true);
+          }
+        });
+    };
+
+    fetchExecution();
+
+    const interval = setInterval(fetchExecution, 10_000);
 
     return () => {
       cancelled = true;
@@ -403,141 +339,215 @@ export default function FlowPage() {
     };
   }, [activeTarget]);
 
-  const phaseStates = useMemo(() => derivePhaseStates(jobs), [jobs]);
-
-  // Split phases into rows of 3
-  const rows = useMemo(() => {
-    const result: PhaseDef[][] = [];
-    for (let i = 0; i < PHASES.length; i += 3) {
-      result.push(PHASES.slice(i, i + 3));
-    }
-    return result;
-  }, []);
-
-  // Summary stats
-  const completedCount = Object.values(phaseStates).filter(
-    (s) => s.status === "completed",
-  ).length;
-  const activeCount = Object.values(phaseStates).filter(
-    (s) => s.status === "active",
-  ).length;
-  const progress = Math.round((completedCount / PHASES.length) * 100);
-
-  if (!activeTarget) {
-    return (
-      <div className="flex h-64 flex-col items-center justify-center gap-3">
-        <Database className="h-10 w-10 text-text-muted" />
-        <p className="text-text-muted">
-          No active campaign. Launch one from the{" "}
-          <Link href="/campaign" className="text-neon-orange underline">
-            Campaign
-          </Link>{" "}
-          page.
-        </p>
-      </div>
-    );
-  }
+  /* ---------------------------------------------------------------- */
+  /* Render                                                            */
+  /* ---------------------------------------------------------------- */
 
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Phase Flow</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-text-primary">
+            <Workflow className="h-5 w-5 text-neon-orange" />
+            Phase Flow
+          </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            12-phase pipeline execution for{" "}
-            <span className="font-mono text-neon-orange">
-              {activeTarget.base_domain}
-            </span>
+            Configure scan playbooks and monitor pipeline execution
           </p>
         </div>
-        <div className="flex items-center gap-3 text-xs">
-          <span className="text-text-muted">
-            Completed:{" "}
-            <span className="font-mono text-neon-green">{completedCount}</span>
+        {activeTarget && (
+          <span className="rounded-md bg-bg-secondary px-3 py-1.5 font-mono text-sm text-neon-orange">
+            {activeTarget.base_domain}
           </span>
-          <span className="text-text-muted">
-            Active:{" "}
-            <span className="font-mono text-neon-orange">{activeCount}</span>
-          </span>
-          <span className="text-text-muted">
-            Pending:{" "}
-            <span className="font-mono text-text-secondary">
-              {PHASES.length - completedCount - activeCount}
-            </span>
-          </span>
-        </div>
+        )}
       </div>
 
-      {/* Global progress bar */}
-      <div>
-        <div className="mb-1 flex items-center justify-between">
-          <span className="section-label">Pipeline Progress</span>
-          <span className="font-mono text-xs text-text-secondary">
-            {progress}%
-          </span>
-        </div>
-        <div className="progress-bar">
-          <div className="progress-fill" style={{ width: `${progress}%` }} />
-        </div>
-      </div>
+      {/* Two-panel split */}
+      <div className="grid grid-cols-2 gap-6 animate-fade-in">
+        {/* ============================================================ */}
+        {/* Left: Playbook Configurator                                   */}
+        {/* ============================================================ */}
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-text-primary">
+            Playbook Configurator
+          </h2>
 
-      {/* Loading state */}
-      {loading && (
-        <div className="flex h-32 items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-neon-orange" />
-        </div>
-      )}
-
-      {/* Phase grid: 3 columns x 4 rows */}
-      {!loading && (
-        <div className="space-y-1">
-          {rows.map((row, rowIdx) => (
-            <div key={rowIdx}>
-              {rowIdx > 0 && <ConnectorRow />}
-              <div className="grid grid-cols-3 gap-4">
-                {row.map((phase) => (
-                  <PhaseCard
-                    key={phase.id}
-                    phase={phase}
-                    state={phaseStates[phase.id]}
-                  />
-                ))}
-              </div>
+          {/* Playbook select dropdown */}
+          {playbooksError ? (
+            <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+              <AlertTriangle className="mb-1 inline h-4 w-4" /> Failed to load
+              playbooks: {playbooksError}
             </div>
-          ))}
-        </div>
-      )}
+          ) : (
+            <select
+              data-testid="flow-playbook-select"
+              value={selectedPlaybook}
+              onChange={(e) => handlePlaybookChange(e.target.value)}
+              disabled={playbooksLoading}
+              className="w-full rounded-md border border-border bg-bg-secondary px-3 py-2 font-mono text-sm text-text-primary input-focus"
+            >
+              <option value="">
+                {playbooksLoading
+                  ? "Loading playbooks..."
+                  : "Select a playbook..."}
+              </option>
+              {playbooks.map((pb) => (
+                <option key={pb.name} value={pb.name}>
+                  {pb.name}
+                  {pb.builtin ? " (built-in)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
 
-      {/* Bottom action buttons */}
-      {!loading && (
-        <div className="flex items-center gap-3 border-t border-border pt-4">
-          <button
-            className="inline-flex items-center gap-2 rounded-md border border-border bg-bg-surface px-4 py-2 text-xs font-medium text-text-secondary transition-colors hover:border-neon-orange/40 hover:text-neon-orange"
-            onClick={() => {
-              /* placeholder: skip to phase action */
-            }}
-          >
-            <SkipForward className="h-3.5 w-3.5" />
-            Skip to Phase
-          </button>
-          <button
-            className="inline-flex items-center gap-2 rounded-md border border-border bg-bg-surface px-4 py-2 text-xs font-medium text-text-secondary transition-colors hover:border-warning/40 hover:text-warning"
-            onClick={() => {
-              /* placeholder: pause pipeline action */
-            }}
-          >
-            <Pause className="h-3.5 w-3.5" />
-            Pause Pipeline
-          </button>
-          <div className="ml-auto text-[11px] text-text-muted">
-            Last updated:{" "}
-            <span className="font-mono text-text-secondary">
-              {new Date().toLocaleTimeString()}
-            </span>
-          </div>
+          {/* Empty state: no playbook selected */}
+          {!selectedPlaybook && !playbooksError && (
+            <div
+              data-testid="flow-empty-config"
+              className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border-accent bg-bg-tertiary p-8 text-center"
+            >
+              <Play className="mb-3 h-8 w-8 text-text-muted" />
+              <p className="text-sm text-text-muted">
+                Select a playbook to configure your scan pipeline
+              </p>
+            </div>
+          )}
+
+          {/* Stage cards */}
+          {selectedPlaybook && stages.length > 0 && (
+            <div className="space-y-2">
+              {stages.map((stage, i) => (
+                <StageCard
+                  key={stage.name}
+                  stage={stage}
+                  onToggle={() => toggleStage(i)}
+                  onTimeoutChange={(v) => updateTimeout(i, v)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Action buttons */}
+          {selectedPlaybook && (
+            <div className="flex items-center gap-3 border-t border-border pt-4">
+              <button
+                data-testid="flow-save-playbook-btn"
+                onClick={handleSavePlaybook}
+                className="inline-flex items-center gap-2 rounded-md border border-border bg-bg-surface px-4 py-2 text-xs font-medium text-text-secondary transition-colors hover:border-neon-green/40 hover:text-neon-green"
+              >
+                <Save className="h-3.5 w-3.5" />
+                Save as Custom Playbook
+              </button>
+
+              {/* Target selector for apply */}
+              <div
+                data-testid="flow-apply-target-select"
+                className="flex items-center gap-2 text-xs text-text-muted"
+              >
+                Target:{" "}
+                <span className="font-mono text-text-primary">
+                  {activeTarget
+                    ? activeTarget.base_domain
+                    : "No target selected"}
+                </span>
+              </div>
+
+              <button
+                data-testid="flow-apply-btn"
+                onClick={handleApply}
+                disabled={!activeTarget}
+                className="ml-auto inline-flex items-center gap-2 rounded-md bg-neon-orange px-4 py-2 text-xs font-semibold text-bg-primary transition-colors hover:bg-neon-orange-dim disabled:opacity-50"
+              >
+                <Play className="h-3.5 w-3.5" />
+                Apply to Target
+              </button>
+            </div>
+          )}
         </div>
-      )}
+
+        {/* ============================================================ */}
+        {/* Right: Live Execution Monitor                                 */}
+        {/* ============================================================ */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-text-primary">
+              Execution Monitor
+            </h2>
+            <div
+              data-testid="flow-monitor-target-select"
+              className="flex items-center gap-2 text-xs"
+            >
+              {activeTarget ? (
+                <>
+                  <span className="text-text-muted">Monitoring:</span>
+                  <span className="font-mono text-neon-orange">
+                    {activeTarget.base_domain}
+                  </span>
+                </>
+              ) : (
+                <span className="text-text-muted">No target</span>
+              )}
+            </div>
+          </div>
+
+          {/* Connection lost banner */}
+          {pollError && (
+            <div
+              data-testid="flow-connection-lost"
+              className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>Connection lost — retrying...</span>
+              <RefreshCw className="ml-auto h-4 w-4 animate-spin" />
+            </div>
+          )}
+
+          {/* Empty monitor state */}
+          {!activeTarget && (
+            <div
+              data-testid="flow-empty-monitor"
+              className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border-accent bg-bg-tertiary p-8 text-center"
+            >
+              <Eye className="mb-3 h-8 w-8 text-text-muted" />
+              <p className="text-sm text-text-muted">
+                Select a target to view execution progress
+              </p>
+            </div>
+          )}
+
+          {activeTarget && !execution && !pollError && (
+            <div
+              data-testid="flow-empty-monitor"
+              className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border-accent bg-bg-tertiary p-8 text-center"
+            >
+              <Eye className="mb-3 h-8 w-8 text-text-muted" />
+              <p className="text-sm text-text-muted">
+                No scans running. Apply a playbook to a target to begin.
+              </p>
+            </div>
+          )}
+
+          {/* Execution stage timeline */}
+          {execution && execution.stages && execution.stages.length > 0 && (
+            <div className="space-y-2">
+              {/* Playbook label */}
+              <div className="flex items-center gap-2 rounded-md bg-bg-tertiary px-3 py-2 text-xs">
+                <Workflow className="h-3.5 w-3.5 text-neon-orange" />
+                <span className="text-text-muted">Playbook:</span>
+                <span className="font-mono text-text-primary">
+                  {execution.playbook}
+                </span>
+              </div>
+
+              {/* Stage entries */}
+              {execution.stages.map((stage) => (
+                <MonitorStageEntry key={stage.name} stage={stage} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
