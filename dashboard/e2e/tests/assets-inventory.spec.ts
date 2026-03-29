@@ -8,6 +8,7 @@ test.describe("Assets Inventory", () => {
   let seedResult: { asset_ids: number[]; vuln_ids: number[] };
 
   test.beforeAll(async () => {
+    await apiClient.killAll().catch(() => {});
     const data = factories.target();
     baseDomain = data.base_domain;
     const res = await apiClient.createTarget(data);
@@ -59,9 +60,11 @@ test.describe("Assets Inventory", () => {
 
     await expect(page.getByTestId("assets-table")).toBeVisible({ timeout: 10_000 });
 
-    // Click expand on first asset row
+    // Click expand on first asset row (use JS click to bypass any overlay)
     const firstAssetId = seedResult.asset_ids[0];
-    await page.getByTestId(`asset-expand-btn-${firstAssetId}`).click({ force: true });
+    const expandBtn = page.getByTestId(`asset-expand-btn-${firstAssetId}`);
+    await expect(expandBtn).toBeAttached({ timeout: 5_000 });
+    await expandBtn.evaluate((el: HTMLElement) => el.click());
 
     // Detail panel should appear with locations tab active
     const panel = page.getByTestId(`asset-detail-panel-${firstAssetId}`);
@@ -81,7 +84,9 @@ test.describe("Assets Inventory", () => {
     await expect(page.getByTestId("assets-table")).toBeVisible({ timeout: 10_000 });
 
     const firstAssetId = seedResult.asset_ids[0];
-    await page.getByTestId(`asset-expand-btn-${firstAssetId}`).click({ force: true });
+    const expandBtn = page.getByTestId(`asset-expand-btn-${firstAssetId}`);
+    await expect(expandBtn).toBeAttached({ timeout: 5_000 });
+    await expandBtn.evaluate((el: HTMLElement) => el.click());
 
     const panel = page.getByTestId(`asset-detail-panel-${firstAssetId}`);
     await expect(panel).toBeVisible({ timeout: 5_000 });
@@ -92,7 +97,7 @@ test.describe("Assets Inventory", () => {
 
     // Switch to Cloud tab
     await page.getByTestId("asset-tab-cloud").click();
-    await expect(panel.getByText("s3_bucket").or(panel.getByText("S3"))).toBeVisible({ timeout: 5_000 });
+    await expect(panel.getByText("s3_bucket").first()).toBeVisible({ timeout: 5_000 });
   });
 
   test("type filter narrows results", async ({ page }) => {

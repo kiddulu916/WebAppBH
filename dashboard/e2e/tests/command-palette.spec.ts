@@ -6,6 +6,7 @@ test.describe("Command Palette", () => {
   let targetId: number;
 
   test.beforeAll(async () => {
+    await apiClient.killAll().catch(() => {});
     const res = await apiClient.createTarget(factories.target());
     targetId = res.target_id;
   });

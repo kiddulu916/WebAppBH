@@ -3,6 +3,10 @@ import { apiClient } from "../helpers/api-client";
 import { factories } from "../helpers/seed-factories";
 
 test.describe("Edge Cases", () => {
+  test.beforeEach(async () => {
+    await apiClient.killAll().catch(() => {});
+  });
+
   test("special characters in company name render safely", async ({ page }) => {
     const target = factories.target({
       company_name: `O'Reilly & Co. <test> "quoted"`,

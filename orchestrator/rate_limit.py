@@ -1,18 +1,22 @@
 """Redis-backed sliding window rate limiter."""
 from __future__ import annotations
 
+import os
 import time
 from fastapi import Request, HTTPException
 from lib_webbh.messaging import get_redis
 
 
+_mutate_max = int(os.getenv("RATE_LIMIT_MUTATE", "60"))
+_read_max = int(os.getenv("RATE_LIMIT_READ", "200"))
+
 # Defaults: 60 requests per minute for mutating, 200 for reads
 RATE_LIMITS = {
-    "POST": {"window": 60, "max_requests": 60},
-    "PATCH": {"window": 60, "max_requests": 60},
-    "PUT": {"window": 60, "max_requests": 60},
-    "DELETE": {"window": 60, "max_requests": 60},
-    "GET": {"window": 60, "max_requests": 200},
+    "POST": {"window": 60, "max_requests": _mutate_max},
+    "PATCH": {"window": 60, "max_requests": _mutate_max},
+    "PUT": {"window": 60, "max_requests": _mutate_max},
+    "DELETE": {"window": 60, "max_requests": _mutate_max},
+    "GET": {"window": 60, "max_requests": _read_max},
 }
 
 

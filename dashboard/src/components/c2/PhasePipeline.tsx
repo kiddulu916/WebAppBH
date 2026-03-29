@@ -63,18 +63,18 @@ export default function PhasePipeline({ jobs }: PhasePipelineProps) {
   return (
     <div className="rounded-lg border border-border bg-bg-secondary p-4">
       <div className="section-label mb-3">PHASE PIPELINE</div>
-      <div className="flex items-start gap-1 overflow-x-auto pb-1">
+      <div className="flex justify-evenly w-full items-start overflow-x-auto pb-1">
         {PHASES.map((phase, i) => {
           const isCompleted = completedSet.has(phase);
           const isActive = activeSet.has(phase);
           const isPending = !isCompleted && !isActive;
 
           return (
-            <div key={phase} className="flex items-start">
+            <div key={phase} className="flex items-start gap-8">
               {i > 0 && (
                 <div className="mt-3 flex items-center">
                   <div
-                    className={`h-px w-3 shrink-0 ${
+                    className={`h-px w-6 shrink-0 ${
                       isCompleted || isActive
                         ? "bg-neon-green/50"
                         : "bg-border"

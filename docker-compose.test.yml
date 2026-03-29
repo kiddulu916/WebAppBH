@@ -4,3 +4,5 @@ services:
   orchestrator:
     environment:
       - ENABLE_TEST_SEED=true
+      - RATE_LIMIT_MUTATE=600
+      - RATE_LIMIT_READ=2000

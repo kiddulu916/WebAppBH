@@ -617,7 +617,7 @@ function AttackGraphInner() {
   /* Render: Empty state                                               */
   /* ---------------------------------------------------------------- */
 
-  if (apiNodes.length === 0) {
+  if (apiNodes.filter((n) => n.type !== "target").length === 0) {
     return (
       <div
         data-testid="graph-empty-state"
@@ -642,6 +642,7 @@ function AttackGraphInner() {
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}

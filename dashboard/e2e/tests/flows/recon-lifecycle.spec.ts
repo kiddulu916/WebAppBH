@@ -11,19 +11,31 @@ test.describe("Flow: Full Recon Lifecycle", () => {
   });
 
   test("create target → apply playbook → scan → view assets → view findings → create bounty", async ({ page }) => {
+    // Kill any active jobs that would block target creation (409 enforcement)
+    await apiClient.killAll().catch(() => {});
+
     // 1. Create target via scope builder wizard
     const targetData = factories.target();
     baseDomain = targetData.base_domain;
 
     await page.goto("/campaign");
-    await page.getByTestId("scope-company-input").fill(targetData.company_name);
+    // Wait for scope builder to render (system check must pass first)
+    const companyInput = page.getByTestId("scope-company-input");
+    await expect(companyInput).toBeVisible({ timeout: 10_000 });
+    await companyInput.fill(targetData.company_name);
     await page.getByTestId("scope-domain-input").fill(baseDomain);
-    await page.getByTestId("scope-next-btn").click();
-    // Skip remaining scope steps
+
+    // Navigate through wizard steps (0→1→2→3→4)
+    const nextBtn = page.getByTestId("scope-next-btn");
+    await nextBtn.click();
     for (let i = 0; i < 3; i++) {
-      await page.getByTestId("scope-next-btn").click();
+      await expect(nextBtn).toBeVisible({ timeout: 2_000 });
+      await nextBtn.click();
     }
-    await page.getByTestId("scope-submit-btn").click();
+    // At step 4, submit button replaces next button
+    const submitBtn = page.getByTestId("scope-submit-btn");
+    await expect(submitBtn).toBeVisible({ timeout: 2_000 });
+    await submitBtn.click();
     await page.waitForURL("**/campaign/c2", { timeout: 15_000 });
 
     // Get the target ID from API
@@ -48,7 +60,7 @@ test.describe("Flow: Full Recon Lifecycle", () => {
     // 5. Navigate to findings → verify vulns listed
     await page.getByRole("link", { name: "Findings" }).click();
     await page.waitForURL("**/campaign/findings");
-    await expect(page.getByText("SQL Injection")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("SQL Injection").first()).toBeVisible({ timeout: 10_000 });
 
     // 6. Navigate to bounties → verify page loads
     await page.getByRole("link", { name: "Bounties" }).click();

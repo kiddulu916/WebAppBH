@@ -7,6 +7,8 @@ test.describe("Flow: Worker Execution Monitoring", () => {
   let baseDomain: string;
 
   test.beforeAll(async () => {
+    // Kill active jobs so target creation isn't blocked by 409
+    await apiClient.killAll().catch(() => {});
     const data = factories.target();
     baseDomain = data.base_domain;
     const res = await apiClient.createTarget(data);
@@ -54,7 +56,7 @@ test.describe("Flow: Worker Execution Monitoring", () => {
     // 7. Verify findings page shows seeded vulns
     await page.getByRole("link", { name: "Findings" }).click();
     await page.waitForURL("**/campaign/findings");
-    await expect(page.getByText("SQL Injection")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("SQL Injection").first()).toBeVisible({ timeout: 10_000 });
   });
 
   test("SSE disconnect shows connection-lost and reconnect works", async ({ page }) => {
@@ -76,7 +78,7 @@ test.describe("Flow: Worker Execution Monitoring", () => {
 
     // Check for connection-lost indicator
     await expect(
-      page.getByTestId("flow-connection-lost").or(page.getByText(/connection lost/i).or(page.getByText(/failed/i)))
+      page.getByTestId("flow-connection-lost")
     ).toBeVisible({ timeout: 5_000 });
 
     // Restore and verify recovery

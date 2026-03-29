@@ -8,6 +8,8 @@ test.describe("Flow: Triage Workflow", () => {
   let seedResult: { vuln_ids: number[] };
 
   test.beforeAll(async () => {
+    // Kill active jobs so target creation isn't blocked by 409
+    await apiClient.killAll().catch(() => {});
     const data = factories.target();
     baseDomain = data.base_domain;
     const res = await apiClient.createTarget(data);
@@ -32,7 +34,7 @@ test.describe("Flow: Triage Workflow", () => {
     if (await filter.isVisible().catch(() => false)) {
       await filter.fill("critical");
     }
-    await expect(page.getByText("SQL Injection")).toBeVisible();
+    await expect(page.getByText("SQL Injection").first()).toBeVisible();
 
     // 3. Open correlation view
     const correlationBtn = page.getByTestId("correlation-view");
@@ -61,11 +63,11 @@ test.describe("Flow: Triage Workflow", () => {
     // 5. Update bounty status
     await apiClient.updateBounty(bounty.id, { status: "submitted" });
     await page.reload();
-    await expect(page.getByText(/submitted/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId(`bounty-status-${bounty.id}`)).toContainText(/submitted/i, { timeout: 10_000 });
 
     // 6. Update payout and verify persistence
     await apiClient.updateBounty(bounty.id, { actual_payout: 750 });
     await page.reload();
-    await expect(page.getByText("750")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("750").first()).toBeVisible({ timeout: 10_000 });
   });
 });

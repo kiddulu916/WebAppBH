@@ -32,6 +32,7 @@ from lib_webbh import (
     push_task,
     setup_logger,
 )
+from lib_webbh.database import MobileApp, Vulnerability
 
 from orchestrator import worker_manager
 
@@ -46,13 +47,18 @@ ZOMBIE_TIMEOUT = int(os.environ.get("ZOMBIE_TIMEOUT", "600"))         # 10 minut
 PARAM_THRESHOLD = int(os.environ.get("PARAM_THRESHOLD", "20"))         # unique keys
 ZOMBIE_MAX_RETRIES = int(os.environ.get("ZOMBIE_MAX_RETRIES", "3"))
 
-# Worker image names (Phase 4+ will supply the real images)
+# Worker image names
 WORKER_IMAGES = {
-    "recon":           os.environ.get("WORKER_IMAGE_RECON",    "webbh/recon-core:latest"),
-    "cloud_testing":   os.environ.get("WORKER_IMAGE_CLOUD",   "webbh/cloud-worker:latest"),
-    "fuzzing":         os.environ.get("WORKER_IMAGE_FUZZING",  "webbh/fuzzing-worker:latest"),
-    "webapp_testing":  os.environ.get("WORKER_IMAGE_WEBAPP",   "webbh/webapp-worker:latest"),
-    "api_testing":     os.environ.get("WORKER_IMAGE_API",      "webbh/api-worker:latest"),
+    "recon":           os.environ.get("WORKER_IMAGE_RECON",      "webbh/recon-core:latest"),
+    "cloud_testing":   os.environ.get("WORKER_IMAGE_CLOUD",      "webbh/cloud-worker:latest"),
+    "fuzzing":         os.environ.get("WORKER_IMAGE_FUZZING",    "webbh/fuzzing-worker:latest"),
+    "webapp_testing":  os.environ.get("WORKER_IMAGE_WEBAPP",     "webbh/webapp-worker:latest"),
+    "api_testing":     os.environ.get("WORKER_IMAGE_API",        "webbh/api-worker:latest"),
+    "network":         os.environ.get("WORKER_IMAGE_NETWORK",    "webbh/network-worker:latest"),
+    "mobile":          os.environ.get("WORKER_IMAGE_MOBILE",     "webbh/mobile-worker:latest"),
+    "chain":           os.environ.get("WORKER_IMAGE_CHAIN",      "webbh/chain-worker:latest"),
+    "vulnscan":        os.environ.get("WORKER_IMAGE_VULNSCAN",   "webbh/vuln-scanner:latest"),
+    "reporting":       os.environ.get("WORKER_IMAGE_REPORTING",  "webbh/reporting-worker:latest"),
 }
 
 # Statuses that indicate a job is active and should not be re-triggered
@@ -390,6 +396,176 @@ async def _check_chain_trigger() -> None:
             await _trigger_chain_worker(target_id, worker_key)
 
 
+async def _check_network_trigger() -> None:
+    """Trigger network worker when non-web ports are open (not 80/443)."""
+    async with get_session() as session:
+        active_sub = (
+            select(JobState.target_id)
+            .where(
+                JobState.container_name.like("webbh-network-%"),
+                JobState.status.in_(ACTIVE_STATUSES),
+            )
+        ).subquery()
+
+        completed_sub = (
+            select(JobState.target_id)
+            .where(
+                JobState.container_name.like("webbh-network-%"),
+                JobState.status.in_(["COMPLETED", "KILLED"]),
+            )
+        ).subquery()
+
+        stmt = (
+            select(Asset.target_id)
+            .join(Location, Location.asset_id == Asset.id)
+            .where(
+                Location.state == "open",
+                Location.port.notin_([80, 443]),
+                Asset.target_id.notin_(select(active_sub.c.target_id)),
+                Asset.target_id.notin_(select(completed_sub.c.target_id)),
+            )
+            .group_by(Asset.target_id)
+        )
+        result = await session.execute(stmt)
+        target_ids = [row[0] for row in result.all()]
+
+    for tid in target_ids:
+        logger.info("Network trigger fired", extra={"target_id": tid})
+        await _trigger_worker(tid, "network", "port_discovery")
+
+
+async def _check_vulnscan_trigger() -> None:
+    """Trigger vuln scanner when fuzzing/webapp/api workers complete."""
+    async with get_session() as session:
+        active_sub = (
+            select(JobState.target_id)
+            .where(
+                JobState.container_name.like("webbh-vulnscan-%"),
+                JobState.status.in_(ACTIVE_STATUSES),
+            )
+        ).subquery()
+
+        vulnscan_done_sub = (
+            select(
+                JobState.target_id,
+                func.max(JobState.last_seen).label("done_at"),
+            )
+            .where(
+                JobState.container_name.like("webbh-vulnscan-%"),
+                JobState.status.in_(["COMPLETED", "FAILED"]),
+            )
+            .group_by(JobState.target_id)
+        ).subquery()
+
+        # Find targets where fuzzing/webapp/api completed after last vulnscan
+        prereq_workers = ["webbh-fuzzing-%", "webbh-webapp_testing-%", "webbh-api_testing-%"]
+        conditions = [JobState.container_name.like(pat) for pat in prereq_workers]
+
+        from sqlalchemy import or_
+
+        stmt = (
+            select(JobState.target_id)
+            .outerjoin(vulnscan_done_sub, vulnscan_done_sub.c.target_id == JobState.target_id)
+            .where(
+                or_(*conditions),
+                JobState.status == "COMPLETED",
+                JobState.target_id.notin_(select(active_sub.c.target_id)),
+                JobState.last_seen > func.coalesce(
+                    vulnscan_done_sub.c.done_at,
+                    datetime(1970, 1, 1),
+                ),
+            )
+            .group_by(JobState.target_id)
+        )
+        result = await session.execute(stmt)
+        target_ids = [row[0] for row in result.all()]
+
+    for tid in target_ids:
+        logger.info("Vulnscan trigger fired", extra={"target_id": tid})
+        await _trigger_worker(tid, "vulnscan", "nuclei_sweep")
+
+
+async def _check_mobile_trigger() -> None:
+    """Trigger mobile worker when MobileApp records exist with no active mobile job."""
+    async with get_session() as session:
+        active_sub = (
+            select(JobState.target_id)
+            .where(
+                JobState.container_name.like("webbh-mobile-%"),
+                JobState.status.in_(ACTIVE_STATUSES),
+            )
+        ).subquery()
+
+        completed_sub = (
+            select(JobState.target_id)
+            .where(
+                JobState.container_name.like("webbh-mobile-%"),
+                JobState.status.in_(["COMPLETED", "KILLED"]),
+            )
+        ).subquery()
+
+        stmt = (
+            select(MobileApp.target_id)
+            .where(
+                MobileApp.target_id.notin_(select(active_sub.c.target_id)),
+                MobileApp.target_id.notin_(select(completed_sub.c.target_id)),
+            )
+            .group_by(MobileApp.target_id)
+        )
+        result = await session.execute(stmt)
+        target_ids = [row[0] for row in result.all()]
+
+    for tid in target_ids:
+        logger.info("Mobile trigger fired", extra={"target_id": tid})
+        await _trigger_worker(tid, "mobile", "acquire_decompile")
+
+
+async def _check_reporting_trigger() -> None:
+    """Trigger reporting worker when chain worker completes for a target."""
+    async with get_session() as session:
+        active_sub = (
+            select(JobState.target_id)
+            .where(
+                JobState.container_name.like("webbh-reporting-%"),
+                JobState.status.in_(ACTIVE_STATUSES),
+            )
+        ).subquery()
+
+        reporting_done_sub = (
+            select(
+                JobState.target_id,
+                func.max(JobState.last_seen).label("done_at"),
+            )
+            .where(
+                JobState.container_name.like("webbh-reporting-%"),
+                JobState.status.in_(["COMPLETED", "FAILED"]),
+            )
+            .group_by(JobState.target_id)
+        ).subquery()
+
+        # Trigger when chain worker completed after last report
+        stmt = (
+            select(JobState.target_id)
+            .outerjoin(reporting_done_sub, reporting_done_sub.c.target_id == JobState.target_id)
+            .where(
+                JobState.container_name.like("webbh-chain-%"),
+                JobState.status == "COMPLETED",
+                JobState.target_id.notin_(select(active_sub.c.target_id)),
+                JobState.last_seen > func.coalesce(
+                    reporting_done_sub.c.done_at,
+                    datetime(1970, 1, 1),
+                ),
+            )
+            .group_by(JobState.target_id)
+        )
+        result = await session.execute(stmt)
+        target_ids = [row[0] for row in result.all()]
+
+    for tid in target_ids:
+        logger.info("Reporting trigger fired", extra={"target_id": tid})
+        await _trigger_worker(tid, "reporting", "data_gathering")
+
+
 # ---------------------------------------------------------------------------
 # Main event loop
 # ---------------------------------------------------------------------------
@@ -406,7 +582,11 @@ async def run_event_loop() -> None:
             await _check_cloud_trigger()
             await _check_web_trigger()
             await _check_api_trigger()
+            await _check_network_trigger()
+            await _check_mobile_trigger()
+            await _check_vulnscan_trigger()
             await _check_chain_trigger()
+            await _check_reporting_trigger()
         except Exception:
             logger.exception("Error in event loop cycle")
 

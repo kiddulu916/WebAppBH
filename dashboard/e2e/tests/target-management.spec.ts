@@ -8,6 +8,7 @@ test.describe("Target Management", () => {
 
   test.beforeAll(async () => {
     for (let i = 0; i < 3; i++) {
+      await apiClient.killAll().catch(() => {});
       const targetData = factories.target({ company_name: `E2E-Mgmt-${i}-${Date.now()}` });
       baseDomains.push(targetData.base_domain);
       const res = await apiClient.createTarget(targetData);

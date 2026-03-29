@@ -7,6 +7,7 @@ test.describe("Findings Browser", () => {
   let baseDomain: string;
 
   test.beforeAll(async () => {
+    await apiClient.killAll().catch(() => {});
     const targetData = factories.target();
     baseDomain = targetData.base_domain;
     const res = await apiClient.createTarget(targetData);
@@ -64,6 +65,8 @@ test.describe("Findings Browser", () => {
   });
 
   test("shows empty state when no findings exist", async ({ page }) => {
+    // Kill active jobs so create_target won't be blocked by 409
+    await apiClient.killAll().catch(() => {});
     // Create a fresh target with no seed data
     const freshTarget = factories.target();
     const res = await apiClient.createTarget(freshTarget);
@@ -85,12 +88,16 @@ test.describe("Findings Browser", () => {
     await page.getByRole("link", { name: "Findings" }).click();
     await expect(page.getByTestId("findings-table")).toBeVisible({ timeout: 10_000 });
 
-    // Filter by a severity that has no results
+    // Filter by a term that matches nothing in seeded data
+    const table = page.getByTestId("findings-table");
+    // Ensure data is loaded before filtering (wait for a data row)
+    await expect(table.getByText("SQL Injection")).toBeVisible({ timeout: 10_000 });
+
     const filter = page.getByTestId("severity-filter");
     if (await filter.isVisible().catch(() => false)) {
-      await filter.fill("info");
-      // No info-level vulns seeded — table should show empty or no-match
-      await expect(page.getByText(/no.*found/i).or(page.getByText(/no.*match/i)).or(page.getByTestId("findings-empty-state"))).toBeVisible({ timeout: 5_000 });
+      await filter.fill("zzz_nonexistent_term");
+      // Table should show "No data" empty row instead of findings
+      await expect(table.getByText("No data")).toBeVisible({ timeout: 10_000 });
     }
   });
 });

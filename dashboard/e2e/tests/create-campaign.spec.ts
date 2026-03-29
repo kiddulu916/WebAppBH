@@ -11,6 +11,7 @@ test.describe("Create Campaign", () => {
   });
 
   test("complete scope builder wizard and see target in C2", async ({ page }) => {
+    await apiClient.killAll().catch(() => {});
     const companyName = `E2E-Wizard-${Date.now()}`;
     const domain = `wizard-${Date.now()}.example.com`;
 

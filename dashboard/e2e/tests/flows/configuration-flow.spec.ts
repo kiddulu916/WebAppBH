@@ -7,6 +7,7 @@ test.describe("Flow: Configuration", () => {
   let baseDomain: string;
 
   test.beforeAll(async () => {
+    await apiClient.killAll().catch(() => {});
     const data = factories.target();
     baseDomain = data.base_domain;
     const res = await apiClient.createTarget(data);

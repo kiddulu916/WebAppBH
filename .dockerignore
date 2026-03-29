@@ -1,0 +1,7 @@
+dashboard/node_modules
+dashboard/.next
+dashboard/playwright-report
+dashboard/test-results
+dashboard/e2e
+.git
+docs

@@ -7,6 +7,7 @@ test.describe("API Error Handling", () => {
   let baseDomain: string;
 
   test.beforeAll(async () => {
+    await apiClient.killAll().catch(() => {});
     const data = factories.target();
     baseDomain = data.base_domain;
     const res = await apiClient.createTarget(data);
@@ -62,11 +63,23 @@ test.describe("API Error Handling", () => {
     await page.waitForURL("**/campaign/c2");
     await page.getByRole("link", { name: "Phase Flow" }).click();
 
-    // Block SSE endpoint
-    await page.route("**/api/v1/stream/**", (route) => route.abort());
+    // Wait for flow page to load
+    await page.waitForURL("**/campaign/flow");
+    await expect(page.getByTestId("flow-playbook-select")).toBeVisible({ timeout: 10_000 });
 
-    // The flow monitor polls via HTTP — check for connection-lost or empty monitor
-    await expect(page.getByTestId("flow-connection-lost").or(page.getByTestId("flow-empty-monitor"))).toBeVisible({ timeout: 15_000 });
+    // Block execution state polling endpoint (flow uses HTTP polling, not SSE)
+    await page.route("**/api/v1/targets/*/execution", (route) =>
+      route.abort("connectionrefused")
+    );
+
+    // Wait for next poll cycle to fail
+    await page.waitForTimeout(12_000);
+
+    // Check for connection-lost indicator or empty monitor (either is valid)
+    await expect(
+      page.getByTestId("flow-connection-lost")
+        .or(page.getByTestId("flow-empty-monitor"))
+    ).toBeVisible({ timeout: 5_000 });
   });
 
   test("no unhandled promise rejections on error pages", async ({ page }) => {

@@ -9,3 +9,6 @@ __pycache__/
 dist/
 build/
 .worktrees/
+.venv/
+playwright-report/
+test-results/

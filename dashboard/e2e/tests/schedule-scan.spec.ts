@@ -8,6 +8,7 @@ test.describe("Schedule Scan", () => {
   const scheduleIds: number[] = [];
 
   test.beforeAll(async () => {
+    await apiClient.killAll().catch(() => {});
     const targetData = factories.target();
     baseDomain = targetData.base_domain;
     const res = await apiClient.createTarget(targetData);

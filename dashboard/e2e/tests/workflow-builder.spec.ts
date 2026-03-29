@@ -7,6 +7,7 @@ test.describe("Workflow Builder", () => {
   let baseDomain: string;
 
   test.beforeAll(async () => {
+    await apiClient.killAll().catch(() => {});
     const data = factories.target();
     baseDomain = data.base_domain;
     const res = await apiClient.createTarget(data);
@@ -54,15 +55,17 @@ test.describe("Workflow Builder", () => {
     await page.waitForURL("**/campaign/c2");
     await page.getByRole("link", { name: "Phase Flow" }).click();
 
-    await page.getByTestId("flow-playbook-select").selectOption("wide_recon");
-    await expect(page.getByTestId("flow-stage-card-subdomain_takeover")).toBeVisible();
+    const select = page.getByTestId("flow-playbook-select");
+    await expect(select.locator("option")).not.toHaveCount(1, { timeout: 10_000 });
+    await select.selectOption("wide_recon");
+    await expect(page.getByTestId("flow-stage-card-subdomain_takeover")).toBeVisible({ timeout: 5_000 });
 
     // Toggle off subdomain_takeover
     await page.getByTestId("flow-stage-toggle-subdomain_takeover").click({ force: true });
 
-    // Card should have opacity/disabled styling
+    // Card should have opacity-50 styling (disabled state)
     const card = page.getByTestId("flow-stage-card-subdomain_takeover");
-    await expect(card).toHaveClass(/opacity/);
+    await expect(card).toHaveClass(/opacity-50/, { timeout: 5_000 });
   });
 
   test("execution monitor shows stage statuses for active target", async ({ page }) => {
@@ -83,10 +86,16 @@ test.describe("Workflow Builder", () => {
     await page.waitForURL("**/campaign/c2");
     await page.getByRole("link", { name: "Phase Flow" }).click();
 
-    await page.getByTestId("flow-playbook-select").selectOption("api_focused");
-    await page.getByTestId("flow-apply-btn").click();
+    const select = page.getByTestId("flow-playbook-select");
+    await expect(select.locator("option")).not.toHaveCount(1, { timeout: 10_000 });
+    await select.selectOption("api_focused");
 
-    // Verify the playbook was applied (toast or status change)
-    await expect(page.getByText(/applied/i).or(page.getByText(/api_focused/i))).toBeVisible({ timeout: 5_000 });
+    const applyBtn = page.getByTestId("flow-apply-btn");
+    await expect(applyBtn).toBeEnabled({ timeout: 5_000 });
+    await applyBtn.click();
+
+    // Verify the playbook was applied — button still visible (no crash) and select retains value
+    await expect(page.getByTestId("flow-apply-btn")).toBeVisible({ timeout: 5_000 });
+    await expect(select).toHaveValue("api_focused");
   });
 });

@@ -19,6 +19,31 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** createTarget with automatic killAll retry on 409 (race with event engine). */
+async function createTargetWithRetry(data: {
+  company_name: string;
+  base_domain: string;
+  target_profile?: Record<string, unknown>;
+  playbook?: string;
+}): Promise<{ target_id: number; company_name: string; base_domain: string }> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await req<{ target_id: number; company_name: string; base_domain: string }>(
+        "/targets",
+        { method: "POST", body: JSON.stringify(data) },
+      );
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("409") && attempt < 4) {
+        await req<{ success: boolean }>("/kill", { method: "POST" });
+        await new Promise((r) => setTimeout(r, 500));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("createTarget: exhausted retries");
+}
+
 export const apiClient = {
   health: () => req<{ status: string }>("/health"),
 
@@ -27,11 +52,7 @@ export const apiClient = {
     base_domain: string;
     target_profile?: Record<string, unknown>;
     playbook?: string;
-  }) =>
-    req<{ target_id: number; company_name: string; base_domain: string }>(
-      "/targets",
-      { method: "POST", body: JSON.stringify(data) },
-    ),
+  }) => createTargetWithRetry(data),
 
   getTargets: () =>
     req<{
@@ -156,6 +177,9 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify({ target_id: targetId, event_data: eventData }),
     }),
+
+  killAll: () =>
+    req<{ success: boolean; killed_count: number }>("/kill", { method: "POST" }),
 
   search: (targetId: number, query: string) =>
     req<{ results: Array<{ type: string; id: number; value: string }> }>(
