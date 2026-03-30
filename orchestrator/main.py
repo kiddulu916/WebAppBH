@@ -294,6 +294,9 @@ async def health():
 
 app.include_router(_health_router)
 
+from orchestrator.routes.campaigns import router as campaigns_router
+app.include_router(campaigns_router)
+
 from orchestrator.rate_limit import rate_limit_check  # noqa: E402
 from orchestrator.metrics import metrics_response, api_latency, targets_created, bounties_submitted, scans_triggered, connected_sse_clients  # noqa: E402
 import time as _time  # noqa: E402
