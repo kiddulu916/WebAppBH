@@ -1,0 +1,37 @@
+# workers/info_gathering/concurrency.py
+import asyncio
+import os
+
+HEAVY_LIMIT = 2
+LIGHT_LIMIT = int(os.environ.get("LIGHT_CONCURRENCY", str(os.cpu_count() or 4)))
+
+TOOL_WEIGHTS = {
+    "DorkEngine": "LIGHT",
+    "ArchiveProber": "LIGHT",
+    "Nmap": "HEAVY",
+    "WhatWeb": "LIGHT",
+    "Httpx": "LIGHT",
+    "MetafileParser": "LIGHT",
+    "Subfinder": "HEAVY",
+    "Assetfinder": "LIGHT",
+    "AmassPassive": "HEAVY",
+    "AmassActive": "HEAVY",
+    "Massdns": "HEAVY",
+    "VHostProber": "LIGHT",
+    "CommentHarvester": "LIGHT",
+    "MetadataExtractor": "LIGHT",
+    "FormMapper": "LIGHT",
+    "Paramspider": "LIGHT",
+    "Katana": "HEAVY",
+    "Hakrawler": "LIGHT",
+    "Wappalyzer": "LIGHT",
+    "CookieFingerprinter": "LIGHT",
+    "Webanalyze": "LIGHT",
+    "Naabu": "HEAVY",
+    "Waybackurls": "LIGHT",
+    "ArchitectureModeler": "LIGHT",
+}
+
+
+def get_semaphores() -> tuple[asyncio.Semaphore, asyncio.Semaphore]:
+    return asyncio.Semaphore(HEAVY_LIMIT), asyncio.Semaphore(LIGHT_LIMIT)
