@@ -85,6 +85,34 @@ services:
       - webbh-net
 
   # ---------------------------------------------------------------------------
+  # Info Gathering Worker — WSTG 4.1 information gathering
+  # ---------------------------------------------------------------------------
+  info-gathering:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.info_gathering
+    container_name: webbh-info-gathering
+    hostname: webbh-info-gathering
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
   # Recon-Core — reconnaissance worker
   # ---------------------------------------------------------------------------
   recon-core:
@@ -412,6 +440,48 @@ services:
       REDIS_PORT: "6379"
     volumes:
       - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Traffic Proxy — mitmproxy-based request interceptor
+  # ---------------------------------------------------------------------------
+  proxy:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.proxy
+    container_name: webbh-proxy
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Callback Server — OOB interaction listener
+  # ---------------------------------------------------------------------------
+  callback:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.callback
+    container_name: webbh-callback
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+      - "9091:9091"
+      - "9053:9053/udp"
+      - "9443:9443"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     networks:
       - webbh-net
 
