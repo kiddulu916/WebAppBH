@@ -251,25 +251,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     os.environ.setdefault(key, value)
         logger.info("Loaded intel API keys from .env.intel")
 
+    # Initialize resource guard and event engine
+    from orchestrator.resource_guard import ResourceGuard
+    from orchestrator.event_engine import EventEngine
+
+    resource_guard = ResourceGuard()
+    event_engine = EventEngine(resource_guard)
+
+    # Set guard for API endpoints
+    set_guard(resource_guard)
+
     # Start background tasks
-    engine_task = asyncio.create_task(event_engine.run_event_loop(), name="event-engine")
-    heartbeat_task = asyncio.create_task(event_engine.run_heartbeat(), name="heartbeat")
-    redis_task = asyncio.create_task(event_engine.run_redis_listener(), name="redis-listener")
-    autoscale_task = asyncio.create_task(event_engine.run_autoscaler(), name="autoscaler")
+    engine_task = asyncio.create_task(event_engine.run(), name="event-engine")
     logger.info("Background tasks started")
 
     yield
 
     # Shutdown
     engine_task.cancel()
-    heartbeat_task.cancel()
-    redis_task.cancel()
-    autoscale_task.cancel()
-    for task in (engine_task, heartbeat_task, redis_task, autoscale_task):
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+    try:
+        await engine_task
+    except asyncio.CancelledError:
+        pass
     logger.info("Orchestrator stopped")
 
 
@@ -296,6 +299,9 @@ app.include_router(_health_router)
 
 from orchestrator.routes.campaigns import router as campaigns_router
 app.include_router(campaigns_router)
+
+from orchestrator.routes.resources import router as resources_router, set_guard
+app.include_router(resources_router)
 
 from orchestrator.rate_limit import rate_limit_check  # noqa: E402
 from orchestrator.metrics import metrics_response, api_latency, targets_created, bounties_submitted, scans_triggered, connected_sse_clients  # noqa: E402
