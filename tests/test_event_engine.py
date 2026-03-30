@@ -1,476 +1,56 @@
 # tests/test_event_engine.py
-"""Tests for orchestrator.event_engine — triggers and heartbeat."""
-
-import asyncio
-import os
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from datetime import datetime, timezone, timedelta
 
-os.environ["DB_DRIVER"] = "sqlite+aiosqlite"
-os.environ["DB_NAME"] = ":memory:"
-
-import tests._patch_logger  # noqa: F401
-
-import pytest_asyncio
-from lib_webbh.database import (
-    get_engine, get_session, Base,
-    Target, Asset, Location, Parameter, CloudAsset, JobState, Alert,
-)
-
-# Patch worker_manager for all event_engine tests
-@pytest.fixture(autouse=True)
-def mock_wm():
-    with patch("orchestrator.event_engine.worker_manager") as wm:
-        wm.start_worker = AsyncMock(return_value="fake-cid")
-        wm.stop_worker = AsyncMock(return_value=True)
-        wm.restart_worker = AsyncMock(return_value=True)
-        wm.kill_worker = AsyncMock(return_value=True)
-        wm.should_queue = AsyncMock(return_value=False)
-        wm.get_container_status = AsyncMock(return_value=None)
-        yield wm
-
-
-@pytest.fixture(autouse=True)
-def mock_push():
-    with patch("orchestrator.event_engine.push_task", new_callable=AsyncMock) as pt:
-        yield pt
-
-
-@pytest_asyncio.fixture
-async def db():
-    engine = get_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-    yield engine
-
-
-@pytest_asyncio.fixture
-async def seed_target_with_open_port(db):
-    """Target with an asset that has port 443 state='open'."""
-    async with get_session() as session:
-        t = Target(company_name="WebCorp", base_domain="webcorp.com")
-        session.add(t)
-        await session.commit()
-        await session.refresh(t)
-        a = Asset(target_id=t.id, asset_type="ip", asset_value="10.0.0.1", source_tool="nmap")
-        session.add(a)
-        await session.commit()
-        await session.refresh(a)
-        loc = Location(asset_id=a.id, port=443, protocol="tcp", service="https", state="open")
-        session.add(loc)
-        await session.commit()
-        return t.id
-
-
-@pytest_asyncio.fixture
-async def seed_target_with_closed_port(db):
-    """Target with an asset that has port 443 state='closed'."""
-    async with get_session() as session:
-        t = Target(company_name="ClosedCorp", base_domain="closed.com")
-        session.add(t)
-        await session.commit()
-        await session.refresh(t)
-        a = Asset(target_id=t.id, asset_type="ip", asset_value="10.0.0.2", source_tool="nmap")
-        session.add(a)
-        await session.commit()
-        await session.refresh(a)
-        loc = Location(asset_id=a.id, port=443, protocol="tcp", service="https", state="closed")
-        session.add(loc)
-        await session.commit()
-        return t.id
-
-
-# --- Fix 2: Web trigger must check Location.state ---
-
-@pytest.mark.asyncio
-async def test_web_trigger_fires_for_open_port(seed_target_with_open_port, mock_wm):
-    from orchestrator.event_engine import _check_web_trigger
-    await _check_web_trigger()
-    mock_wm.start_worker.assert_called()
-
-
-@pytest.mark.asyncio
-async def test_web_trigger_ignores_closed_port(seed_target_with_closed_port, mock_wm):
-    from orchestrator.event_engine import _check_web_trigger
-    await _check_web_trigger()
-    mock_wm.start_worker.assert_not_called()
-
-
-# --- Fix 3: Triggers must respect PAUSED and STOPPED statuses ---
-
-@pytest_asyncio.fixture
-async def seed_target_with_paused_web_job(db):
-    """Target with open port 443 AND a PAUSED fuzzing job."""
-    async with get_session() as session:
-        t = Target(company_name="PausedWeb", base_domain="pausedweb.com")
-        session.add(t)
-        await session.commit()
-        await session.refresh(t)
-        a = Asset(target_id=t.id, asset_type="ip", asset_value="10.0.0.3", source_tool="nmap")
-        session.add(a)
-        await session.commit()
-        await session.refresh(a)
-        loc = Location(asset_id=a.id, port=443, protocol="tcp", service="https", state="open")
-        session.add(loc)
-        await session.commit()
-        job = JobState(target_id=t.id, container_name="webbh-fuzzing-t" + str(t.id), status="PAUSED", current_phase="fuzzing")
-        session.add(job)
-        await session.commit()
-        return t.id
-
-
-@pytest.mark.asyncio
-async def test_web_trigger_does_not_override_paused_job(seed_target_with_paused_web_job, mock_wm):
-    from orchestrator.event_engine import _check_web_trigger
-    await _check_web_trigger()
-    mock_wm.start_worker.assert_not_called()
-
-
-# --- Fix 4: Cloud trigger ignores stale assets ---
-
-@pytest_asyncio.fixture
-async def seed_target_with_stale_cloud_asset(db):
-    """Target with a cloud_asset created BEFORE the last completed cloud job."""
-    async with get_session() as session:
-        t = Target(company_name="StaleCorp", base_domain="stale.com")
-        session.add(t)
-        await session.commit()
-        await session.refresh(t)
-
-        # Cloud asset created first
-        ca = CloudAsset(target_id=t.id, provider="aws", asset_type="s3", url="s3://stale-bucket")
-        session.add(ca)
-        await session.commit()
-
-        # Then a cloud job ran and completed AFTER the asset was created
-        job = JobState(
-            target_id=t.id,
-            container_name=f"webbh-cloud_testing-t{t.id}",
-            status="COMPLETED",
-            current_phase="cloud_enum",
-            last_seen=datetime.now(timezone.utc),
-        )
-        session.add(job)
-        await session.commit()
-        return t.id
-
-
-@pytest_asyncio.fixture
-async def seed_target_with_fresh_cloud_asset(db):
-    """Target with a cloud_asset created AFTER the last completed cloud job."""
-    async with get_session() as session:
-        t = Target(company_name="FreshCorp", base_domain="fresh.com")
-        session.add(t)
-        await session.commit()
-        await session.refresh(t)
-
-        # Old completed job
-        job = JobState(
-            target_id=t.id,
-            container_name=f"webbh-cloud_testing-t{t.id}",
-            status="COMPLETED",
-            current_phase="cloud_enum",
-            last_seen=datetime(2020, 1, 1, tzinfo=timezone.utc),
-        )
-        session.add(job)
-        await session.commit()
-
-        # New cloud asset discovered after the job finished
-        ca = CloudAsset(target_id=t.id, provider="aws", asset_type="s3", url="s3://fresh-bucket")
-        session.add(ca)
-        await session.commit()
-        return t.id
-
-
-@pytest.mark.asyncio
-async def test_cloud_trigger_ignores_stale_assets(seed_target_with_stale_cloud_asset, mock_wm):
-    from orchestrator.event_engine import _check_cloud_trigger
-    await _check_cloud_trigger()
-    mock_wm.start_worker.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_cloud_trigger_fires_for_fresh_assets(seed_target_with_fresh_cloud_asset, mock_wm):
-    from orchestrator.event_engine import _check_cloud_trigger
-    await _check_cloud_trigger()
-    mock_wm.start_worker.assert_called()
-
-
-# --- Fix 9: Heartbeat grace period for vanished containers ---
-
-from orchestrator.worker_manager import ContainerInfo
-
-
-@pytest_asyncio.fixture
-async def seed_running_job_recent(db):
-    """A RUNNING job with recent last_seen (within zombie timeout)."""
-    async with get_session() as session:
-        t = Target(company_name="GraceCorp", base_domain="grace.com")
-        session.add(t)
-        await session.commit()
-        await session.refresh(t)
-        # Use naive UTC datetime — SQLite strips timezone info
-        job = JobState(
-            target_id=t.id,
-            container_name="webbh-fuzzing-tgrace",
-            status="RUNNING",
-            current_phase="fuzzing",
-            last_seen=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=30),
-        )
-        session.add(job)
-        await session.commit()
-        return t.id
-
-
-@pytest.mark.asyncio
-async def test_heartbeat_grace_period_for_vanished_container(seed_running_job_recent, mock_wm):
-    """Container gone but last_seen is recent — should NOT mark FAILED."""
-    mock_wm.get_container_status = AsyncMock(return_value=None)  # container gone
-
-    from orchestrator.event_engine import _heartbeat_cycle
-    await _heartbeat_cycle()
-
-    async with get_session() as session:
-        from sqlalchemy import select
-        result = await session.execute(select(JobState).where(JobState.container_name == "webbh-fuzzing-tgrace"))
-        job = result.scalar_one()
-        # Should still be RUNNING (grace period), NOT FAILED
-        assert job.status == "RUNNING"
-
-
-# --- Fix 10: Zombie cleanup restarts worker with retry limit ---
-
-
-@pytest_asyncio.fixture
-async def seed_zombie_job(db):
-    """A RUNNING job with last_seen beyond zombie timeout, no container."""
-    async with get_session() as session:
-        t = Target(company_name="ZombieCorp", base_domain="zombie.com")
-        session.add(t)
-        await session.commit()
-        await session.refresh(t)
-        # Use naive UTC datetime — SQLite strips timezone info
-        job = JobState(
-            target_id=t.id,
-            container_name="webbh-fuzzing-tzombie",
-            status="RUNNING",
-            current_phase="fuzzing",
-            last_seen=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=700),
-        )
-        session.add(job)
-        await session.commit()
-        return t.id
-
-
-@pytest.mark.asyncio
-async def test_zombie_triggers_restart(seed_zombie_job, mock_wm):
-    """Zombie job should be killed, marked FAILED, and scheduled for delayed restart with backoff."""
-    mock_wm.get_container_status = AsyncMock(return_value=None)
-
-    from orchestrator.event_engine import _heartbeat_cycle
-
-    with patch("orchestrator.event_engine.asyncio") as mock_asyncio:
-        mock_loop = MagicMock()
-        mock_asyncio.get_event_loop.return_value = mock_loop
-        mock_asyncio.gather = asyncio.gather
-        mock_asyncio.sleep = asyncio.sleep
-        await _heartbeat_cycle()
-
-        # Delayed restart should be scheduled via call_later with 30s backoff (first retry)
-        mock_loop.call_later.assert_called_once()
-        backoff_delay = mock_loop.call_later.call_args[0][0]
-        assert backoff_delay == 30  # 30 * (2 ** 0) = 30s for first retry
-
-    # Alert should exist with backoff info
-    async with get_session() as session:
-        from sqlalchemy import select
-        result = await session.execute(select(Alert).where(Alert.alert_type == "ZOMBIE_RESTART"))
-        alert = result.scalar_one()
-        assert "webbh-fuzzing-tzombie" in alert.message
-        assert "backoff" in alert.message
-
-
-@pytest_asyncio.fixture
-async def seed_zombie_job_exceeded_retries(db):
-    """A zombie job that has already been restarted ZOMBIE_MAX_RETRIES times."""
-    async with get_session() as session:
-        t = Target(company_name="MaxRetryCorp", base_domain="maxretry.com")
-        session.add(t)
-        await session.commit()
-        await session.refresh(t)
-        # Use naive UTC datetime — SQLite strips timezone info
-        job = JobState(
-            target_id=t.id,
-            container_name="webbh-fuzzing-tmaxretry",
-            status="RUNNING",
-            current_phase="fuzzing",
-            last_seen=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=700),
-        )
-        session.add(job)
-        await session.commit()
-        # Create 3 prior ZOMBIE_RESTART alerts (at max retries)
-        for i in range(3):
-            alert = Alert(
-                target_id=t.id,
-                alert_type="ZOMBIE_RESTART",
-                message=f"Container webbh-fuzzing-tmaxretry zombie restart #{i+1}",
-            )
-            session.add(alert)
-        await session.commit()
-        return t.id
-
-
-@pytest.mark.asyncio
-async def test_zombie_does_not_restart_after_max_retries(seed_zombie_job_exceeded_retries, mock_wm):
-    """After ZOMBIE_MAX_RETRIES, zombie should be killed but NOT restarted."""
-    mock_wm.get_container_status = AsyncMock(return_value=None)
-
-    with patch("orchestrator.event_engine.ZOMBIE_MAX_RETRIES", 3):
-        from orchestrator.event_engine import _heartbeat_cycle
-        await _heartbeat_cycle()
-
-    # Worker should NOT have been restarted
-    mock_wm.start_worker.assert_not_called()
-
-    # Should have a CRITICAL_ALERT
-    async with get_session() as session:
-        from sqlalchemy import select
-        result = await session.execute(select(Alert).where(Alert.alert_type == "CRITICAL_ALERT"))
-        alerts = result.scalars().all()
-        assert len(alerts) >= 1
-
-
-# --- Fix 14: Batch heartbeat handles mixed job states ---
-
-
-@pytest_asyncio.fixture
-async def seed_multiple_running_jobs(db):
-    """Three RUNNING jobs: one healthy container, one grace period, one zombie."""
-    now = datetime.now(timezone.utc)
-    async with get_session() as session:
-        t = Target(company_name="BatchCorp", base_domain="batch.com")
-        session.add(t)
-        await session.commit()
-        await session.refresh(t)
-
-        # Job 1: healthy (container will be found running)
-        j1 = JobState(target_id=t.id, container_name="webbh-fuzzing-tbatch1", status="RUNNING", current_phase="fuzzing", last_seen=now - timedelta(seconds=10))
-        # Job 2: grace period (container gone, recent last_seen)
-        j2 = JobState(target_id=t.id, container_name="webbh-webapp_testing-tbatch2", status="RUNNING", current_phase="webapp_testing", last_seen=now - timedelta(seconds=30))
-        # Job 3: zombie (container gone, old last_seen)
-        j3 = JobState(target_id=t.id, container_name="webbh-api_testing-tbatch3", status="RUNNING", current_phase="api_testing", last_seen=now - timedelta(seconds=700))
-        session.add_all([j1, j2, j3])
-        await session.commit()
-        return t.id
-
-
-@pytest.mark.asyncio
-async def test_heartbeat_handles_mixed_job_states(seed_multiple_running_jobs, mock_wm):
-    """Heartbeat correctly classifies healthy, grace, and zombie jobs."""
-    healthy_info = ContainerInfo(name="webbh-fuzzing-tbatch1", status="running", image="test:latest")
-
-    async def _status(name):
-        if name == "webbh-fuzzing-tbatch1":
-            return healthy_info
-        return None  # gone
-
-    mock_wm.get_container_status = AsyncMock(side_effect=_status)
-
-    from orchestrator.event_engine import _heartbeat_cycle
-    await _heartbeat_cycle()
-
-    async with get_session() as session:
-        from sqlalchemy import select
-        jobs = {j.container_name: j for j in (await session.execute(select(JobState))).scalars().all()}
-
-    # Healthy: still RUNNING, last_seen updated
-    assert jobs["webbh-fuzzing-tbatch1"].status == "RUNNING"
-    # Grace: still RUNNING (not marked FAILED)
-    assert jobs["webbh-webapp_testing-tbatch2"].status == "RUNNING"
-    # Zombie: marked FAILED
-    assert jobs["webbh-api_testing-tbatch3"].status == "FAILED"
-
-
-# --- Fix 11: Worker env includes API key ---
-
-def test_worker_env_includes_api_key():
-    with patch.dict(os.environ, {"WEB_APP_BH_API_KEY": "secret-key-123"}):
-        from orchestrator.event_engine import _worker_env
-        env = _worker_env(target_id=1)
-        assert env["WEB_APP_BH_API_KEY"] == "secret-key-123"
-
-
-# --- Fix 16/P3: Redis background listener dispatch ---
-
-
-@pytest.mark.asyncio
-async def test_redis_listener_callback_dispatches_web_location(mock_push):
-    """A recon_queue message with asset_type=location and port 443 should push to fuzzing_queue."""
-    from orchestrator.event_engine import _dispatch_recon_event
-
-    msg_data = {
-        "asset_type": "location",
-        "asset_id": 42,
-        "target_id": 1,
-        "port": 443,
-        "state": "open",
-    }
-
-    await _dispatch_recon_event("msg-001", msg_data)
-
-    calls = mock_push.call_args_list
-    queues_pushed = [c[0][0] for c in calls]
-    assert "fuzzing_queue" in queues_pushed
-    assert "webapp_queue" in queues_pushed
-
-
-@pytest.mark.asyncio
-async def test_redis_listener_callback_dispatches_cloud_asset(mock_push):
-    from orchestrator.event_engine import _dispatch_recon_event
-
-    msg_data = {
-        "asset_type": "cloud_asset",
-        "asset_id": 99,
-        "target_id": 2,
-    }
-
-    await _dispatch_recon_event("msg-002", msg_data)
-
-    calls = mock_push.call_args_list
-    queues_pushed = [c[0][0] for c in calls]
-    assert "cloud_queue" in queues_pushed
-
-
-@pytest.mark.asyncio
-async def test_redis_listener_callback_dispatches_param(mock_push):
-    from orchestrator.event_engine import _dispatch_recon_event
-
-    msg_data = {
-        "asset_type": "param",
-        "asset_id": 55,
-        "target_id": 3,
-    }
-
-    await _dispatch_recon_event("msg-003", msg_data)
-
-    calls = mock_push.call_args_list
-    queues_pushed = [c[0][0] for c in calls]
-    assert "api_queue" in queues_pushed
-
-
-@pytest.mark.asyncio
-async def test_redis_listener_callback_ignores_closed_port(mock_push):
-    from orchestrator.event_engine import _dispatch_recon_event
-
-    msg_data = {
-        "asset_type": "location",
-        "asset_id": 42,
-        "target_id": 1,
-        "port": 443,
-        "state": "closed",
-    }
-
-    await _dispatch_recon_event("msg-004", msg_data)
-    mock_push.assert_not_called()
+pytestmark = pytest.mark.anyio
+
+
+async def test_evaluate_target_dispatches_ready_worker(db_session):
+    from orchestrator.event_engine import EventEngine
+    from orchestrator.resource_guard import ResourceGuard
+    from lib_webbh.database import Target, JobState
+
+    target = Target(company_name="Test", base_domain="target.com", priority=100)
+    db_session.add(target)
+    await db_session.commit()
+    await db_session.refresh(target)
+
+    # Simulate info_gathering complete
+    job = JobState(
+        target_id=target.id,
+        container_name="info_gathering",
+        status="complete",
+    )
+    db_session.add(job)
+    await db_session.commit()
+
+    guard = ResourceGuard()
+    engine = EventEngine(guard)
+
+    with patch.object(engine, "_dispatch_worker", new_callable=AsyncMock) as mock_dispatch:
+        await engine._evaluate_target(target, "green")
+        # config_mgmt should be dispatched (its only dep is info_gathering which is complete)
+        dispatched_workers = [call.args[1] for call in mock_dispatch.call_args_list]
+        assert "config_mgmt" in dispatched_workers
+
+
+async def test_evaluate_target_skips_pending_deps(db_session):
+    from orchestrator.event_engine import EventEngine
+    from orchestrator.resource_guard import ResourceGuard
+    from lib_webbh.database import Target
+
+    target = Target(company_name="Test", base_domain="target.com")
+    db_session.add(target)
+    await db_session.commit()
+    await db_session.refresh(target)
+
+    # No jobs at all — info_gathering not complete
+    guard = ResourceGuard()
+    engine = EventEngine(guard)
+
+    with patch.object(engine, "_dispatch_worker", new_callable=AsyncMock) as mock_dispatch:
+        await engine._evaluate_target(target, "green")
+        # Only info_gathering should be dispatched (no deps)
+        dispatched_workers = [call.args[1] for call in mock_dispatch.call_args_list]
+        assert "info_gathering" in dispatched_workers
+        assert "config_mgmt" not in dispatched_workers
