@@ -1,0 +1,18 @@
+# docker/Dockerfile.cryptography
+FROM webbh-base:latest
+
+# Install external tool binaries
+RUN apt-get install -y testssl.sh
+RUN pip install sslyze
+
+# Copy worker code
+COPY workers/cryptography/ /app/workers/cryptography/
+COPY shared/ /app/shared/
+
+# Install lib_webbh
+RUN pip install -e /app/shared/lib_webbh
+
+WORKDIR /app
+ENV WORKER_TYPE=cryptography
+
+CMD ["python", "-m", "workers.cryptography.main"]

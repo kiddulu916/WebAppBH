@@ -1,6 +1,10 @@
 # workers/cryptography/base_tool.py
 from abc import ABC, abstractmethod
+import asyncio
+import os
 from lib_webbh import get_session, Vulnerability
+
+TOOL_TIMEOUT = int(os.environ.get("TOOL_TIMEOUT", "600"))
 
 
 class CryptographyTool(ABC):
@@ -24,3 +28,19 @@ class CryptographyTool(ABC):
             session.add(vuln)
             await session.commit()
             return vuln.id
+
+    async def run_subprocess(self, cmd: list[str], timeout: int = TOOL_TIMEOUT) -> str:
+        """Run a command and return decoded stdout."""
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout_bytes, _ = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise
+        return stdout_bytes.decode()

@@ -616,6 +616,38 @@ services:
       - webbh-net
 
   # ---------------------------------------------------------------------------
+  # Cryptography — SSL/TLS and cryptographic algorithm auditing
+  # ---------------------------------------------------------------------------
+  cryptography:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.cryptography
+    container_name: webbh-cryptography
+    hostname: webbh-cryptography
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      WORKER_TYPE: cryptography
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
   # Traffic Proxy — mitmproxy-based request interceptor
   # ---------------------------------------------------------------------------
   proxy:
