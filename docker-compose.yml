@@ -584,6 +584,38 @@ services:
       - webbh-net
 
   # ---------------------------------------------------------------------------
+  # Error Handling — error disclosure and stack trace detection
+  # ---------------------------------------------------------------------------
+  error_handling:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.error_handling
+    container_name: webbh-error-handling
+    hostname: webbh-error-handling
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      WORKER_TYPE: error_handling
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
   # Traffic Proxy — mitmproxy-based request interceptor
   # ---------------------------------------------------------------------------
   proxy:

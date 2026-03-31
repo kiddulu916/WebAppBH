@@ -1,0 +1,14 @@
+# docker/Dockerfile.error_handling
+FROM webbh-base:latest
+
+# Copy worker code
+COPY workers/error_handling/ /app/workers/error_handling/
+COPY shared/ /app/shared/
+
+# Install lib_webbh
+RUN pip install -e /app/shared/lib_webbh
+
+WORKDIR /app
+ENV WORKER_TYPE=error_handling
+
+CMD ["python", "-m", "workers.error_handling.main"]
