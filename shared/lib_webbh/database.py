@@ -126,8 +126,30 @@ class TimestampMixin:
 
 
 # ---------------------------------------------------------------------------
-# OAM Models (10 tables)
+# OAM Models
 # ---------------------------------------------------------------------------
+
+
+class Campaign(TimestampMixin, Base):
+    """Campaign grouping multiple targets for a single engagement."""
+
+    __tablename__ = "campaigns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="pending")
+    scope_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    rate_limit: Mapped[int] = mapped_column(Integer, default=50)
+    has_credentials: Mapped[bool] = mapped_column(Boolean, default=False)
+    started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    targets: Mapped[list["Target"]] = relationship(back_populates="campaign")
 
 
 class Target(TimestampMixin, Base):
@@ -136,6 +158,9 @@ class Target(TimestampMixin, Base):
     __tablename__ = "targets"
     __table_args__ = (
         UniqueConstraint("company_name", "base_domain", name="uq_targets_company_domain"),
+        Index("ix_targets_parent", "parent_target_id"),
+        Index("ix_targets_campaign", "campaign_id"),
+        Index("ix_targets_priority", "priority"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -144,6 +169,20 @@ class Target(TimestampMixin, Base):
     target_profile: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     last_playbook: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
+    # Campaign & hierarchy
+    campaign_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("campaigns.id"), nullable=True
+    )
+    parent_target_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("targets.id"), nullable=True
+    )
+    target_type: Mapped[str] = mapped_column(String(20), default="seed")
+    priority: Mapped[int] = mapped_column(Integer, default=50)
+    wildcard: Mapped[bool] = mapped_column(Boolean, default=False)
+    wildcard_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Relationships (existing)
+    campaign: Mapped[Optional["Campaign"]] = relationship(back_populates="targets")
     assets: Mapped[list["Asset"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     identities: Mapped[list["Identity"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     cloud_assets: Mapped[list["CloudAsset"]] = relationship(back_populates="target", cascade="all, delete-orphan")
@@ -156,6 +195,16 @@ class Target(TimestampMixin, Base):
     bounty_submissions: Mapped[list["BountySubmission"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     scheduled_scans: Mapped[list["ScheduledScan"]] = relationship(back_populates="target", cascade="all, delete-orphan")
     scope_violations: Mapped[list["ScopeViolation"]] = relationship(back_populates="target", cascade="all, delete-orphan")
+
+    # Relationships (new — hierarchy)
+    parent: Mapped[Optional["Target"]] = relationship(
+        remote_side="Target.id", back_populates="children",
+        foreign_keys="Target.parent_target_id",
+    )
+    children: Mapped[list["Target"]] = relationship(
+        back_populates="parent",
+        foreign_keys="Target.parent_target_id",
+    )
 
 
 class Asset(TimestampMixin, Base):
@@ -271,6 +320,9 @@ class Vulnerability(TimestampMixin, Base):
     __table_args__ = (
         Index("ix_vulns_target_severity", "target_id", "severity"),
         Index("ix_vulns_target_created", "target_id", "created_at"),
+        Index("ix_vulns_section", "section_id"),
+        Index("ix_vulns_worker", "worker_type"),
+        Index("ix_vulns_confirmed", "confirmed"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -286,10 +338,20 @@ class Vulnerability(TimestampMixin, Base):
     cvss_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     remediation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # WSTG tracking (new)
+    section_id: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    worker_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    stage_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    vuln_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    false_positive: Mapped[bool] = mapped_column(Boolean, default=False)
+    evidence: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
     target: Mapped["Target"] = relationship(back_populates="vulnerabilities")
     asset: Mapped[Optional["Asset"]] = relationship(back_populates="vulnerabilities")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="vulnerability")
     bounty_submissions: Mapped[list["BountySubmission"]] = relationship(back_populates="vulnerability")
+    escalation_contexts: Mapped[list["EscalationContext"]] = relationship(back_populates="vulnerability")
 
 
 class JobState(TimestampMixin, Base):
@@ -299,6 +361,7 @@ class JobState(TimestampMixin, Base):
     __table_args__ = (
         Index("ix_jobstate_target_status", "target_id", "status"),
         Index("ix_jobstate_container_status", "container_name", "status"),
+        Index("ix_jobstate_target_container", "target_id", "container_name"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -310,6 +373,22 @@ class JobState(TimestampMixin, Base):
     last_tool_executed: Mapped[Optional[str]] = mapped_column(
         String(100), nullable=True
     )
+
+    # Stage tracking (new)
+    current_section_id: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    queued_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    skipped: Mapped[bool] = mapped_column(Boolean, default=False)
+    skip_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     target: Mapped["Target"] = relationship(back_populates="jobs")
 
@@ -476,3 +555,53 @@ class CustomPlaybook(TimestampMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     stages: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     concurrency: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+class EscalationContext(TimestampMixin, Base):
+    """Records escalated access discovered during testing."""
+
+    __tablename__ = "escalation_contexts"
+    __table_args__ = (
+        Index("ix_escalation_target", "target_id"),
+        Index("ix_escalation_consumed", "consumed_by_chain"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    vulnerability_id: Mapped[int] = mapped_column(Integer, ForeignKey("vulnerabilities.id"))
+    access_type: Mapped[str] = mapped_column(String(100))
+    access_method: Mapped[str] = mapped_column(Text)
+    session_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    data_exposed: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    severity: Mapped[str] = mapped_column(String(20))
+    section_id: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    consumed_by_chain: Mapped[bool] = mapped_column(Boolean, default=False)
+    chain_findings: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    target: Mapped["Target"] = relationship("Target")
+    vulnerability: Mapped["Vulnerability"] = relationship(back_populates="escalation_contexts")
+
+
+class ChainFinding(TimestampMixin, Base):
+    """Vulnerability chain discovered by the chain worker."""
+
+    __tablename__ = "chain_findings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    escalation_context_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("escalation_contexts.id")
+    )
+    chain_description: Mapped[str] = mapped_column(Text)
+    entry_vulnerability_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("vulnerabilities.id")
+    )
+    linked_vulnerability_ids: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    total_impact: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    severity: Mapped[str] = mapped_column(String(20))
+
+    target: Mapped["Target"] = relationship("Target")
+    escalation_context: Mapped["EscalationContext"] = relationship("EscalationContext")
+    entry_vulnerability: Mapped["Vulnerability"] = relationship(
+        "Vulnerability", foreign_keys=[entry_vulnerability_id]
+    )

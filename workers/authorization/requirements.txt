@@ -1,0 +1,2 @@
+# Authorization worker specific dependencies
+# (none currently)

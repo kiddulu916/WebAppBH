@@ -1,0 +1,27 @@
+# ============================================================
+# Identity Management Worker Dockerfile
+# ============================================================
+FROM python:3.10-slim-bookworm
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libpq5 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install lib_webbh
+COPY shared/lib_webbh /build/lib_webbh
+RUN pip install --no-cache-dir /build/lib_webbh
+
+# Shared directories
+RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs
+
+# Worker source
+COPY workers/__init__.py /app/workers/__init__.py
+COPY workers/identity_mgmt /app/workers/identity_mgmt
+
+# Verify
+RUN python -c "from workers.identity_mgmt.main import main; print('identity-mgmt OK')"
+
+ENTRYPOINT ["python", "-m", "workers.identity_mgmt.main"]

@@ -1,11 +1,11 @@
 # WebAppBH
 
-A modular, event-driven Bug Bounty Framework built for automated reconnaissance, vulnerability scanning, and exploit chaining. WebAppBH orchestrates 10 specialized Docker workers through a FastAPI control plane, with real-time monitoring via a Next.js command-and-control dashboard.
+A modular, event-driven Bug Bounty Framework built for automated reconnaissance, vulnerability scanning, and exploit chaining. WebAppBH orchestrates 11 specialized Docker workers through a FastAPI control plane, with real-time monitoring via a Next.js command-and-control dashboard.
 
 ## Features
 
 - **Automated Recon Pipeline** — Subdomain enumeration, port scanning, content discovery, and technology fingerprinting across 7 sequential stages
-- **10 Specialized Workers** — Recon, web app testing, fuzzing, API testing, vulnerability scanning, mobile analysis, cloud enumeration, network scanning, exploit chaining, and reporting
+- **11 Specialized Workers** — Recon, web app testing, fuzzing, API testing, vulnerability scanning, mobile analysis, cloud enumeration, network scanning, config management, exploit chaining, and reporting
 - **Real-Time C2 Dashboard** — Next.js interface with live SSE streaming, campaign tree view, worker management console, and findings tables
 - **Event-Driven Architecture** — Redis Streams with consumer groups for reliable task distribution and inter-worker coordination
 - **Scope-Aware Scanning** — Built-in scope manager validates all targets against domain, CIDR, URL, and blacklist rules before execution
@@ -52,6 +52,7 @@ A modular, event-driven Bug Bounty Framework built for automated reconnaissance,
 | **mobile-worker** | Mobile app SAST + DAST | MobSF, Frida, docker-android |
 | **cloud-worker** | Cloud resource enumeration | AWS/Azure/GCP SDKs |
 | **network-worker** | Port enumeration, service fingerprinting | nmap, naabu |
+| **config-mgmt** | Configuration security validation | ffuf, nmap, custom auditors |
 | **chain-worker** | Multi-tool exploit chaining | Metasploit, zaproxy |
 | **reporting-worker** | Report generation | Jinja2, WeasyPrint, ReportLab |
 

@@ -30,6 +30,13 @@ async def db():
 
 
 @pytest_asyncio.fixture
+async def db_session(db):
+    """Yield an AsyncSession for tests that need direct DB access."""
+    async with get_session() as session:
+        yield session
+
+
+@pytest_asyncio.fixture
 async def seed_target(db):
     """Insert a target and return its ID."""
     async with get_session() as session:

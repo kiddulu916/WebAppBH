@@ -18,13 +18,16 @@ from lib_webbh.database import (
     ScheduledScan,
     ScopeViolation,
     CustomPlaybook,
+    Campaign,
+    EscalationContext,
+    ChainFinding,
 )
 
 # Scope
 from lib_webbh.scope import ScopeManager, ScopeResult, record_scope_violation
 
 # Messaging
-from lib_webbh.messaging import push_task, listen_queue, get_pending
+from lib_webbh.messaging import push_task, listen_queue, get_pending, push_priority_task, listen_priority_queues
 
 # Logger
 from lib_webbh.logger import setup_logger
@@ -79,12 +82,17 @@ __all__ = [
     "ScheduledScan",
     "ScopeViolation",
     "CustomPlaybook",
+    "Campaign",
+    "EscalationContext",
+    "ChainFinding",
     "ScopeManager",
     "ScopeResult",
     "record_scope_violation",
     "push_task",
     "listen_queue",
     "get_pending",
+    "push_priority_task",
+    "listen_priority_queues",
     "setup_logger",
     "compute_diff",
     "DiffResult",

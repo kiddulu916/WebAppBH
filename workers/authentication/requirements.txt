@@ -1,0 +1,2 @@
+# Authentication worker specific dependencies
+# (none currently)

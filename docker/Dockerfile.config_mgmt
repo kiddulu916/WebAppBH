@@ -1,0 +1,40 @@
+# ============================================================
+# Stage 1: Go tool builder
+# ============================================================
+FROM golang:1.25.7-bookworm AS go-builder
+
+ENV GOPATH=/go
+ENV PATH=$GOPATH/bin:$PATH
+
+RUN go install github.com/ffuf/ffuf/v2@latest
+
+# ============================================================
+# Stage 2: Runtime
+# ============================================================
+FROM python:3.10-slim-bookworm
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libpq5 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Go binaries
+COPY --from=go-builder /go/bin/ffuf /usr/local/bin/
+
+# Install lib_webbh
+COPY shared/lib_webbh /app/shared/lib_webbh
+RUN pip install --no-cache-dir /app/shared/lib_webbh
+
+# Shared directories
+RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs
+
+# Worker source
+COPY workers/__init__.py /app/workers/__init__.py
+COPY workers/config_mgmt /app/workers/config_mgmt
+
+# Verify
+RUN python -c "from workers.config_mgmt.main import main; print('config-mgmt OK')"
+
+ENTRYPOINT ["python", "-m", "workers.config_mgmt.main"]

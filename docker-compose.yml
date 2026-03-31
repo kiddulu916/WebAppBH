@@ -141,6 +141,118 @@ services:
       - webbh-net
 
   # ---------------------------------------------------------------------------
+  # Identity-Mgmt — identity management worker
+  # ---------------------------------------------------------------------------
+  identity-mgmt:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.identity
+    container_name: webbh-identity-mgmt
+    hostname: webbh-identity-mgmt
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Authentication — authentication worker
+  # ---------------------------------------------------------------------------
+  authentication:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.auth
+    container_name: webbh-authentication
+    hostname: webbh-authentication
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Authorization — authorization worker
+  # ---------------------------------------------------------------------------
+  authorization:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.authz
+    container_name: webbh-authorization
+    hostname: webbh-authorization
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Config-Mgmt — configuration management worker
+  # ---------------------------------------------------------------------------
+  config-mgmt:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.config_mgmt
+    container_name: webbh-config-mgmt
+    hostname: webbh-config-mgmt
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
   # Webapp Worker — headless browser web-app analysis
   # ---------------------------------------------------------------------------
   webapp-worker:
@@ -240,22 +352,50 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: ${DB_NAME:-webbh}
-      DB_USER: ${DB_USER:-webbh_admin}
-      DB_PASS: ${DB_PASS:-changeme}
-      REDIS_HOST: redis
+      environment:
+        DB_HOST: postgres
+        DB_PORT: "5432"
+        DB_NAME: ${DB_NAME:-webbh}
+        DB_USER: ${DB_USER:-webbh_admin}
+        DB_PASS: ${DB_PASS:-changeme}
+        REDIS_HOST: redis
+        REDIS_PORT: "6379"
+      volumes:
+        - ./shared:/app/shared
+      networks:
+        - webbh-net
+
+   # ---------------------------------------------------------------------------
+   # Input Validation — XSS, injection, and input-based vuln testing
+   # ---------------------------------------------------------------------------
+   input-validation:
+     build:
+       context: .
+       dockerfile: docker/Dockerfile.input_validation
+     container_name: webbh-input-validation
+     hostname: webbh-input-validation
+     restart: unless-stopped
+     depends_on:
+       postgres:
+         condition: service_healthy
+       redis:
+         condition: service_healthy
+     environment:
+       DB_HOST: postgres
+       DB_PORT: "5432"
+       DB_NAME: ${DB_NAME:-webbh}
+       DB_USER: ${DB_USER:-webbh_admin}
+       DB_PASS: ${DB_PASS:-changeme}
+       REDIS_HOST: redis
       REDIS_PORT: "6379"
     volumes:
       - ./shared:/app/shared
     networks:
       - webbh-net
 
-  # ---------------------------------------------------------------------------
-  # Vuln Scanner — Nuclei sweep + injection testing
-  # ---------------------------------------------------------------------------
+   # ---------------------------------------------------------------------------
+   # Vuln Scanner — Nuclei sweep + injection testing
+   # ---------------------------------------------------------------------------
   vuln-scanner:
     build:
       context: .

@@ -1,0 +1,13 @@
+# docker/Dockerfile.callback
+FROM python:3.10-slim
+
+RUN pip install aiohttp>=3.9
+
+COPY workers/callback/ /app/workers/callback/
+
+WORKDIR /app
+
+# HTTP listener 9090, Polling API 9091, DNS 9053, TCP 9443
+EXPOSE 9090 9091 9053 9443
+
+CMD ["python", "-m", "workers.callback.main"]
