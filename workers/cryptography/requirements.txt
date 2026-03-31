@@ -1,0 +1,3 @@
+# workers/cryptography/requirements.txt
+# lib_webbh installed from shared/ in Dockerfile
+# External tools are system binaries called via asyncio subprocess
