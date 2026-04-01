@@ -1,0 +1,14 @@
+# docker/Dockerfile.authz
+FROM webbh-base:latest
+
+# Copy worker code
+COPY workers/authorization/ /app/workers/authorization/
+COPY shared/ /app/shared/
+
+# Install lib_webbh
+RUN pip install -e /app/shared/lib_webbh
+
+WORKDIR /app
+ENV WORKER_TYPE=authorization
+
+CMD ["python", "-m", "workers.authorization.main"]

@@ -1,0 +1,27 @@
+# docker/Dockerfile.client_side
+FROM webbh-base:latest
+
+# Install Playwright dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libxcomposite1 \
+    libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
+    libasound2 libxshmfence1 libglib2.0-0 libgtk-3-0 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy worker code
+COPY workers/client_side/ /app/workers/client_side/
+COPY shared/ /app/shared/
+
+# Install lib_webbh and requirements
+RUN pip install -e /app/shared/lib_webbh
+RUN pip install -r /app/workers/client_side/requirements.txt
+
+# Install Playwright browser
+RUN playwright install chromium
+
+WORKDIR /app
+ENV WORKER_TYPE=client_side
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+CMD ["python", "-m", "workers.client_side.main"]

@@ -1,4 +1,4 @@
-"""Input validation pipeline: 19 sequential stages with checkpointing."""
+"""Client-side testing pipeline: 13 sequential stages (WSTG 4.11)."""
 
 from __future__ import annotations
 
@@ -9,80 +9,72 @@ from datetime import datetime
 from sqlalchemy import select
 
 from lib_webbh import JobState, get_session, push_task, setup_logger
-from lib_webbh.scope import ScopeManager
 
-from workers.input_validation.base_tool import InputValidationTool
-from workers.input_validation.tools import (
-    ReflectedXssTester,
-    StoredXssTester,
-    HttpVerbTamperTester,
-    HttpParameterPollutionTester,
-    SqlmapGenericTool,
-    SqlmapOracleTool,
-    SqlmapMssqlTool,
-    SqlmapPostgresTool,
-    LdapInjectionTester,
-    XmlInjectionTester,
-    SstiTester,
-    XpathInjectionTester,
-    ImapSmtpInjectionTester,
-    CodeInjectionTester,
-    CommandInjectionTester,
-    FormatStringTester,
-    HostHeaderTester,
-    SsrfTester,
-    LocalFileInclusionTester,
-    RemoteFileInclusionTester,
-    BufferOverflowTester,
-    HttpSmugglingTester,
-    WebSocketInjectionTester,
-    IncubatedVulnTester,
+from workers.client_side.base_tool import ClientSideTool
+from workers.client_side.tools import (
+    DomXssTester,
+    ClickjackingTester,
+    ClientSideCsrfTester,
+    CspBypassTester,
+    Html5InjectionTester,
+    WebStorageTester,
+    ClientLogicAnalyzer,
+    DomInjectionTester,
+    ResourceManipulationTester,
+    ClientAuthTester,
+    ClientXssTester,
+    CssInjectionTester,
+    MaliciousUploadClientTester,
 )
 
-logger = setup_logger("input-validation-pipeline")
+logger = setup_logger("client-side-pipeline")
 
 
 @dataclass
 class Stage:
     name: str
-    tool_classes: list[type[InputValidationTool]]
+    tool_classes: list[type[ClientSideTool]]
 
 
 STAGES = [
-    Stage("reflected_xss", [ReflectedXssTester]),
-    Stage("stored_xss", [StoredXssTester]),
-    Stage("http_verb_tampering", [HttpVerbTamperTester]),
-    Stage("http_param_pollution", [HttpParameterPollutionTester]),
-    Stage("sql_injection", [SqlmapGenericTool, SqlmapOracleTool, SqlmapMssqlTool, SqlmapPostgresTool]),
-    Stage("ldap_injection", [LdapInjectionTester]),
-    Stage("xml_injection", [XmlInjectionTester]),
-    Stage("ssti", [SstiTester]),
-    Stage("xpath_injection", [XpathInjectionTester]),
-    Stage("imap_smtp_injection", [ImapSmtpInjectionTester]),
-    Stage("code_injection", [CodeInjectionTester]),
-    Stage("command_injection", [CommandInjectionTester]),
-    Stage("format_string", [FormatStringTester]),
-    Stage("host_header_injection", [HostHeaderTester]),
-    Stage("ssrf", [SsrfTester]),
-    Stage("file_inclusion", [LocalFileInclusionTester, RemoteFileInclusionTester]),
-    Stage("buffer_overflow", [BufferOverflowTester]),
-    Stage("http_smuggling", [HttpSmugglingTester]),
-    Stage("websocket_injection", [WebSocketInjectionTester, IncubatedVulnTester]),
+    Stage("dom_xss", [DomXssTester]),
+    Stage("clickjacking", [ClickjackingTester]),
+    Stage("csrf_tokens", [ClientSideCsrfTester]),
+    Stage("csp_bypass", [CspBypassTester]),
+    Stage("html5_injection", [Html5InjectionTester]),
+    Stage("web_storage", [WebStorageTester]),
+    Stage("client_side_logic", [ClientLogicAnalyzer]),
+    Stage("dom_based_injection", [DomInjectionTester]),
+    Stage("client_side_resource_manipulation", [ResourceManipulationTester]),
+    Stage("client_side_auth", [ClientAuthTester]),
+    Stage("xss_client_side", [ClientXssTester]),
+    Stage("css_injection", [CssInjectionTester]),
+    Stage("malicious_upload_client", [MaliciousUploadClientTester]),
 ]
 
 STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}
 
 
 class Pipeline:
-    """Orchestrates the 15-stage input validation pipeline with checkpointing."""
+    """Orchestrates the 13-stage client-side testing pipeline with checkpointing."""
 
     def __init__(self, target_id: int, container_name: str):
         self.target_id = target_id
         self.container_name = container_name
         self.log = logger.bind(target_id=target_id)
 
+    def _filter_stages(self, playbook: dict | None) -> list[Stage]:
+        """Return only the stages enabled by the playbook config."""
+        if not playbook or "stages" not in playbook:
+            return list(STAGES)
+        enabled_names = {
+            s["name"] for s in playbook["stages"] if s.get("enabled", True)
+        }
+        return [stage for stage in STAGES if stage.name in enabled_names]
+
     async def run(
-        self, target, scope_manager: ScopeManager, headers: dict | None = None,
+        self, target, scope_manager, headers: dict | None = None,
+        playbook: dict | None = None,
     ) -> None:
         """Execute the pipeline, resuming from last completed stage."""
         completed_phase = await self._get_completed_phase()
@@ -95,7 +87,8 @@ class Pipeline:
                 extra={"completed_phase": completed_phase},
             )
 
-        for stage in STAGES[start_index:]:
+        stages = self._filter_stages(playbook)
+        for stage in stages[start_index:]:
             self.log.info(f"Starting stage: {stage.name}")
             await self._update_phase(stage.name)
 
@@ -119,32 +112,39 @@ class Pipeline:
         self,
         stage: Stage,
         target,
-        scope_manager: ScopeManager,
+        scope_manager,
         headers: dict | None = None,
     ) -> dict:
         """Run all tools in a stage concurrently, return aggregated stats."""
         tools = [cls() for cls in stage.tool_classes]
 
+        # Load credentials for this target
+        credentials = None
+        for tool in tools:
+            if hasattr(tool, 'get_tester_session'):
+                credentials = await tool.get_tester_session(self.target_id)
+                break
+
         tasks = [
-            tool.run_with_semaphore(
+            tool.execute(
                 target=target,
                 scope_manager=scope_manager,
                 target_id=self.target_id,
                 container_name=self.container_name,
-                headers=headers,
+                credentials=credentials,
             )
             for tool in tools
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        aggregated = {"found": 0, "vulnerable": 0}
+        aggregated = {"found": 0, "inserted": 0}
         for r in results:
             if isinstance(r, Exception):
                 self.log.error(f"Tool failed in {stage.name}", extra={"error": str(r)})
                 continue
             aggregated["found"] += r.get("found", 0)
-            aggregated["vulnerable"] += r.get("vulnerable", 0)
+            aggregated["inserted"] += r.get("inserted", 0)
 
         return aggregated
 

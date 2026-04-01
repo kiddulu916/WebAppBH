@@ -1,0 +1,14 @@
+# docker/Dockerfile.business_logic
+FROM webbh-base:latest
+
+# Copy worker code
+COPY workers/business_logic/ /app/workers/business_logic/
+COPY shared/ /app/shared/
+
+# Install lib_webbh
+RUN pip install -e /app/shared/lib_webbh
+
+WORKDIR /app
+ENV WORKER_TYPE=business_logic
+
+CMD ["python", "-m", "workers.business_logic.main"]

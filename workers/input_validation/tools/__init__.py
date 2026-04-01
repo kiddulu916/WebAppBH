@@ -13,6 +13,12 @@ from workers.input_validation.tools.command_injection_tester import CommandInjec
 from workers.input_validation.tools.format_string_tester import FormatStringTester
 from workers.input_validation.tools.host_header_tester import HostHeaderTester
 from workers.input_validation.tools.ssrf_tester import SsrfTester
+from workers.input_validation.tools.local_file_inclusion_tester import LocalFileInclusionTester
+from workers.input_validation.tools.remote_file_inclusion_tester import RemoteFileInclusionTester
+from workers.input_validation.tools.buffer_overflow_tester import BufferOverflowTester
+from workers.input_validation.tools.incubated_vuln_tester import IncubatedVulnTester
+from workers.input_validation.tools.http_smuggling_tester import HttpSmugglingTester
+from workers.input_validation.tools.websocket_injection_tester import WebSocketInjectionTester
 
 __all__ = [
     "ReflectedXssTester", "StoredXssTester", "HttpVerbTamperTester",
@@ -21,4 +27,7 @@ __all__ = [
     "XmlInjectionTester", "SstiTester", "XpathInjectionTester",
     "ImapSmtpInjectionTester", "CodeInjectionTester", "CommandInjectionTester",
     "FormatStringTester", "HostHeaderTester", "SsrfTester",
+    "LocalFileInclusionTester", "RemoteFileInclusionTester",
+    "BufferOverflowTester", "IncubatedVulnTester",
+    "HttpSmugglingTester", "WebSocketInjectionTester",
 ]

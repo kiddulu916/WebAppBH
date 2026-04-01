@@ -113,34 +113,6 @@ services:
       - webbh-net
 
   # ---------------------------------------------------------------------------
-  # Recon-Core — reconnaissance worker
-  # ---------------------------------------------------------------------------
-  recon-core:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.recon
-    container_name: webbh-recon-core
-    hostname: webbh-recon-core
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: ${DB_NAME:-webbh}
-      DB_USER: ${DB_USER:-webbh_admin}
-      DB_PASS: ${DB_PASS:-changeme}
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-    volumes:
-      - ./shared:/app/shared
-    networks:
-      - webbh-net
-
-  # ---------------------------------------------------------------------------
   # Identity-Mgmt — identity management worker
   # ---------------------------------------------------------------------------
   identity-mgmt:
@@ -219,6 +191,7 @@ services:
       DB_PASS: ${DB_PASS:-changeme}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      WORKER_TYPE: authorization
     volumes:
       - ./shared:/app/shared
     networks:
@@ -253,155 +226,14 @@ services:
       - webbh-net
 
   # ---------------------------------------------------------------------------
-  # Webapp Worker — headless browser web-app analysis
+  # Input Validation — XSS, injection, and input-based vuln testing
   # ---------------------------------------------------------------------------
-  webapp-worker:
+  input-validation:
     build:
       context: .
-      dockerfile: docker/Dockerfile.webapp
-    container_name: webbh-webapp-worker
-    hostname: webbh-webapp-worker
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: ${DB_NAME:-webbh}
-      DB_USER: ${DB_USER:-webbh_admin}
-      DB_PASS: ${DB_PASS:-changeme}
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
-    volumes:
-      - ./shared:/app/shared
-    networks:
-      - webbh-net
-
-  # ---------------------------------------------------------------------------
-  # API Worker — API endpoint security testing
-  # ---------------------------------------------------------------------------
-  api-worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.api
-    container_name: webbh-api-worker
-    hostname: webbh-api-worker
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: ${DB_NAME:-webbh}
-      DB_USER: ${DB_USER:-webbh_admin}
-      DB_PASS: ${DB_PASS:-changeme}
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-    volumes:
-      - ./shared:/app/shared
-    networks:
-      - webbh-net
-
-  # ---------------------------------------------------------------------------
-  # Cloud Worker — cloud asset discovery and testing
-  # ---------------------------------------------------------------------------
-  cloud-worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.cloud
-    container_name: webbh-cloud-worker
-    hostname: webbh-cloud-worker
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: ${DB_NAME:-webbh}
-      DB_USER: ${DB_USER:-webbh_admin}
-      DB_PASS: ${DB_PASS:-changeme}
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-    volumes:
-      - ./shared:/app/shared
-    networks:
-      - webbh-net
-
-  # ---------------------------------------------------------------------------
-  # Fuzzing Worker — parameter and endpoint fuzzing
-  # ---------------------------------------------------------------------------
-  fuzzing-worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.fuzzing
-    container_name: webbh-fuzzing-worker
-    hostname: webbh-fuzzing-worker
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      environment:
-        DB_HOST: postgres
-        DB_PORT: "5432"
-        DB_NAME: ${DB_NAME:-webbh}
-        DB_USER: ${DB_USER:-webbh_admin}
-        DB_PASS: ${DB_PASS:-changeme}
-        REDIS_HOST: redis
-        REDIS_PORT: "6379"
-      volumes:
-        - ./shared:/app/shared
-      networks:
-        - webbh-net
-
-   # ---------------------------------------------------------------------------
-   # Input Validation — XSS, injection, and input-based vuln testing
-   # ---------------------------------------------------------------------------
-   input-validation:
-     build:
-       context: .
-       dockerfile: docker/Dockerfile.input_validation
-     container_name: webbh-input-validation
-     hostname: webbh-input-validation
-     restart: unless-stopped
-     depends_on:
-       postgres:
-         condition: service_healthy
-       redis:
-         condition: service_healthy
-     environment:
-       DB_HOST: postgres
-       DB_PORT: "5432"
-       DB_NAME: ${DB_NAME:-webbh}
-       DB_USER: ${DB_USER:-webbh_admin}
-       DB_PASS: ${DB_PASS:-changeme}
-       REDIS_HOST: redis
-      REDIS_PORT: "6379"
-    volumes:
-      - ./shared:/app/shared
-    networks:
-      - webbh-net
-
-   # ---------------------------------------------------------------------------
-   # Vuln Scanner — Nuclei sweep + injection testing
-   # ---------------------------------------------------------------------------
-  vuln-scanner:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.vulnscanner
-    container_name: webbh-vuln-scanner
-    hostname: webbh-vuln-scanner
+      dockerfile: docker/Dockerfile.input_validation
+    container_name: webbh-input-validation
+    hostname: webbh-input-validation
     restart: unless-stopped
     depends_on:
       postgres:
@@ -490,35 +322,6 @@ services:
     volumes:
       - mobile_analysis:/app/shared/mobile_analysis
       - mobile_binaries:/app/shared/mobile_binaries
-    networks:
-      - webbh-net
-
-  # ---------------------------------------------------------------------------
-  # Network Worker — port enum, service fingerprint, exploit verification
-  # ---------------------------------------------------------------------------
-  network-worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.network
-    container_name: webbh-network-worker
-    hostname: webbh-network-worker
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: ${DB_NAME:-webbh}
-      DB_USER: ${DB_USER:-webbh_admin}
-      DB_PASS: ${DB_PASS:-changeme}
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-      MSFRPC_PASS: msf_internal
-    volumes:
-      - ./shared:/app/shared
     networks:
       - webbh-net
 
@@ -644,6 +447,94 @@ services:
         limits:
           cpus: "2.0"
           memory: 2G
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Session-Mgmt — session management worker (WSTG 4.6)
+  # ---------------------------------------------------------------------------
+  session-mgmt:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.session_mgmt
+    container_name: webbh-session-mgmt
+    hostname: webbh-session-mgmt
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      WORKER_TYPE: session_mgmt
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Business-Logic — business logic testing worker (WSTG 4.10)
+  # ---------------------------------------------------------------------------
+  business-logic:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.business_logic
+    container_name: webbh-business-logic
+    hostname: webbh-business-logic
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      WORKER_TYPE: business_logic
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Client-Side — client-side testing worker with Playwright (WSTG 4.11)
+  # ---------------------------------------------------------------------------
+  client-side:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client_side
+    container_name: webbh-client-side
+    hostname: webbh-client-side
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      WORKER_TYPE: client_side
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    volumes:
+      - ./shared:/app/shared
     networks:
       - webbh-net
 

@@ -1,0 +1,14 @@
+# docker/Dockerfile.session_mgmt
+FROM webbh-base:latest
+
+# Copy worker code
+COPY workers/session_mgmt/ /app/workers/session_mgmt/
+COPY shared/ /app/shared/
+
+# Install lib_webbh
+RUN pip install -e /app/shared/lib_webbh
+
+WORKDIR /app
+ENV WORKER_TYPE=session_mgmt
+
+CMD ["python", "-m", "workers.session_mgmt.main"]
