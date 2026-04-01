@@ -1,13 +1,68 @@
 # workers/business_logic/tools/workflow_bypass_tester.py
-"""Tool description."""
+"""Workflow bypass testing tool — WSTG 4.10.6."""
 
+import aiohttp
 from workers.business_logic.base_tool import BusinessLogicTool
 
 
-class Workflow_BypassTester(BusinessLogicTool):
-    """Tool description."""
+class WorkflowBypassTester(BusinessLogicTool):
+    """Test for workflow bypass vulnerabilities."""
 
     async def execute(self, target_id: int, **kwargs):
-        """Execute tests."""
-        # Stub implementation
-        pass
+        """Execute workflow bypass tests."""
+        scope_manager = kwargs.get("scope_manager")
+        if not scope_manager:
+            return
+
+        urls = await self._get_workflow_urls(target_id, scope_manager)
+
+        async with aiohttp.ClientSession() as session:
+            for asset_id, url in urls:
+                await self._test_workflow_bypass(session, target_id, asset_id, url)
+
+    async def _get_workflow_urls(self, target_id: int, scope_manager):
+        """Get URLs that might involve workflows."""
+        from lib_webbh import get_session, Asset
+        from sqlalchemy import select
+
+        urls = []
+        async with get_session() as session:
+            result = await session.execute(
+                select(Asset.id, Asset.asset_value)
+                .where(Asset.target_id == target_id)
+                .where(Asset.asset_type == "url")
+            )
+
+            for row in result:
+                asset_id, url = row
+                if scope_manager.is_in_scope(url):
+                    urls.append((asset_id, url))
+
+        return urls
+
+    async def _test_workflow_bypass(self, session, target_id, asset_id, url):
+        """Test workflow bypass scenarios."""
+        # Test direct access to workflow steps
+        workflow_steps = [
+            f"{url}?step=2",
+            f"{url}?step=final",
+            f"{url}?action=complete",
+        ]
+
+        for step_url in workflow_steps:
+            try:
+                async with session.get(step_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        response_text = await resp.text()
+                        if "success" in response_text.lower() or "completed" in response_text.lower():
+                            await self.save_vulnerability(
+                                target_id=target_id,
+                                asset_id=asset_id,
+                                severity="high",
+                                title="Workflow Step Bypass",
+                                description=f"Workflow step directly accessible without proper validation at {step_url}",
+                                poc=step_url,
+                                vuln_type="workflow_bypass",
+                            )
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                pass

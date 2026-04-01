@@ -42,7 +42,7 @@ test.describe("SSE Live Updates", () => {
 
     // Wait for the Zustand store to be exposed on window
     await page.waitForFunction(
-      () => !!(window as Record<string, unknown>).__campaignStore,
+      () => !!(window as unknown as Record<string, unknown>).__campaignStore,
       null,
       { timeout: 10_000 },
     );
@@ -56,7 +56,7 @@ test.describe("SSE Live Updates", () => {
     // (mirrors what useEventStream does when receiving an SSE event)
     const newAssetValue = `sse-test-${Date.now()}.${baseDomain}`;
     await page.evaluate((assetValue) => {
-      const store = (window as Record<string, unknown>).__campaignStore as {
+      const store = (window as unknown as Record<string, unknown>).__campaignStore as {
         getState: () => { pushEvent: (evt: Record<string, unknown>) => void };
       };
       store.getState().pushEvent({

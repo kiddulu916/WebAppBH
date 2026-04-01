@@ -1,13 +1,67 @@
 # workers/business_logic/tools/misuse_tester.py
-"""Tool description."""
+"""Application misuse testing tool — WSTG 4.10.7."""
 
+import aiohttp
 from workers.business_logic.base_tool import BusinessLogicTool
 
 
 class MisuseTester(BusinessLogicTool):
-    """Tool description."""
+    """Test for application misuse vulnerabilities."""
 
     async def execute(self, target_id: int, **kwargs):
-        """Execute tests."""
-        # Stub implementation
-        pass
+        """Execute application misuse tests."""
+        scope_manager = kwargs.get("scope_manager")
+        if not scope_manager:
+            return
+
+        urls = await self._get_application_urls(target_id, scope_manager)
+
+        async with aiohttp.ClientSession() as session:
+            for asset_id, url in urls:
+                await self._test_application_misuse(session, target_id, asset_id, url)
+
+    async def _get_application_urls(self, target_id: int, scope_manager):
+        """Get application URLs for testing."""
+        from lib_webbh import get_session, Asset
+        from sqlalchemy import select
+
+        urls = []
+        async with get_session() as session:
+            result = await session.execute(
+                select(Asset.id, Asset.asset_value)
+                .where(Asset.target_id == target_id)
+                .where(Asset.asset_type == "url")
+            )
+
+            for row in result:
+                asset_id, url = row
+                if scope_manager.is_in_scope(url):
+                    urls.append((asset_id, url))
+
+        return urls
+
+    async def _test_application_misuse(self, session, target_id, asset_id, url):
+        """Test application misuse scenarios."""
+        # Test parameter manipulation for misuse
+        misuse_tests = [
+            f"{url}?admin=true",
+            f"{url}?debug=1",
+        ]
+
+        for test_url in misuse_tests:
+            try:
+                async with session.get(test_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        response_text = await resp.text()
+                        if "admin" in response_text.lower() or "debug" in response_text.lower():
+                            await self.save_vulnerability(
+                                target_id=target_id,
+                                asset_id=asset_id,
+                                severity="medium",
+                                title="Application Misuse Vulnerability",
+                                description=f"Application functionality can be misused at {test_url}",
+                                poc=test_url,
+                                vuln_type="application_misuse",
+                            )
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                pass
