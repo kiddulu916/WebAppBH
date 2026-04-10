@@ -21,6 +21,9 @@ from lib_webbh.database import (
     Campaign,
     EscalationContext,
     ChainFinding,
+    VulnerabilityInsight,
+    ToolHitRate,
+    MutationOutcome,
 )
 
 # Scope
@@ -61,6 +64,18 @@ from lib_webbh.intel_enrichment import (
 # Batch insert
 from lib_webbh.batch_insert import BatchInserter
 
+# LLM client
+from lib_webbh.llm_client import LLMClient, LLMResponse
+
+# Adaptive scan intelligence
+from lib_webbh.scan_intelligence import (
+    fingerprint_tech_stack,
+    record_tool_result,
+    get_tool_rankings,
+    generate_adaptive_playbook,
+    ToolRanking,
+)
+
 __all__ = [
     "get_engine",
     "get_session",
@@ -85,6 +100,9 @@ __all__ = [
     "Campaign",
     "EscalationContext",
     "ChainFinding",
+    "VulnerabilityInsight",
+    "ToolHitRate",
+    "MutationOutcome",
     "ScopeManager",
     "ScopeResult",
     "record_scope_violation",
@@ -111,4 +129,11 @@ __all__ = [
     "enrich_securitytrails",
     "get_available_intel_sources",
     "BatchInserter",
+    "LLMClient",
+    "LLMResponse",
+    "fingerprint_tech_stack",
+    "record_tool_result",
+    "get_tool_rankings",
+    "generate_adaptive_playbook",
+    "ToolRanking",
 ]

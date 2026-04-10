@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from workers.chain_worker.base_tool import ChainTestTool
 from workers.chain_worker.concurrency import get_semaphore
+from workers.chain_worker.tools.ai_chain_discoverer import AIChainDiscoverer
 from workers.chain_worker.tools.chain_evaluator import ChainEvaluator
 from workers.chain_worker.tools.chain_executor import ChainExecutor
 from workers.chain_worker.tools.chain_reporter import ChainReporter
@@ -32,6 +33,7 @@ class Stage:
 STAGES: list[Stage] = [
     Stage("data_collection", [FindingsCollector]),
     Stage("chain_evaluation", [ChainEvaluator]),
+    Stage("ai_chain_discovery", [AIChainDiscoverer]),
     Stage("chain_execution", [ChainExecutor]),
     Stage("reporting", [ChainReporter]),
 ]

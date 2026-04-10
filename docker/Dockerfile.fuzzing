@@ -39,7 +39,7 @@ RUN pip install --no-cache-dir --target=/py-tools /build/lib_webbh
 FROM debian:bookworm-slim AS seclists
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends wget unzip && \
+    apt-get install -y --no-install-recommends wget unzip ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /seclists && \

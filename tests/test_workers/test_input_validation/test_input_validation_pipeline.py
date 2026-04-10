@@ -10,7 +10,7 @@ os.environ.setdefault("DB_NAME", ":memory:")
 
 def test_stages_defined_in_order():
     from workers.input_validation.pipeline import STAGES
-    assert len(STAGES) == 15
+    assert len(STAGES) == 19
     assert STAGES[0].name == "reflected_xss"
     assert STAGES[1].name == "stored_xss"
     assert STAGES[2].name == "http_verb_tampering"
@@ -26,6 +26,14 @@ def test_stages_defined_in_order():
     assert STAGES[12].name == "format_string"
     assert STAGES[13].name == "host_header_injection"
     assert STAGES[14].name == "ssrf"
+    assert STAGES[15].name == "file_inclusion"
+    assert STAGES[16].name == "buffer_overflow"
+    assert STAGES[17].name == "http_smuggling"
+    assert STAGES[18].name == "websocket_injection"
+    assert STAGES[15].name == "file_inclusion"
+    assert STAGES[16].name == "buffer_overflow"
+    assert STAGES[17].name == "http_smuggling"
+    assert STAGES[18].name == "websocket_injection"
 
 
 def test_each_stage_has_tools():

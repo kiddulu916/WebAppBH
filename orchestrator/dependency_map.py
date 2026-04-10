@@ -16,7 +16,8 @@ DEPENDENCY_MAP = {
         "input_validation", "error_handling",
         "cryptography", "business_logic", "client_side",
     ],
-    "reporting":        ["chain_worker"],
+    "reasoning":        ["chain_worker"],
+    "reporting":        ["reasoning"],
 }
 
 CREDENTIAL_REQUIRED = {

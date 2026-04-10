@@ -23,16 +23,16 @@ def test_sqlmap_oracle_config():
 
 
 def test_injection_payloads_available():
-    from workers.input_validation.base_tool import InputValidationTool
-    tool = InputValidationTool()
+    from workers.input_validation.tools.reflected_xss_tester import ReflectedXssTester
+    tool = ReflectedXssTester()
     xss_payloads = tool.get_injection_payloads("xss")
     assert len(xss_payloads) > 0
     assert "<script>" in xss_payloads[0]
 
 
 def test_vulnerability_detection():
-    from workers.input_validation.base_tool import InputValidationTool
-    tool = InputValidationTool()
+    from workers.input_validation.tools.reflected_xss_tester import ReflectedXssTester
+    tool = ReflectedXssTester()
     response = "<script>alert('XSS')</script> reflected"
     assert tool.detect_vulnerability(response, "xss")
     sql_error = "You have an error in your SQL syntax"

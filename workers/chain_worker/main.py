@@ -9,7 +9,7 @@ from typing import Any
 
 from lib_webbh import get_session, setup_logger
 from lib_webbh.database import JobState, Target
-from lib_webbh.messaging import listen_queue
+from lib_webbh.messaging import listen_priority_queues, get_redis
 from lib_webbh.scope import ScopeManager
 from sqlalchemy import select
 
@@ -170,12 +170,21 @@ async def main() -> None:
         await _wait_for_zap()
     if msf_proc:
         await _wait_for_msfrpcd()
-    container_name = get_container_name()
-    logger.info("Listening for tasks", extra={"consumer": container_name})
-    await listen_queue(
-        queue="chain_queue", group="chain_group",
-        consumer=container_name, callback=handle_message,
-    )
+
+    consumer_group = "chain_worker_group"
+    consumer_name = get_container_name()
+    logger.info("Listening for tasks", extra={"consumer": consumer_name})
+
+    async for message in listen_priority_queues(
+        "chain_worker_queue", consumer_group, consumer_name
+    ):
+        try:
+            await handle_message(message["msg_id"], message["payload"])
+        except Exception as e:
+            logger.error("Message handling failed", extra={"error": str(e)})
+
+        r = get_redis()
+        await r.xack(message["stream"], consumer_group, message["msg_id"])
 
 
 if __name__ == "__main__":

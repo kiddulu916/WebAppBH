@@ -3,8 +3,8 @@ from setuptools import setup, find_packages
 setup(
     name="lib_webbh",
     version="0.1.0",
-    packages=["lib_webbh"],
-    package_dir={"lib_webbh": "."},
+    packages=["lib_webbh", "lib_webbh.prompts", "lib_webbh.platform_api"],
+    package_dir={"lib_webbh": ".", "lib_webbh.prompts": "prompts", "lib_webbh.platform_api": "platform_api"},
     install_requires=[
         "sqlalchemy[asyncio]>=2.0",
         "asyncpg>=0.29",

@@ -1,6 +1,7 @@
 # workers/business_logic/tools/malicious_upload_tester.py
 """Malicious file upload testing tool — WSTG 4.10.9."""
 
+import asyncio
 import aiohttp
 from workers.business_logic.base_tool import BusinessLogicTool
 
@@ -12,13 +13,34 @@ class MaliciousUploadTester(BusinessLogicTool):
         """Execute malicious upload tests using callback server."""
         scope_manager = kwargs.get("scope_manager")
         if not scope_manager:
-            return
+            return {"found": 0, "vulnerable": 0}
+
+        stats = {"found": 0, "vulnerable": 0}
 
         upload_endpoints = await self._get_upload_endpoints(target_id, scope_manager)
+        stats["found"] = len(upload_endpoints)
 
         async with aiohttp.ClientSession() as session:
             for asset_id, url in upload_endpoints:
+                vulns_before = await self._count_vulnerabilities(target_id)
                 await self._test_malicious_upload(session, target_id, asset_id, url)
+                vulns_after = await self._count_vulnerabilities(target_id)
+                stats["vulnerable"] += vulns_after - vulns_before
+
+        return stats
+
+    async def _count_vulnerabilities(self, target_id: int) -> int:
+        """Count existing vulnerabilities for this target."""
+        from lib_webbh import get_session, Vulnerability
+        from sqlalchemy import select, func
+
+        async with get_session() as session:
+            result = await session.execute(
+                select(func.count(Vulnerability.id))
+                .where(Vulnerability.target_id == target_id)
+                .where(Vulnerability.vuln_type == "malicious_file_upload")
+            )
+            return result.scalar() or 0
 
     async def _get_upload_endpoints(self, target_id: int, scope_manager):
         """Get file upload endpoints."""
@@ -56,8 +78,8 @@ class MaliciousUploadTester(BusinessLogicTool):
                     if "uploaded" in response_text.lower() or "success" in response_text.lower():
                         # Try to access the uploaded webshell
                         await self._test_webshell_execution(session, target_id, asset_id, url)
-        except (aiohttp.ClientError, asyncio.TimeoutError):
-            pass
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            return
 
     async def _test_webshell_execution(self, session, target_id, asset_id, upload_url):
         """Test if uploaded webshell can be executed."""
@@ -83,5 +105,5 @@ class MaliciousUploadTester(BusinessLogicTool):
                                 vuln_type="malicious_file_upload",
                             )
                             break
-            except (aiohttp.ClientError, asyncio.TimeoutError):
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 continue

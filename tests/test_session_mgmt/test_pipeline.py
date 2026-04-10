@@ -14,9 +14,9 @@ def test_stages_defined_in_order():
 
     assert len(STAGES) == 9
     expected_stages = [
-        "session_token_handling", "session_timeout", "cookie_attributes",
-        "session_fixation", "csrf", "concurrent_sessions",
-        "session_termination", "session_persistence", "logout_functionality"
+        "session_scheme", "cookie_attributes", "session_fixation",
+        "exposed_variables", "csrf", "logout_functionality",
+        "session_timeout", "session_puzzling", "session_hijacking"
     ]
     for i, stage in enumerate(STAGES):
         assert stage.name == expected_stages[i]
@@ -52,21 +52,21 @@ def test_pipeline_filters_stages_with_playbook():
     pipeline = Pipeline(target_id=1, container_name="test")
     playbook = {
         "stages": [
-            {"name": "session_token_handling", "enabled": True},
-            {"name": "session_timeout", "enabled": False},
+            {"name": "session_scheme", "enabled": True},
             {"name": "cookie_attributes", "enabled": True},
             {"name": "session_fixation", "enabled": True},
+            {"name": "exposed_variables", "enabled": False},
             {"name": "csrf", "enabled": True},
-            {"name": "concurrent_sessions", "enabled": True},
-            {"name": "session_termination", "enabled": True},
-            {"name": "session_persistence", "enabled": True},
             {"name": "logout_functionality", "enabled": True},
+            {"name": "session_timeout", "enabled": True},
+            {"name": "session_puzzling", "enabled": True},
+            {"name": "session_hijacking", "enabled": True},
         ]
     }
     filtered = pipeline._filter_stages(playbook)
     assert len(filtered) == 8
     stage_names = [s.name for s in filtered]
-    assert "session_timeout" not in stage_names
+    assert "exposed_variables" not in stage_names
 
 
 def test_pipeline_returns_all_stages_without_playbook():
@@ -94,11 +94,12 @@ async def test_run_pipeline_skips_completed_stages():
 
                         await pipeline.run(target, scope_mgr)
 
-                        assert mock_run.call_count == 6
+                        assert mock_run.call_count == 7
                         called_stages = [call.args[0].name for call in mock_run.call_args_list]
                         expected_remaining = [
-                            "session_fixation", "csrf", "concurrent_sessions",
-                            "session_termination", "session_persistence", "logout_functionality"
+                            "session_fixation", "exposed_variables", "csrf",
+                            "logout_functionality", "session_timeout",
+                            "session_puzzling", "session_hijacking"
                         ]
                         assert called_stages == expected_remaining
 

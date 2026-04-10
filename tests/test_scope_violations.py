@@ -11,7 +11,7 @@ import asyncio
 
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import tests._patch_logger  # noqa: F401
 
@@ -45,10 +45,10 @@ async def seed_target(db):
 
 @pytest.fixture
 def client():
-    with patch("orchestrator.event_engine.run_event_loop", new_callable=AsyncMock), \
-         patch("orchestrator.event_engine.run_heartbeat", new_callable=AsyncMock), \
-         patch("orchestrator.event_engine.run_redis_listener", new_callable=AsyncMock), \
-         patch("orchestrator.event_engine.run_autoscaler", new_callable=AsyncMock):
+    with patch("orchestrator.event_engine.EventEngine") as MockEventEngine:
+        mock_engine_instance = MagicMock()
+        mock_engine_instance.run = AsyncMock()
+        MockEventEngine.return_value = mock_engine_instance
         from httpx import ASGITransport, AsyncClient
         from orchestrator.main import app
         transport = ASGITransport(app=app)

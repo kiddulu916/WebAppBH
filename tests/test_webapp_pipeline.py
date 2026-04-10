@@ -180,16 +180,18 @@ async def test_base_tool_save_vulnerability_creates_alert_for_critical():
 
 
 def test_webapp_stages_defined_in_order():
-    """Verify the 6 stages are declared in the expected order."""
+    """Verify the 8 stages are declared in the expected order."""
     from workers.webapp_worker.pipeline import STAGES
 
-    assert len(STAGES) == 6
+    assert len(STAGES) == 8
     assert STAGES[0].name == "js_discovery"
     assert STAGES[1].name == "static_js_analysis"
     assert STAGES[2].name == "browser_security"
     assert STAGES[3].name == "http_security"
     assert STAGES[4].name == "path_api_discovery"
     assert STAGES[5].name == "api_probing"
+    assert STAGES[6].name == "xss_scanning"
+    assert STAGES[7].name == "prototype_pollution_scan"
 
 
 def test_webapp_each_stage_has_tools():
@@ -231,7 +233,7 @@ async def test_webapp_pipeline_skips_completed_stages():
 
                             await pipeline.run(target, scope_mgr)
 
-                            assert mock_run.call_count == 4
+                            assert mock_run.call_count == 6
                             called_stages = [
                                 call.args[0].name for call in mock_run.call_args_list
                             ]
@@ -240,4 +242,6 @@ async def test_webapp_pipeline_skips_completed_stages():
                                 "http_security",
                                 "path_api_discovery",
                                 "api_probing",
+                                "xss_scanning",
+                                "prototype_pollution_scan",
                             ]

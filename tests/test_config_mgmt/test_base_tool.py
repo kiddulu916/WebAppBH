@@ -23,7 +23,7 @@ def test_concrete_tool_implements_abstract_methods():
     from workers.config_mgmt.tools import NetworkConfigTester
 
     tool = NetworkConfigTester()
-    assert tool.name == "NetworkConfigTester"
+    assert tool.name == "network_config_tester"
 
 
 @pytest.mark.anyio

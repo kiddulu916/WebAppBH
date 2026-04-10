@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from lib_webbh import get_session, setup_logger
 from lib_webbh.database import JobState, Target
-from lib_webbh.messaging import listen_queue, push_task
+from lib_webbh.messaging import listen_priority_queues, get_redis, push_task
 
 from workers.reporting_worker.pipeline import Pipeline
 
@@ -105,12 +105,20 @@ async def handle_message(msg_id: str, data: dict[str, Any]) -> None:
 
 async def main() -> None:
     logger.info("Reporting worker starting")
-    container_name = get_container_name()
-    logger.info("Listening for tasks", extra={"consumer": container_name})
-    await listen_queue(
-        queue="report_queue", group="reporting_group",
-        consumer=container_name, callback=handle_message,
-    )
+    consumer_group = "reporting_group"
+    consumer_name = get_container_name()
+    logger.info("Listening for tasks", extra={"consumer": consumer_name})
+
+    async for message in listen_priority_queues(
+        "reporting_queue", consumer_group, consumer_name
+    ):
+        try:
+            await handle_message(message["msg_id"], message["payload"])
+        except Exception as e:
+            logger.error("Message handling failed", extra={"error": str(e)})
+
+        r = get_redis()
+        await r.xack(message["stream"], consumer_group, message["msg_id"])
 
 
 if __name__ == "__main__":

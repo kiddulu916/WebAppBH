@@ -13,14 +13,35 @@ class RequestForgeryTester(BusinessLogicTool):
         """Execute request forgery tests using traffic proxy."""
         scope_manager = kwargs.get("scope_manager")
         if not scope_manager:
-            return
+            return {"found": 0, "vulnerable": 0}
+
+        stats = {"found": 0, "vulnerable": 0}
 
         # Get forms and POST endpoints that might be vulnerable to request forgery
         forms_and_endpoints = await self._get_forms_and_endpoints(target_id, scope_manager)
+        stats["found"] = len(forms_and_endpoints)
 
         async with aiohttp.ClientSession() as session:
             for asset_id, url, method, params in forms_and_endpoints:
+                vulns_before = await self._count_vulnerabilities(target_id)
                 await self._test_request_forgery(session, target_id, asset_id, url, method, params)
+                vulns_after = await self._count_vulnerabilities(target_id)
+                stats["vulnerable"] += vulns_after - vulns_before
+
+        return stats
+
+    async def _count_vulnerabilities(self, target_id: int) -> int:
+        """Count existing vulnerabilities for this target."""
+        from lib_webbh import get_session, Vulnerability
+        from sqlalchemy import select, func
+
+        async with get_session() as session:
+            result = await session.execute(
+                select(func.count(Vulnerability.id))
+                .where(Vulnerability.target_id == target_id)
+                .where(Vulnerability.vuln_type == "request_forgery")
+            )
+            return result.scalar() or 0
 
     async def _get_forms_and_endpoints(self, target_id: int, scope_manager):
         """Get forms and POST endpoints for testing."""
@@ -90,8 +111,8 @@ class RequestForgeryTester(BusinessLogicTool):
                             poc=test_url,
                             vuln_type="request_forgery",
                         )
-        except (aiohttp.ClientError, asyncio.TimeoutError):
-            pass
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            return
 
     async def _test_referer_manipulation(self, session, target_id, asset_id, url, params):
         """Test referer header manipulation."""
@@ -118,8 +139,8 @@ class RequestForgeryTester(BusinessLogicTool):
                             evidence=f"Referer: {headers['Referer']}",
                             vuln_type="request_forgery",
                         )
-        except (aiohttp.ClientError, asyncio.TimeoutError):
-            pass
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            return
 
     async def _test_origin_manipulation(self, session, target_id, asset_id, url, params):
         """Test origin header manipulation."""
@@ -144,8 +165,8 @@ class RequestForgeryTester(BusinessLogicTool):
                             evidence=f"Origin: {headers['Origin']}",
                             vuln_type="request_forgery",
                         )
-        except (aiohttp.ClientError, asyncio.TimeoutError):
-            pass
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            return
 
     async def _test_request_replay(self, session, target_id, asset_id, url, params):
         """Test for request replay vulnerabilities."""
@@ -178,5 +199,5 @@ class RequestForgeryTester(BusinessLogicTool):
                             poc=url,
                             vuln_type="request_forgery",
                         )
-        except (aiohttp.ClientError, asyncio.TimeoutError):
-            pass
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            return

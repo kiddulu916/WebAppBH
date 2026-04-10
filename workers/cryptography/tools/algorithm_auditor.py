@@ -2,6 +2,7 @@
 """Algorithm auditor — detects weak cryptographic algorithms."""
 
 import aiohttp
+import asyncio
 from workers.cryptography.base_tool import CryptographyTool
 
 
@@ -111,5 +112,8 @@ class AlgorithmAuditor(CryptographyTool):
                             vuln_type="weak_crypto",
                         )
 
-            except (aiohttp.ClientError, asyncio.TimeoutError):
-                pass
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                # Log the error but continue auditing other domains
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to audit algorithms for {domain}: {str(e)}")

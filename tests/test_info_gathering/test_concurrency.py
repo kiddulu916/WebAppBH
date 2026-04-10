@@ -20,6 +20,7 @@ def test_tool_weights_contains_all_tools():
         "MetadataExtractor", "FormMapper", "Paramspider", "Katana",
         "Hakrawler", "Wappalyzer", "CookieFingerprinter", "Webanalyze",
         "Naabu", "Waybackurls", "ArchitectureModeler",
+        "ApplicationMapper", "AttackSurfaceAnalyzer",
     }
     assert set(TOOL_WEIGHTS.keys()) == expected_tools
 

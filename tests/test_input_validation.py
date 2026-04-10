@@ -3,7 +3,7 @@
 
 import os
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ["DB_DRIVER"] = "sqlite+aiosqlite"
 os.environ["DB_NAME"] = ":memory:"
@@ -16,10 +16,10 @@ from httpx import ASGITransport, AsyncClient
 from lib_webbh.database import get_engine, Base
 
 # Patch event_engine background tasks before importing app
-with patch("orchestrator.event_engine.run_event_loop", new_callable=AsyncMock), \
-     patch("orchestrator.event_engine.run_heartbeat", new_callable=AsyncMock), \
-     patch("orchestrator.event_engine.run_redis_listener", new_callable=AsyncMock), \
-     patch("orchestrator.event_engine.run_autoscaler", new_callable=AsyncMock):
+with patch("orchestrator.event_engine.EventEngine") as MockEventEngine:
+    mock_engine_instance = MagicMock()
+    mock_engine_instance.run = AsyncMock()
+    MockEventEngine.return_value = mock_engine_instance
     from orchestrator.main import app
 
 

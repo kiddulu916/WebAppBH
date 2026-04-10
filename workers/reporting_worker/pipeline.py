@@ -1,6 +1,7 @@
 """Reporting pipeline: 4 sequential stages with checkpointing."""
 from __future__ import annotations
 
+import inspect
 import os
 import shutil
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from workers.reporting_worker.deduplicator import deduplicate_and_enrich
 from workers.reporting_worker.renderers.executive_renderer import ExecutiveRenderer
 from workers.reporting_worker.renderers.markdown_renderer import MarkdownRenderer
 from workers.reporting_worker.renderers.technical_renderer import TechnicalRenderer
+from workers.reporting_worker.renderers.llm_renderer import LLMRenderer
 
 logger = setup_logger("reporting_pipeline")
 
@@ -41,6 +43,11 @@ FORMAT_RENDERERS = {
     "bugcrowd_md": MarkdownRenderer,
     "executive_pdf": ExecutiveRenderer,
     "technical_pdf": TechnicalRenderer,
+    "llm_hackerone": LLMRenderer,
+    "llm_bugcrowd": LLMRenderer,
+    "llm_intigriti": LLMRenderer,
+    "llm_yeswehack": LLMRenderer,
+    "llm_markdown": LLMRenderer,
 }
 
 
@@ -89,7 +96,13 @@ class Pipeline:
                 renderer = renderer_cls()
                 if fmt == "bugcrowd_md":
                     report_data.platform = "bugcrowd"
-                paths = renderer.render(report_data, output_dir=render_dir)
+                elif fmt.startswith("llm_"):
+                    report_data.platform = fmt[4:]  # e.g. "llm_hackerone" -> "hackerone"
+                render_result = renderer.render(report_data, output_dir=render_dir)
+                if inspect.isawaitable(render_result):
+                    paths = await render_result
+                else:
+                    paths = render_result
                 all_output_paths.extend(paths)
                 await push_task(f"events:{target_id}", {"event": "REPORT_FORMAT_COMPLETE", "format": fmt})
                 log.info("Format rendered", extra={"format": fmt, "paths": paths})

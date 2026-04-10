@@ -1,7 +1,7 @@
 """Config management worker entry point.
 
-Listens on ``config_mgmt_queue`` and runs the 11-stage config management
-pipeline for each incoming target.
+Listens on ``config_mgmt_queue`` (priority-tiered) and runs the 11-stage
+config management pipeline for each incoming target.
 """
 
 from __future__ import annotations
@@ -18,9 +18,10 @@ from lib_webbh import (
     JobState,
     Target,
     get_session,
-    listen_queue,
+    listen_priority_queues,
     setup_logger,
 )
+from lib_webbh.messaging import get_redis
 from lib_webbh.scope import ScopeManager
 
 from workers.config_mgmt.pipeline import Pipeline
@@ -145,13 +146,20 @@ async def _heartbeat_loop(target_id: int, container_name: str) -> None:
 
 async def main() -> None:
     """Start the config management worker."""
+    consumer_group = "config_mgmt_group"
+    consumer_name = get_container_name()
     logger.info("Starting config management worker")
-    await listen_queue(
-        queue="config_mgmt_queue",
-        group="config_mgmt_group",
-        consumer=get_container_name(),
-        callback=handle_message,
-    )
+
+    async for message in listen_priority_queues(
+        "config_mgmt_queue", consumer_group, consumer_name
+    ):
+        try:
+            await handle_message(message["msg_id"], message["payload"])
+        except Exception as e:
+            logger.error("Message handling failed", extra={"error": str(e)})
+
+        r = get_redis()
+        await r.xack(message["stream"], consumer_group, message["msg_id"])
 
 
 if __name__ == "__main__":

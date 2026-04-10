@@ -136,7 +136,7 @@ def test_web_storage_tester_parse_output():
 
 def test_client_logic_analyzer_weight():
     from workers.client_side.tools.client_logic_analyzer import ClientLogicAnalyzer
-    assert ClientLogicAnalyzer.weight_class == WeightClass.LIGHT
+    assert ClientLogicAnalyzer.weight_class == WeightClass.HEAVY
 
 
 def test_client_logic_analyzer_build_command():
@@ -156,7 +156,7 @@ def test_client_logic_analyzer_parse_output():
 
 def test_dom_injection_tester_weight():
     from workers.client_side.tools.dom_injection_tester import DomInjectionTester
-    assert DomInjectionTester.weight_class == WeightClass.LIGHT
+    assert DomInjectionTester.weight_class == WeightClass.HEAVY
 
 
 def test_dom_injection_tester_build_command():

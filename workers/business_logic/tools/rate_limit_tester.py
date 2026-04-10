@@ -13,14 +13,35 @@ class RateLimitTester(BusinessLogicTool):
         """Execute rate limiting tests against target."""
         scope_manager = kwargs.get("scope_manager")
         if not scope_manager:
-            return
+            return {"found": 0, "vulnerable": 0}
+
+        stats = {"found": 0, "vulnerable": 0}
 
         # Get endpoints that might have rate limiting
         endpoints = await self._get_rate_limited_endpoints(target_id, scope_manager)
+        stats["found"] = len(endpoints)
 
         async with aiohttp.ClientSession() as session:
             for asset_id, url in endpoints:
+                vulns_before = await self._count_vulnerabilities(target_id)
                 await self._test_rate_limiting(session, target_id, asset_id, url)
+                vulns_after = await self._count_vulnerabilities(target_id)
+                stats["vulnerable"] += vulns_after - vulns_before
+
+        return stats
+
+    async def _count_vulnerabilities(self, target_id: int) -> int:
+        """Count existing vulnerabilities for this target."""
+        from lib_webbh import get_session, Vulnerability
+        from sqlalchemy import select, func
+
+        async with get_session() as session:
+            result = await session.execute(
+                select(func.count(Vulnerability.id))
+                .where(Vulnerability.target_id == target_id)
+                .where(Vulnerability.vuln_type == "rate_limiting_bypass")
+            )
+            return result.scalar() or 0
 
     async def _get_rate_limited_endpoints(self, target_id: int, scope_manager):
         """Get endpoints that typically have rate limiting."""
@@ -67,7 +88,7 @@ class RateLimitTester(BusinessLogicTool):
                         rate_limited_count += 1
                     await resp.text()  # Consume response
                 await asyncio.sleep(0.1)  # Small delay between requests
-            except (aiohttp.ClientError, asyncio.TimeoutError):
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 continue
 
         # If rate limiting is not detected, flag potential vulnerability

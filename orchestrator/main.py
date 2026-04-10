@@ -78,6 +78,7 @@ from lib_webbh import (
     ScopeViolation,
     Target,
     Vulnerability,
+    VulnerabilityInsight,
     get_engine,
     get_session,
     is_valid_cron,
@@ -149,8 +150,11 @@ class TargetProfileUpdate(BaseModel):
 
 
 class ReportCreate(BaseModel):
-    formats: list[Literal["hackerone_md", "bugcrowd_md", "executive_pdf", "technical_pdf"]] = Field(description="Report formats to generate")
-    platform: Literal["hackerone", "bugcrowd"] = Field(default="hackerone", description="Target platform")
+    formats: list[Literal[
+        "hackerone_md", "bugcrowd_md", "executive_pdf", "technical_pdf",
+        "llm_hackerone", "llm_bugcrowd", "llm_intigriti", "llm_yeswehack", "llm_markdown",
+    ]] = Field(description="Report formats to generate")
+    platform: Literal["hackerone", "bugcrowd", "intigriti", "yeswehack"] = Field(default="hackerone", description="Target platform")
 
 
 class BountyCreate(BaseModel):
@@ -2269,6 +2273,370 @@ async def test_seed(body: TestSeedRequest):
         "vuln_ids": vuln_ids,
         "job_ids": job_ids,
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/platforms/{platform}/import-scope — Import scope from platform
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/platforms/{platform}/import-scope")
+async def import_platform_scope(platform: str, body: dict):
+    from lib_webbh.platform_api import PLATFORM_CLIENTS
+    if platform not in PLATFORM_CLIENTS:
+        raise HTTPException(status_code=400, detail=f"Unknown platform: {platform}")
+
+    client_cls = PLATFORM_CLIENTS[platform]
+    client = client_cls()
+    program_handle = body.get("program_handle")
+    if not program_handle:
+        raise HTTPException(status_code=400, detail="program_handle is required")
+
+    entries = await client.import_scope(program_handle)
+    return {"platform": platform, "program": program_handle, "scope_entries": len(entries),
+            "entries": [{"asset_type": e.asset_type, "asset_value": e.asset_value,
+                         "eligible": e.eligible_for_bounty, "max_severity": e.max_severity}
+                        for e in entries]}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/bounties/{bounty_id}/submit — Submit report to platform
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/bounties/{bounty_id}/submit")
+async def submit_to_platform(bounty_id: int):
+    from lib_webbh.platform_api import PLATFORM_CLIENTS
+    async with get_session() as session:
+        bounty = (await session.execute(
+            select(BountySubmission).where(BountySubmission.id == bounty_id)
+        )).scalar_one_or_none()
+        if not bounty:
+            raise HTTPException(status_code=404, detail="Bounty submission not found")
+
+        if bounty.platform not in PLATFORM_CLIENTS:
+            raise HTTPException(status_code=400, detail=f"Unknown platform: {bounty.platform}")
+
+        vuln = (await session.execute(
+            select(Vulnerability).where(Vulnerability.id == bounty.vulnerability_id)
+        )).scalar_one_or_none()
+
+        client_cls = PLATFORM_CLIENTS[bounty.platform]
+        client = client_cls()
+
+        target = (await session.execute(
+            select(Target).where(Target.id == bounty.target_id)
+        )).scalar_one_or_none()
+        program_handle = (target.target_profile or {}).get("program_handle", "") if target else ""
+
+        result = await client.submit_report(
+            program_handle=program_handle,
+            title=vuln.title if vuln else "Vulnerability Report",
+            body=vuln.description or "" if vuln else "",
+            severity=vuln.severity if vuln else "medium",
+        )
+
+        bounty.external_id = result.external_id
+        bounty.status = result.status
+        bounty.submission_url = result.platform_url
+        bounty.platform_response = result.raw_response
+        await session.commit()
+
+    return {"bounty_id": bounty_id, "external_id": result.external_id, "status": result.status}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/bounties/{bounty_id}/sync — Sync status from platform
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/bounties/{bounty_id}/sync")
+async def sync_bounty_status(bounty_id: int):
+    from lib_webbh.platform_api import PLATFORM_CLIENTS
+    async with get_session() as session:
+        bounty = (await session.execute(
+            select(BountySubmission).where(BountySubmission.id == bounty_id)
+        )).scalar_one_or_none()
+        if not bounty:
+            raise HTTPException(status_code=404, detail="Bounty submission not found")
+        if not bounty.external_id:
+            raise HTTPException(status_code=400, detail="No external_id — report not yet submitted")
+        if bounty.platform not in PLATFORM_CLIENTS:
+            raise HTTPException(status_code=400, detail=f"Unknown platform: {bounty.platform}")
+
+        client_cls = PLATFORM_CLIENTS[bounty.platform]
+        client = client_cls()
+        new_status = await client.sync_status(bounty.external_id)
+
+        bounty.status = new_status
+        await session.commit()
+
+    return {"bounty_id": bounty_id, "status": new_status}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/targets/{target_id}/analyze — trigger LLM reasoning
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/targets/{target_id}/analyze", status_code=202)
+async def trigger_reasoning(target_id: int):
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+        if not target:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+    await push_task("reasoning_queue", {"target_id": target_id})
+    return {"status": "queued", "target_id": target_id}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/targets/{target_id}/insights — list insights for a target
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/targets/{target_id}/insights")
+async def list_insights(target_id: int):
+    async with get_session() as session:
+        rows = (await session.execute(
+            select(VulnerabilityInsight)
+            .where(VulnerabilityInsight.target_id == target_id)
+            .order_by(VulnerabilityInsight.confidence.desc())
+        )).scalars().all()
+
+        return [
+            {
+                "id": r.id,
+                "vulnerability_id": r.vulnerability_id,
+                "severity_assessment": r.severity_assessment,
+                "exploitability": r.exploitability,
+                "false_positive_likelihood": r.false_positive_likelihood,
+                "chain_hypotheses": r.chain_hypotheses,
+                "next_steps": r.next_steps,
+                "bounty_estimate": r.bounty_estimate,
+                "duplicate_likelihood": r.duplicate_likelihood,
+                "owasp_cwe": r.owasp_cwe,
+                "report_readiness_score": r.report_readiness_score,
+                "report_readiness_notes": r.report_readiness_notes,
+                "asset_criticality": r.asset_criticality,
+                "asset_criticality_rationale": r.asset_criticality_rationale,
+                "confidence": r.confidence,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/vulnerabilities/{vuln_id}/insight — single insight for a vuln
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/vulnerabilities/{vuln_id}/insight")
+async def get_vuln_insight(vuln_id: int):
+    async with get_session() as session:
+        row = (await session.execute(
+            select(VulnerabilityInsight)
+            .where(VulnerabilityInsight.vulnerability_id == vuln_id)
+            .order_by(VulnerabilityInsight.created_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="No insight found for this vulnerability")
+
+        return {
+            "id": row.id,
+            "vulnerability_id": row.vulnerability_id,
+            "severity_assessment": row.severity_assessment,
+            "exploitability": row.exploitability,
+            "false_positive_likelihood": row.false_positive_likelihood,
+            "chain_hypotheses": row.chain_hypotheses,
+            "next_steps": row.next_steps,
+            "bounty_estimate": row.bounty_estimate,
+            "duplicate_likelihood": row.duplicate_likelihood,
+            "owasp_cwe": row.owasp_cwe,
+            "report_readiness_score": row.report_readiness_score,
+            "report_readiness_notes": row.report_readiness_notes,
+            "asset_criticality": row.asset_criticality,
+            "asset_criticality_rationale": row.asset_criticality_rationale,
+            "confidence": row.confidence,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/intelligence/rankings — list tool rankings for a tech fingerprint
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/intelligence/rankings")
+async def get_intelligence_rankings(tech_fingerprint: str):
+    from lib_webbh.scan_intelligence import get_tool_rankings
+
+    rankings = await get_tool_rankings(tech_fingerprint)
+    return {
+        "tech_fingerprint": tech_fingerprint,
+        "rankings": [
+            {
+                "tool_name": r.tool_name,
+                "total_runs": r.total_runs,
+                "total_findings": r.total_findings,
+                "confirmed_findings": r.confirmed_findings,
+                "hit_rate": r.hit_rate,
+                "confirmed_rate": r.confirmed_rate,
+                "avg_runtime_seconds": r.avg_runtime_seconds,
+            }
+            for r in rankings
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/intelligence/playbook — adaptive playbook for a target
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/intelligence/playbook")
+async def get_intelligence_playbook(target_id: int, base: str = "wide_recon"):
+    from lib_webbh.playbooks import get_playbook
+    from lib_webbh.scan_intelligence import (
+        fingerprint_tech_stack,
+        generate_adaptive_playbook,
+    )
+
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+        if not target:
+            raise HTTPException(status_code=404, detail="Target not found")
+
+        observations = (await session.execute(
+            select(Observation).where(Observation.target_id == target_id)
+        )).scalars().all()
+        obs_dicts = [{"key": o.key, "value": o.value} for o in observations]
+
+    fingerprint = fingerprint_tech_stack(obs_dicts)
+    base_playbook = get_playbook(base)
+    adaptive = await generate_adaptive_playbook(fingerprint, base_playbook)
+    return {
+        "target_id": target_id,
+        "tech_fingerprint": fingerprint,
+        "base": base_playbook.name,
+        "playbook": adaptive.to_dict(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/intelligence/feedback — record a tool result
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/intelligence/feedback")
+async def post_intelligence_feedback(body: dict):
+    from lib_webbh.scan_intelligence import record_tool_result
+
+    required = ("tech_fingerprint", "tool_name", "finding_count", "confirmed", "runtime_seconds")
+    missing = [k for k in required if k not in body]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing fields: {missing}")
+
+    await record_tool_result(
+        tech_fingerprint=str(body["tech_fingerprint"]),
+        tool_name=str(body["tool_name"]),
+        finding_count=int(body["finding_count"]),
+        confirmed=int(body["confirmed"]),
+        runtime_seconds=float(body["runtime_seconds"]),
+    )
+    return {"recorded": True}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/sandbox/mutate — generate payload mutation variants
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/sandbox/mutate")
+async def sandbox_mutate(body: dict):
+    from workers.sandbox_worker.mutator import mutate
+    from workers.sandbox_worker.chaining import chain_mutate
+    from workers.sandbox_worker.context import InjectionContext
+
+    vuln_type = body.get("vuln_type", "xss")
+    payload = body.get("base_payload", "")
+    depth = int(body.get("depth", 1))
+    context_str = body.get("context")
+
+    if not payload:
+        raise HTTPException(status_code=400, detail="base_payload is required")
+
+    context = None
+    if context_str:
+        try:
+            context = InjectionContext(context_str)
+        except ValueError:
+            pass
+
+    if depth > 1:
+        variants = chain_mutate(payload, vuln_type, depth=depth, context=context)
+    else:
+        variants = mutate(payload, vuln_type, context=context)
+
+    return {"vuln_type": vuln_type, "variants": variants, "count": len(variants)}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/sandbox/fingerprint — fingerprint WAF from response
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/sandbox/fingerprint")
+async def sandbox_fingerprint(body: dict):
+    from workers.sandbox_worker.waf_fingerprint import fingerprint_waf
+
+    waf = fingerprint_waf(
+        headers=body.get("headers", {}),
+        body=body.get("body", ""),
+        status_code=int(body.get("status_code", 200)),
+        cookies=body.get("cookies"),
+    )
+    return {"waf_profile": waf}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/sandbox/feedback — record mutation outcome
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/sandbox/feedback")
+async def sandbox_feedback(body: dict):
+    from lib_webbh.database import MutationOutcome
+
+    required = ("vuln_type", "mutation_chain", "bypassed")
+    missing = [k for k in required if k not in body]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing fields: {missing}")
+
+    async with get_session() as session:
+        row = MutationOutcome(
+            vuln_type=str(body["vuln_type"]),
+            waf_profile=body.get("waf_profile"),
+            mutation_chain=str(body["mutation_chain"]),
+            context=body.get("context"),
+            bypassed=bool(body["bypassed"]),
+            total_attempts=1,
+            successful_attempts=1 if body["bypassed"] else 0,
+        )
+        session.add(row)
+        await session.commit()
+
+    return {"recorded": True}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/sandbox/waf-profiles — list known WAF profiles
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/sandbox/waf-profiles")
+async def sandbox_waf_profiles():
+    from workers.sandbox_worker.waf_fingerprint import WAF_SIGNATURES
+
+    return {"profiles": list(WAF_SIGNATURES.keys())}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/sandbox/corpus — list seed payloads
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/sandbox/corpus")
+async def sandbox_corpus(vuln_type: str | None = None):
+    from workers.sandbox_worker.payload_corpus import CORPUS
+
+    result = {}
+    for (vt, ctx), payloads in CORPUS.items():
+        if vuln_type and vt != vuln_type:
+            continue
+        key = f"{vt}:{ctx.value}"
+        result[key] = payloads
+
+    return {"corpus": result}
 
 
 @app.post("/api/v1/test/emit-event")

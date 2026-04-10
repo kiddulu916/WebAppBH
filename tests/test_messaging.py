@@ -3,9 +3,26 @@ import json
 
 import pytest
 import pytest_asyncio
+import redis.asyncio as aioredis
 
 from lib_webbh.messaging import push_task, listen_queue, get_pending, get_redis
 import lib_webbh.messaging as messaging_mod
+
+
+def _redis_available() -> bool:
+    """Check if Redis is reachable on localhost:6379."""
+    import socket
+    try:
+        s = socket.create_connection(("localhost", 6379), timeout=1)
+        s.close()
+        return True
+    except OSError:
+        return False
+
+
+pytestmark = pytest.mark.skipif(
+    not _redis_available(), reason="Redis not available on localhost:6379"
+)
 
 
 @pytest_asyncio.fixture

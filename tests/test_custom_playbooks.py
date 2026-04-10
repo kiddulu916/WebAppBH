@@ -9,7 +9,7 @@ os.environ.setdefault("WEB_APP_BH_API_KEY", "test-api-key-1234")
 
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import tests._patch_logger  # noqa: F401
 
@@ -33,10 +33,10 @@ async def db():
 
 @pytest.fixture
 def client():
-    with patch("orchestrator.event_engine.run_event_loop", new_callable=AsyncMock), \
-         patch("orchestrator.event_engine.run_heartbeat", new_callable=AsyncMock), \
-         patch("orchestrator.event_engine.run_redis_listener", new_callable=AsyncMock), \
-         patch("orchestrator.event_engine.run_autoscaler", new_callable=AsyncMock):
+    with patch("orchestrator.event_engine.EventEngine") as MockEventEngine:
+        mock_engine_instance = MagicMock()
+        mock_engine_instance.run = AsyncMock()
+        MockEventEngine.return_value = mock_engine_instance
         from httpx import ASGITransport, AsyncClient
         from orchestrator.main import app
         transport = ASGITransport(app=app)

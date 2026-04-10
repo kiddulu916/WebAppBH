@@ -80,5 +80,8 @@ class PlaintextLeakScanner(CryptographyTool):
                         vuln_type="plaintext_transmission",
                     )
 
-        except (aiohttp.ClientError, asyncio.TimeoutError):
-            pass
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            # Log the error but continue scanning other URLs
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to scan {url} for plaintext leaks: {str(e)}")

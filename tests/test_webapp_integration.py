@@ -157,5 +157,5 @@ async def test_webapp_pipeline_full_flow(seed_target):
         assert job.status == "COMPLETED"
 
     # Verify pipeline_complete event was pushed
-    push_calls = [c for c in mock_push.call_args_list if "pipeline_complete" in str(c)]
+    push_calls = [c for c in mock_push.call_args_list if "PIPELINE_COMPLETE" in str(c)]
     assert len(push_calls) >= 1

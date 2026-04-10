@@ -1,6 +1,7 @@
 # workers/business_logic/tools/misuse_tester.py
 """Application misuse testing tool — WSTG 4.10.7."""
 
+import asyncio
 import aiohttp
 from workers.business_logic.base_tool import BusinessLogicTool
 
@@ -12,13 +13,34 @@ class MisuseTester(BusinessLogicTool):
         """Execute application misuse tests."""
         scope_manager = kwargs.get("scope_manager")
         if not scope_manager:
-            return
+            return {"found": 0, "vulnerable": 0}
+
+        stats = {"found": 0, "vulnerable": 0}
 
         urls = await self._get_application_urls(target_id, scope_manager)
+        stats["found"] = len(urls)
 
         async with aiohttp.ClientSession() as session:
             for asset_id, url in urls:
+                vulns_before = await self._count_vulnerabilities(target_id)
                 await self._test_application_misuse(session, target_id, asset_id, url)
+                vulns_after = await self._count_vulnerabilities(target_id)
+                stats["vulnerable"] += vulns_after - vulns_before
+
+        return stats
+
+    async def _count_vulnerabilities(self, target_id: int) -> int:
+        """Count existing vulnerabilities for this target."""
+        from lib_webbh import get_session, Vulnerability
+        from sqlalchemy import select, func
+
+        async with get_session() as session:
+            result = await session.execute(
+                select(func.count(Vulnerability.id))
+                .where(Vulnerability.target_id == target_id)
+                .where(Vulnerability.vuln_type == "application_misuse")
+            )
+            return result.scalar() or 0
 
     async def _get_application_urls(self, target_id: int, scope_manager):
         """Get application URLs for testing."""
@@ -63,5 +85,5 @@ class MisuseTester(BusinessLogicTool):
                                 poc=test_url,
                                 vuln_type="application_misuse",
                             )
-            except (aiohttp.ClientError, asyncio.TimeoutError):
-                pass
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                continue

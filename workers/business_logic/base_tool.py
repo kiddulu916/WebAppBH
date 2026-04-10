@@ -3,11 +3,12 @@ from abc import ABC, abstractmethod
 import asyncio
 import os
 from lib_webbh import get_session, Vulnerability
+from lib_webbh.infra_mixin import InfrastructureMixin
 
 TOOL_TIMEOUT = int(os.environ.get("TOOL_TIMEOUT", "600"))
 
 
-class BusinessLogicTool(ABC):
+class BusinessLogicTool(InfrastructureMixin, ABC):
     """Abstract base for all business_logic tools."""
 
     worker_type = "business_logic"

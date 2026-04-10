@@ -30,6 +30,8 @@ TOOL_WEIGHTS = {
     "Naabu": "HEAVY",
     "Waybackurls": "LIGHT",
     "ArchitectureModeler": "LIGHT",
+    "ApplicationMapper": "LIGHT",
+    "AttackSurfaceAnalyzer": "LIGHT",
 }
 
 

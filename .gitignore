@@ -12,3 +12,8 @@ build/
 .venv/
 playwright-report/
 test-results/
+.playwright-mcp/
+.kilo
+.kilo/
+.kilo/*
+!.kilo/.gitkeep

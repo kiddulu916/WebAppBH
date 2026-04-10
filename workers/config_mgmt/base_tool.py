@@ -25,6 +25,7 @@ from lib_webbh import (
 )
 from lib_webbh.scope import ScopeManager, ScopeResult
 from lib_webbh.shared_infra import is_shared_infra
+from lib_webbh.infra_mixin import InfrastructureMixin
 
 from workers.config_mgmt.concurrency import WeightClass, get_semaphore, get_tool_weight
 
@@ -34,7 +35,7 @@ TOOL_TIMEOUT = int(os.environ.get("TOOL_TIMEOUT", "600"))
 COOLDOWN_HOURS = int(os.environ.get("COOLDOWN_HOURS", "24"))
 
 
-class ConfigMgmtTool(ABC):
+class ConfigMgmtTool(InfrastructureMixin, ABC):
     """Base class for all config management tool wrappers.
 
     Adds config-specific helpers:

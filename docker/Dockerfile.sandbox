@@ -1,0 +1,33 @@
+# ============================================================
+# Stage 1: Python dependency builder
+# ============================================================
+FROM python:3.10-slim-bookworm AS py-builder
+
+WORKDIR /build
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install lib_webbh into isolated target
+COPY shared/lib_webbh /build/shared/lib_webbh
+RUN pip install --no-cache-dir --target=/install /build/shared/lib_webbh
+
+# ============================================================
+# Stage 2: Runtime — lightweight Python image (no GPU, no WASM)
+# ============================================================
+FROM python:3.10-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy pre-built Python packages
+COPY --from=py-builder /install /usr/local/lib/python3.10/site-packages/
+
+# Worker source
+COPY workers/sandbox_worker /app/workers/sandbox_worker
+
+WORKDIR /app
+
+CMD ["python3", "-m", "workers.sandbox_worker.main"]

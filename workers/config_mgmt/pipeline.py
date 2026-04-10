@@ -17,6 +17,7 @@ from workers.config_mgmt.tools import (
     PlatformFingerprinter,
     FileExtensionTester,
     BackupFileFinder,
+    FfufTool,
     ApiDiscoveryTool,
     HttpMethodTester,
     HstsTester,
@@ -36,15 +37,15 @@ class Stage:
 
 
 STAGES = [
-    Stage("network_infrastructure", [NetworkConfigTester]),
-    Stage("platform_configuration", [PlatformFingerprinter]),
+    Stage("network_config", [NetworkConfigTester]),
+    Stage("platform_config", [PlatformFingerprinter]),
     Stage("file_extension_handling", [FileExtensionTester]),
-    Stage("backup_unreferenced_files", [BackupFileFinder]),
-    Stage("admin_interface_enumeration", [ApiDiscoveryTool]),
+    Stage("backup_files", [BackupFileFinder, FfufTool]),
+    Stage("api_discovery", [ApiDiscoveryTool]),
     Stage("http_methods", [HttpMethodTester]),
     Stage("hsts_testing", [HstsTester]),
-    Stage("cross_domain_policy", [RpcTester]),
-    Stage("file_permissions", [FileInclusionTester]),
+    Stage("rpc_testing", [RpcTester]),
+    Stage("file_inclusion", [FileInclusionTester]),
     Stage("subdomain_takeover", [SubdomainTakeoverChecker]),
     Stage("cloud_storage", [CloudStorageAuditor]),
 ]

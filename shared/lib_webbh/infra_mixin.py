@@ -1,10 +1,12 @@
-"""Infrastructure mixin providing proxy, callback, and credential helpers.
+"""Infrastructure mixin providing proxy, callback, credential, and safety helpers.
 
 Worker base_tool classes inherit from this mixin to get access to
-shared infrastructure services.
+shared infrastructure services and the safety policy methods required
+by the design doc (restructure-02-safety-policy).
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Optional
@@ -91,3 +93,99 @@ class InfrastructureMixin:
         if not user:
             return False
         return identifier in (user.get("username"), user.get("email"))
+
+    # -- Safety policy helpers --
+
+    # Class-level blocklist shared across all instances to prevent
+    # accidentally targeting real users discovered during a scan.
+    _REAL_USER_BLOCKLIST: set[str] = set()
+
+    async def log_discovered_user(
+        self,
+        target_id: int,
+        username: str | None = None,
+        email: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        """Record a discovered real user without taking any action.
+
+        Adds the identifiers to the blocklist so validate_target_user()
+        will reject them, and persists an Observation for audit purposes.
+        """
+        from lib_webbh.database import Observation, get_session
+
+        if username:
+            self._REAL_USER_BLOCKLIST.add(username)
+        if email:
+            self._REAL_USER_BLOCKLIST.add(email)
+
+        async with get_session() as session:
+            obs = Observation(
+                target_id=target_id,
+                observation_type="discovered_user",
+                data={
+                    "username": username,
+                    "email": email,
+                    "source": source,
+                    "action_taken": "none — real user, documented only",
+                },
+            )
+            session.add(obs)
+            await session.commit()
+
+    async def on_escalated_access(
+        self,
+        target_id: int,
+        access_type: str,
+        access_method: str,
+        session_data: str,
+        data_exposed: str,
+        severity: str,
+        worker_type: str = "unknown",
+    ) -> None:
+        """Document escalated access and halt further probing.
+
+        Encrypts session data at rest using Fernet, creates a Vulnerability
+        record and an EscalationContext record.  Should be called by any
+        credential-dependent worker that discovers unintended elevated access.
+        """
+        from cryptography.fernet import Fernet
+        from lib_webbh.database import EscalationContext, Vulnerability, get_session
+
+        key = os.environ.get("FERNET_KEY", Fernet.generate_key().decode())
+        f = Fernet(key.encode() if isinstance(key, str) else key)
+        encrypted = f.encrypt(session_data.encode()).decode()
+
+        async with get_session() as session:
+            vuln = Vulnerability(
+                target_id=target_id,
+                severity=severity,
+                title=f"Escalated Access: {access_type}",
+                worker_type=worker_type,
+                vuln_type="escalated_access",
+                confirmed=True,
+            )
+            session.add(vuln)
+            await session.flush()
+
+            esc = EscalationContext(
+                target_id=target_id,
+                vulnerability_id=vuln.id,
+                access_type=access_type,
+                access_method=access_method,
+                session_data=encrypted,
+                data_exposed=data_exposed,
+                severity=severity,
+            )
+            session.add(esc)
+            await session.commit()
+
+        _log = logging.getLogger("infra_mixin")
+        _log.warning(
+            "Escalated access detected — halting further probing",
+            extra={
+                "target_id": target_id,
+                "access_type": access_type,
+                "severity": severity,
+            },
+        )

@@ -1,6 +1,8 @@
 # docker/Dockerfile.info_gathering
 FROM webbh-base:latest
 
+RUN apt-get update && apt-get install -y nmap libpcap git wget golang whatweb massdns
+
 # Go tools installed via go install
 RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
 RUN go install github.com/projectdiscovery/httpx/cmd/httpx@latest
@@ -12,7 +14,6 @@ RUN go install github.com/hakluke/hakrawler@latest
 RUN go install github.com/devanshbatham/paramspider@latest
 
 # System packages
-RUN apt-get update && apt-get install -y nmap whatweb massdns
 
 # Copy worker code
 COPY workers/info_gathering/ /app/workers/info_gathering/

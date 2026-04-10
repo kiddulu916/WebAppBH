@@ -23,7 +23,7 @@ WORKDIR /app
 
 # Runtime-only dependency: libpq for asyncpg (no gcc, no -dev headers)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpq5 && \
+    apt-get install -y --no-install-recommends libpq5  && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy pre-built Python packages from builder

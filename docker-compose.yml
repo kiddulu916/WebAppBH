@@ -85,6 +85,17 @@ services:
       - webbh-net
 
   # ---------------------------------------------------------------------------
+  # Base Image — shared Python runtime for all workers
+  # ---------------------------------------------------------------------------
+  webbh-base:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.base
+    image: webbh-base:latest
+    command: ["echo", "base image built"]
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
   # Info Gathering Worker — WSTG 4.1 information gathering
   # ---------------------------------------------------------------------------
   info-gathering:
@@ -93,6 +104,211 @@ services:
       dockerfile: docker/Dockerfile.info_gathering
     container_name: webbh-info-gathering
     hostname: webbh-info-gathering
+    restart: unless-stopped
+    depends_on:
+      webbh-base:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Legacy Workers — retained during migration period (M11 deferred)
+  # See: docs/plans/implementation/2026-04-01-legacy-worker-retirement-status.md
+  # ---------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
+  # Recon-Core — legacy reconnaissance worker (replaced by info-gathering)
+  # ---------------------------------------------------------------------------
+  recon-core:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.recon
+    container_name: webbh-recon-core
+    hostname: webbh-recon-core
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Network Worker — legacy network worker (absorbed by config-mgmt)
+  # ---------------------------------------------------------------------------
+  network-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.network
+    container_name: webbh-network-worker
+    hostname: webbh-network-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MSFRPC_PASS: msf_internal
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Fuzzing Worker — legacy fuzzing worker (absorbed by config-mgmt + input-validation)
+  # ---------------------------------------------------------------------------
+  fuzzing-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.fuzzing
+    container_name: webbh-fuzzing-worker
+    hostname: webbh-fuzzing-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Cloud Worker — legacy cloud worker (absorbed by config-mgmt)
+  # ---------------------------------------------------------------------------
+  cloud-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.cloud
+    container_name: webbh-cloud-worker
+    hostname: webbh-cloud-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Webapp Worker — legacy webapp worker (absorbed by input-validation)
+  # ---------------------------------------------------------------------------
+  webapp-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.webapp
+    container_name: webbh-webapp-worker
+    hostname: webbh-webapp-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # API Worker — legacy API worker (absorbed by input-validation)
+  # ---------------------------------------------------------------------------
+  api-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: webbh-api-worker
+    hostname: webbh-api-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Vuln Scanner — legacy Nuclei scanner (absorbed by input-validation)
+  # ---------------------------------------------------------------------------
+  vuln-scanner:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.vulnscanner
+    container_name: webbh-vuln-scanner
+    hostname: webbh-vuln-scanner
     restart: unless-stopped
     depends_on:
       postgres:
@@ -179,6 +395,8 @@ services:
     hostname: webbh-authorization
     restart: unless-stopped
     depends_on:
+      webbh-base:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -397,6 +615,8 @@ services:
     hostname: webbh-error-handling
     restart: unless-stopped
     depends_on:
+      webbh-base:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -429,6 +649,8 @@ services:
     hostname: webbh-cryptography
     restart: unless-stopped
     depends_on:
+      webbh-base:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -461,6 +683,8 @@ services:
     hostname: webbh-session-mgmt
     restart: unless-stopped
     depends_on:
+      webbh-base:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -490,6 +714,8 @@ services:
     hostname: webbh-business-logic
     restart: unless-stopped
     depends_on:
+      webbh-base:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -519,6 +745,8 @@ services:
     hostname: webbh-client-side
     restart: unless-stopped
     depends_on:
+      webbh-base:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -581,6 +809,97 @@ services:
       - webbh-net
 
   # ---------------------------------------------------------------------------
+  # Reasoning Worker — LLM-powered vulnerability analysis
+  # ---------------------------------------------------------------------------
+  reasoning-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.reasoning
+    container_name: webbh-reasoning-worker
+    hostname: webbh-reasoning-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      LLM_BASE_URL: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen3:14b}
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Sandbox Worker — payload mutation engine (no GPU, no WASM)
+  # ---------------------------------------------------------------------------
+  sandbox-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sandbox
+    container_name: webbh-sandbox-worker
+    hostname: webbh-sandbox-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-webbh}
+      DB_USER: ${DB_USER:-webbh_admin}
+      DB_PASS: ${DB_PASS:-changeme}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MAX_MUTATION_CHAIN_DEPTH: "3"
+      MAX_VARIANTS_PER_REQUEST: "50"
+    volumes:
+      - ./shared:/app/shared
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
+  # Ollama — local LLM inference server
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: webappbh-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_NUM_PARALLEL=4
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - webbh-net
+
+  # ---------------------------------------------------------------------------
   # Dashboard — Next.js C2 frontend
   # ---------------------------------------------------------------------------
   dashboard:
@@ -624,6 +943,8 @@ volumes:
   mobile_analysis:
     driver: local
   mobile_binaries:
+    driver: local
+  ollama-models:
     driver: local
 
 # ---------------------------------------------------------------------------

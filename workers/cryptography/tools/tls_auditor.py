@@ -149,6 +149,13 @@ class TlsAuditor(CryptographyTool):
                 poc=f"https://{domain}",
                 vuln_type="tls_error",
             )
-        except Exception:
+        except Exception as e:
             # Connection failed - might not support HTTPS
-            pass
+            await self.save_vulnerability(
+                target_id=target_id,
+                severity="info",
+                title="TLS Connection Failed",
+                description=f"Could not establish TLS connection to {domain}: {str(e)}",
+                poc=f"https://{domain}",
+                vuln_type="tls_error",
+            )

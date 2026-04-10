@@ -504,6 +504,8 @@ class BountySubmission(TimestampMixin, Base):
     expected_payout: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     actual_payout: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    external_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    platform_response: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     target: Mapped["Target"] = relationship(back_populates="bounty_submissions")
     vulnerability: Mapped["Vulnerability"] = relationship(back_populates="bounty_submissions")
@@ -605,3 +607,89 @@ class ChainFinding(TimestampMixin, Base):
     entry_vulnerability: Mapped["Vulnerability"] = relationship(
         "Vulnerability", foreign_keys=[entry_vulnerability_id]
     )
+
+
+class VulnerabilityInsight(TimestampMixin, Base):
+    """LLM-generated multi-dimensional analysis of a vulnerability."""
+
+    __tablename__ = "vulnerability_insights"
+    __table_args__ = (
+        Index("ix_insights_target", "target_id"),
+        Index("ix_insights_vuln", "vulnerability_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
+    vulnerability_id: Mapped[int] = mapped_column(Integer, ForeignKey("vulnerabilities.id"))
+
+    # 1. Severity re-assessment
+    severity_assessment: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # 2. Exploitability analysis
+    exploitability: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 3. False positive detection
+    false_positive_likelihood: Mapped[float] = mapped_column(Float, default=0.0)
+    # 4. Chain hypotheses
+    chain_hypotheses: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # 5. Next-step recommendations
+    next_steps: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 6. Bounty estimate
+    bounty_estimate: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # 7. Duplicate likelihood
+    duplicate_likelihood: Mapped[float] = mapped_column(Float, default=0.0)
+    # 8. OWASP/CWE mapping
+    owasp_cwe: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # 9. Report-readiness score
+    report_readiness_score: Mapped[float] = mapped_column(Float, default=0.0)
+    report_readiness_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 10. Asset criticality inference
+    asset_criticality: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    asset_criticality_rationale: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Overall metadata
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    raw_analysis: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    target: Mapped["Target"] = relationship("Target")
+    vulnerability: Mapped["Vulnerability"] = relationship("Vulnerability")
+
+
+class ToolHitRate(TimestampMixin, Base):
+    """Per-tool, per-tech-stack hit rate used by the adaptive playbook generator."""
+
+    __tablename__ = "tool_hit_rates"
+    __table_args__ = (
+        UniqueConstraint(
+            "tech_fingerprint", "tool_name", name="uq_hit_rate_tech_tool"
+        ),
+        Index("ix_hit_rate_fingerprint", "tech_fingerprint"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tech_fingerprint: Mapped[str] = mapped_column(String(255))
+    tool_name: Mapped[str] = mapped_column(String(100))
+    total_runs: Mapped[int] = mapped_column(Integer, default=0)
+    total_findings: Mapped[int] = mapped_column(Integer, default=0)
+    confirmed_findings: Mapped[int] = mapped_column(Integer, default=0)
+    avg_runtime_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+    last_hit_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class MutationOutcome(TimestampMixin, Base):
+    """Records whether a mutation successfully bypassed a WAF in real scanning."""
+
+    __tablename__ = "mutation_outcomes"
+    __table_args__ = (
+        Index("ix_mutation_outcomes_waf", "waf_profile"),
+        Index("ix_mutation_outcomes_vuln_type", "vuln_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    vuln_type: Mapped[str] = mapped_column(String(50))
+    waf_profile: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    mutation_chain: Mapped[str] = mapped_column(String(500))
+    context: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    bypassed: Mapped[bool] = mapped_column(Boolean, default=False)
+    total_attempts: Mapped[int] = mapped_column(Integer, default=1)
+    successful_attempts: Mapped[int] = mapped_column(Integer, default=0)

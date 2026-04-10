@@ -12,15 +12,15 @@ def test_stages_defined_in_order():
     from workers.config_mgmt.pipeline import STAGES
     assert len(STAGES) == 11
     expected_stages = [
-        "network_infrastructure",
-        "platform_configuration",
+        "network_config",
+        "platform_config",
         "file_extension_handling",
-        "backup_unreferenced_files",
-        "admin_interface_enumeration",
+        "backup_files",
+        "api_discovery",
         "http_methods",
         "hsts_testing",
-        "cross_domain_policy",
-        "file_permissions",
+        "rpc_testing",
+        "file_inclusion",
         "subdomain_takeover",
         "cloud_storage",
     ]
@@ -48,7 +48,7 @@ async def test_run_pipeline_skips_completed_stages():
 
     pipeline = Pipeline(target_id=1, container_name="test-container")
 
-    with patch.object(pipeline, "_get_completed_phase", return_value="platform_configuration"):
+    with patch.object(pipeline, "_get_completed_phase", return_value="platform_config"):
         with patch.object(pipeline, "_run_stage", new_callable=AsyncMock) as mock_run:
             mock_run.return_value = {"found": 0, "in_scope": 0, "new": 0}
             with patch.object(pipeline, "_update_phase", new_callable=AsyncMock):
@@ -57,5 +57,5 @@ async def test_run_pipeline_skips_completed_stages():
                         target = MagicMock(url="https://example.com", target_profile={})
                         scope_mgr = MagicMock()
                         await pipeline.run(target, scope_mgr)
-                        # Should skip the first stage and start from the second
-                        assert mock_run.call_count == 10  # 11 total stages - 1 skipped
+                        # Should skip the first 2 stages and start from stage 2 (index 2)
+                        assert mock_run.call_count == 9  # 11 total stages - 2 skipped (indices 0,1)

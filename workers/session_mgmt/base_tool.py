@@ -184,6 +184,27 @@ class SessionMgmtTool(InfrastructureMixin, ABC):
         finally:
             sem.release()
 
+    # on_escalated_access() is inherited from InfrastructureMixin.
+    # Override only to pin worker_type for this worker.
+    async def on_escalated_access(
+        self,
+        target_id: int,
+        access_type: str,
+        access_method: str,
+        session_data: str,
+        data_exposed: str,
+        severity: str,
+    ):
+        await super().on_escalated_access(
+            target_id=target_id,
+            access_type=access_type,
+            access_method=access_method,
+            session_data=session_data,
+            data_exposed=data_exposed,
+            severity=severity,
+            worker_type="session_mgmt",
+        )
+
     async def _process_result(self, item: dict, target_id: int, log) -> bool:
         """Process one parsed result into an Observation."""
         async with get_session() as session:

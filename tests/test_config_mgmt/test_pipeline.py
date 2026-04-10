@@ -14,9 +14,9 @@ def test_stages_defined_in_order():
 
     assert len(STAGES) == 11
     expected_stages = [
-        "network_infrastructure", "platform_configuration", "file_extension_handling",
-        "backup_unreferenced_files", "admin_interface_enumeration", "http_methods",
-        "hsts_testing", "cross_domain_policy", "file_permissions",
+        "network_config", "platform_config", "file_extension_handling",
+        "backup_files", "api_discovery", "http_methods",
+        "hsts_testing", "rpc_testing", "file_inclusion",
         "subdomain_takeover", "cloud_storage"
     ]
     for i, stage in enumerate(STAGES):
@@ -67,8 +67,8 @@ async def test_run_pipeline_skips_completed_stages():
                         assert mock_run.call_count == 8
                         called_stages = [call.args[0].name for call in mock_run.call_args_list]
                         expected_remaining = [
-                            "backup_unreferenced_files", "admin_interface_enumeration", "http_methods",
-                            "hsts_testing", "cross_domain_policy", "file_permissions",
+                            "backup_files", "api_discovery", "http_methods",
+                            "hsts_testing", "rpc_testing", "file_inclusion",
                             "subdomain_takeover", "cloud_storage"
                         ]
                         assert called_stages == expected_remaining

@@ -1,7 +1,7 @@
 """Authentication worker entry point.
 
-Listens on ``auth_queue`` and runs the 10-stage authentication
-pipeline for each incoming target.
+Listens on ``authentication_queue`` (priority-tiered) and runs the 10-stage
+authentication pipeline for each incoming target.
 """
 
 from __future__ import annotations
@@ -18,9 +18,10 @@ from lib_webbh import (
     JobState,
     Target,
     get_session,
-    listen_queue,
+    listen_priority_queues,
     setup_logger,
 )
+from lib_webbh.messaging import get_redis
 from lib_webbh.scope import ScopeManager
 
 from workers.authentication.pipeline import Pipeline
@@ -158,16 +159,21 @@ async def _heartbeat_loop(target_id: int, container_name: str) -> None:
 
 
 async def main() -> None:
-    """Entry point: listen on auth_queue forever."""
-    container_name = get_container_name()
-    logger.info("Authentication worker starting", extra={"container": container_name})
+    """Entry point: listen on authentication_queue forever."""
+    consumer_group = "authentication_group"
+    consumer_name = get_container_name()
+    logger.info("Authentication worker starting", extra={"container": consumer_name})
 
-    await listen_queue(
-        queue="auth_queue",
-        group="auth_group",
-        consumer=container_name,
-        callback=handle_message,
-    )
+    async for message in listen_priority_queues(
+        "authentication_queue", consumer_group, consumer_name
+    ):
+        try:
+            await handle_message(message["msg_id"], message["payload"])
+        except Exception as e:
+            logger.error("Message handling failed", extra={"error": str(e)})
+
+        r = get_redis()
+        await r.xack(message["stream"], consumer_group, message["msg_id"])
 
 
 if __name__ == "__main__":

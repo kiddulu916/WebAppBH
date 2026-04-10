@@ -25,6 +25,7 @@ from lib_webbh import (
     setup_logger,
 )
 from lib_webbh.scope import ScopeManager
+from lib_webbh.infra_mixin import InfrastructureMixin
 
 from workers.input_validation.concurrency import WeightClass, get_semaphore
 
@@ -73,7 +74,7 @@ XSS_REFLECTION_PATTERNS = [
 ]
 
 
-class InputValidationTool(ABC):
+class InputValidationTool(InfrastructureMixin, ABC):
     """Base class for all input validation testing tool wrappers.
 
     Subclasses must set ``name`` and ``weight_class`` class

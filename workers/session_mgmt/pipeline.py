@@ -13,14 +13,14 @@ from lib_webbh import JobState, get_session, push_task, setup_logger
 from workers.session_mgmt.base_tool import SessionMgmtTool
 from workers.session_mgmt.tools import (
     SessionTokenTester,
-    SessionTimeoutTester,
     CookieAttributeTester,
     SessionFixationTester,
+    SessionVariableTester,
     CsrfTester,
-    ConcurrentSessionTester,
-    SessionTerminationTester,
-    SessionPersistenceTester,
     LogoutFunctionalityTester,
+    SessionTimeoutTester,
+    SessionPuzzlingTester,
+    SessionHijackingTester,
 )
 
 logger = setup_logger("session-pipeline")
@@ -33,15 +33,15 @@ class Stage:
 
 
 STAGES = [
-    Stage("session_token_handling", [SessionTokenTester]),
-    Stage("session_timeout", [SessionTimeoutTester]),
-    Stage("cookie_attributes", [CookieAttributeTester]),
-    Stage("session_fixation", [SessionFixationTester]),
-    Stage("csrf", [CsrfTester]),
-    Stage("concurrent_sessions", [ConcurrentSessionTester]),
-    Stage("session_termination", [SessionTerminationTester]),
-    Stage("session_persistence", [SessionPersistenceTester]),
-    Stage("logout_functionality", [LogoutFunctionalityTester]),
+    Stage("session_scheme", [SessionTokenTester]),           # WSTG 4.6.1
+    Stage("cookie_attributes", [CookieAttributeTester]),     # WSTG 4.6.2
+    Stage("session_fixation", [SessionFixationTester]),      # WSTG 4.6.3
+    Stage("exposed_variables", [SessionVariableTester]),     # WSTG 4.6.4
+    Stage("csrf", [CsrfTester]),                             # WSTG 4.6.5
+    Stage("logout_functionality", [LogoutFunctionalityTester]),  # WSTG 4.6.6
+    Stage("session_timeout", [SessionTimeoutTester]),        # WSTG 4.6.7
+    Stage("session_puzzling", [SessionPuzzlingTester]),       # WSTG 4.6.8
+    Stage("session_hijacking", [SessionHijackingTester]),     # WSTG 4.6.9
 ]
 
 STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}

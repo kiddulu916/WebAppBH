@@ -4,6 +4,7 @@ from .network_config_tester import NetworkConfigTester
 from .platform_fingerprinter import PlatformFingerprinter
 from .file_extension_tester import FileExtensionTester
 from .backup_file_finder import BackupFileFinder
+from .ffuf_tool import FfufTool
 from .api_discovery_tool import ApiDiscoveryTool
 from .http_method_tester import HttpMethodTester
 from .hsts_tester import HstsTester
@@ -17,6 +18,7 @@ __all__ = [
     "PlatformFingerprinter",
     "FileExtensionTester",
     "BackupFileFinder",
+    "FfufTool",
     "ApiDiscoveryTool",
     "HttpMethodTester",
     "HstsTester",
