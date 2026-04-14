@@ -66,11 +66,12 @@ def test_chain_categories():
 
 def test_pipeline_stages():
     from workers.chain_worker.pipeline import STAGES
-    assert len(STAGES) == 4
+    assert len(STAGES) == 5
     assert STAGES[0].name == "data_collection"
     assert STAGES[1].name == "chain_evaluation"
-    assert STAGES[2].name == "chain_execution"
-    assert STAGES[3].name == "reporting"
+    assert STAGES[2].name == "ai_chain_discovery"
+    assert STAGES[3].name == "chain_execution"
+    assert STAGES[4].name == "reporting"
 
 
 def test_pipeline_tools_exist():

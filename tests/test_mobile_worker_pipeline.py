@@ -194,12 +194,13 @@ async def test_pipeline_resumes_from_checkpoint():
         session.add(t)
         await session.flush()
         job = JobState(target_id=t.id, container_name="test-mobile",
-                       current_phase="secret_extraction", status="COMPLETED")
+                       current_phase="secret_extraction", last_completed_stage="secret_extraction",
+                       status="COMPLETED")
         session.add(job)
         await session.commit()
         tid = t.id
     pipeline = Pipeline(target_id=tid, container_name="test-mobile")
-    phase = await pipeline._get_completed_phase()
+    phase = await pipeline._get_resume_stage()
     assert phase == "secret_extraction"
 
 

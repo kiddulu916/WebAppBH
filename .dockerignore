@@ -5,3 +5,16 @@ dashboard/test-results
 dashboard/e2e
 .git
 docs
+tests
+**/__pycache__
+**/*.pyc
+*.egg-info
+.env
+.env.*
+*.log
+.pytest_cache
+.venv
+monitoring
+secrets
+.worktrees
+.claude

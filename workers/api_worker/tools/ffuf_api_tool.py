@@ -1,6 +1,6 @@
 """FfufApiTool -- Stage 1 API endpoint brute-forcing with ffuf.
 
-Different from fuzzing_worker's FfufTool: this one cycles through
+Different from config_mgmt's FfufTool: this one cycles through
 HTTP methods (GET, POST, PUT, DELETE) per API root and uses
 API-specific wordlists.  Discovered routes are saved to api_schemas
 and 401/403 endpoints are flagged with auth_required=True.

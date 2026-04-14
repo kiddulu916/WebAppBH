@@ -4,12 +4,13 @@ Worker base_tool classes inherit from this mixin to get access to
 shared infrastructure services and the safety policy methods required
 by the design doc (restructure-02-safety-policy).
 """
+from __future__ import annotations
 
 import json
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 class InfrastructureMixin:
@@ -20,19 +21,19 @@ class InfrastructureMixin:
 
     # -- Proxy helpers --
 
-    async def request_via_proxy(self, http_client, method, url, **kwargs):
+    async def request_via_proxy(self, http_client: Any, method: str, url: str, **kwargs: Any) -> Any:
         """Route a request through the traffic proxy."""
         kwargs.setdefault("proxy", self._proxy_url)
         return await http_client.request(method, url, **kwargs)
 
-    async def request_direct(self, http_client, method, url, **kwargs):
+    async def request_direct(self, http_client: Any, method: str, url: str, **kwargs: Any) -> Any:
         """Send a request directly, bypassing the proxy."""
         kwargs.pop("proxy", None)
         return await http_client.request(method, url, **kwargs)
 
     # -- Callback helpers --
 
-    async def register_callback(self, http_client, protocols=None):
+    async def register_callback(self, http_client: Any, protocols: list[str] | None = None) -> str:
         """Register a new callback with the callback server."""
         resp = await http_client.post(
             f"{self._callback_api}/callbacks",
@@ -41,7 +42,7 @@ class InfrastructureMixin:
         data = await resp.json()
         return data["id"]
 
-    async def check_callback(self, http_client, callback_id, timeout=30, poll_interval=2):
+    async def check_callback(self, http_client: Any, callback_id: str, timeout: int = 30, poll_interval: int = 2) -> list[dict[str, Any]]:
         """Poll the callback server for interactions."""
         import asyncio
 
@@ -55,7 +56,7 @@ class InfrastructureMixin:
             elapsed += poll_interval
         return []
 
-    async def cleanup_callback(self, http_client, callback_id):
+    async def cleanup_callback(self, http_client: Any, callback_id: str) -> None:
         """Delete a callback registration."""
         await http_client.delete(f"{self._callback_api}/callbacks/{callback_id}")
 

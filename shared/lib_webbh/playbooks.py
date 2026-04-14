@@ -33,7 +33,7 @@ class PlaybookConfig:
         return asdict(self)
 
 
-# All 7 recon stages (from workers/recon_core/pipeline.py)
+# All 7 recon stages (from workers/info_gathering/pipeline.py)
 _ALL_RECON_STAGES = [
     "passive_discovery",
     "active_discovery",

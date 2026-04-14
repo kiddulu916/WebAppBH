@@ -2,6 +2,7 @@
 # Stage 1: Builder — install mobile tooling
 # ============================================================
 FROM python:3.11-slim-bookworm AS builder
+ENV PIP_DEFAULT_TIMEOUT=300
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -16,7 +17,8 @@ RUN wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts
         -O /usr/local/bin/apktool.jar
 
 # jadx
-RUN wget -q https://github.com/skylot/jadx/releases/download/v1.5.0/jadx-1.5.0.zip \
+RUN wget --tries=3 --timeout=30 --waitretry=5 -q \
+        https://github.com/skylot/jadx/releases/download/v1.5.0/jadx-1.5.0.zip \
         -O /tmp/jadx.zip && \
     unzip -q /tmp/jadx.zip -d /opt/jadx && \
     chmod +x /opt/jadx/bin/jadx && \
@@ -37,8 +39,17 @@ RUN pip install --no-cache-dir --target=/py-tools \
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*
+# Copy setup.py first for dependency caching
+COPY shared/lib_webbh/setup.py /build/lib_webbh/setup.py
+RUN touch /build/lib_webbh/__init__.py && \
+    mkdir -p /build/lib_webbh/prompts /build/lib_webbh/platform_api && \
+    touch /build/lib_webbh/prompts/__init__.py /build/lib_webbh/platform_api/__init__.py && \
+    pip install --no-cache-dir --target=/py-tools /build/lib_webbh
+
+# Copy full source — only triggers fast --no-deps reinstall
 COPY shared/lib_webbh /build/lib_webbh
-RUN pip install --no-cache-dir --target=/py-tools /build/lib_webbh
+RUN rm -rf /py-tools/lib_webbh /py-tools/lib_webbh-*.dist-info && \
+    cp -a /build/lib_webbh /py-tools/lib_webbh
 
 # ============================================================
 # Stage 2: Runtime
@@ -46,6 +57,7 @@ RUN pip install --no-cache-dir --target=/py-tools /build/lib_webbh
 FROM python:3.11-slim-bookworm
 
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=300
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \

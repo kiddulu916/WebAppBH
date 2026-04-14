@@ -6,6 +6,7 @@ RUN pip install aiohttp>=3.9
 COPY workers/callback/ /app/workers/callback/
 
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=300
 
 # HTTP listener 9090, Polling API 9091, DNS 9053, TCP 9443
 EXPOSE 9090 9091 9053 9443

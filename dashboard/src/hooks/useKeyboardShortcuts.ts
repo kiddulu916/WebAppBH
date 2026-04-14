@@ -69,6 +69,9 @@ export function useKeyboardShortcuts() {
         useUIStore.getState().setSystemPulseOpen(
           !useUIStore.getState().systemPulseOpen
         );
+      } else if (key === "t") {
+        e.preventDefault();
+        useUIStore.getState().toggleTheme();
       }
     }
 

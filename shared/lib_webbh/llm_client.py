@@ -1,8 +1,11 @@
 """Thin async wrapper around Ollama's HTTP API for all LLM-dependent features."""
 from __future__ import annotations
 
+import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 
@@ -23,17 +26,30 @@ DEFAULT_TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "600.0"))
 
 
 class LLMClient:
-    """Async LLM client talking to a local Ollama server."""
+    """Async LLM client talking to a local Ollama server.
+
+    When ``collect_training_data=True`` (or ``LLM_COLLECT_DATA=1`` env var),
+    every request/response pair is appended as JSONL to a file for future
+    fine-tuning. File defaults to ``shared/logs/llm_training.jsonl``.
+    """
 
     def __init__(
         self,
         base_url: str | None = None,
         model: str | None = None,
         timeout: float | None = None,
+        collect_training_data: bool | None = None,
+        training_data_path: str | None = None,
     ):
         self._base_url = base_url or os.environ.get("LLM_BASE_URL", DEFAULT_BASE_URL)
         self._model = model or os.environ.get("LLM_MODEL", DEFAULT_MODEL)
         self._timeout = timeout or float(os.environ.get("LLM_TIMEOUT", str(DEFAULT_TIMEOUT)))
+        self._collect = collect_training_data if collect_training_data is not None else (
+            os.environ.get("LLM_COLLECT_DATA", "0") == "1"
+        )
+        self._data_path = Path(
+            training_data_path or os.environ.get("LLM_TRAINING_DATA_PATH", "shared/logs/llm_training.jsonl")
+        )
 
     async def generate(
         self,
@@ -63,8 +79,28 @@ class LLMClient:
             response.raise_for_status()
             data = response.json()
 
-        return LLMResponse(
+        result = LLMResponse(
             text=data.get("response", ""),
             input_tokens=int(data.get("prompt_eval_count", 0)),
             output_tokens=int(data.get("eval_count", 0)),
         )
+
+        if self._collect:
+            self._save_training_sample(system, prompt, result)
+
+        return result
+
+    def _save_training_sample(self, system: str | None, prompt: str, response: LLMResponse) -> None:
+        """Append a request/response pair as JSONL for fine-tuning."""
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "model": self._model,
+            "system": system,
+            "prompt": prompt,
+            "response": response.text,
+            "input_tokens": response.input_tokens,
+            "output_tokens": response.output_tokens,
+        }
+        self._data_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._data_path.open("a") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")

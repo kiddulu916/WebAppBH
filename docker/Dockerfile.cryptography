@@ -2,7 +2,10 @@
 FROM webbh-base:latest
 
 # Install external tool binaries
-RUN apt-get install -y testssl.sh
+RUN apt-get update && apt-get install -y git wget
+RUN git clone --depth 1 https://github.com/testssl/testssl.sh.git --branch 3.3dev
+RUN export PATH=$PATH:/testssl.sh/bin:/testssl.sh/
+
 RUN pip install sslyze
 
 # Copy worker code
@@ -13,6 +16,7 @@ COPY shared/ /app/shared/
 RUN pip install -e /app/shared/lib_webbh
 
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=300
 ENV WORKER_TYPE=cryptography
 
 CMD ["python", "-m", "workers.cryptography.main"]

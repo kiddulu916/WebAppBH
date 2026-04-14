@@ -284,6 +284,10 @@ class CloudAsset(TimestampMixin, Base):
     """Cloud resource (S3 bucket, Azure blob, GCP storage, etc.)."""
 
     __tablename__ = "cloud_assets"
+    __table_args__ = (
+        Index("ix_cloud_assets_target", "target_id"),
+        Index("ix_cloud_assets_provider", "target_id", "provider"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
@@ -368,6 +372,7 @@ class JobState(TimestampMixin, Base):
     target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
     container_name: Mapped[str] = mapped_column(String(255))
     current_phase: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    last_completed_stage: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(20))
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_tool_executed: Mapped[Optional[str]] = mapped_column(
@@ -494,6 +499,11 @@ class BountySubmission(TimestampMixin, Base):
     """Tracks vulnerability submissions to bug bounty platforms."""
 
     __tablename__ = "bounty_submissions"
+    __table_args__ = (
+        Index("ix_bounty_target", "target_id"),
+        Index("ix_bounty_status", "status"),
+        Index("ix_bounty_platform", "platform"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))
@@ -534,6 +544,9 @@ class ScopeViolation(TimestampMixin, Base):
     """Audit log of out-of-scope attempts."""
 
     __tablename__ = "scope_violations"
+    __table_args__ = (
+        Index("ix_scope_violations_target", "target_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id"))

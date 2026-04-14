@@ -45,6 +45,7 @@ RUN git clone https://github.com/blechschmidt/massdns.git /build/massdns && \
 # Stage 3: Python tool + lib_webbh builder
 # ============================================================
 FROM python:3.10-slim-bookworm AS py-builder
+ENV PIP_DEFAULT_TIMEOUT=300
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc libpq-dev && \
@@ -54,8 +55,17 @@ RUN pip install --no-cache-dir --target=/py-tools \
     sublist3r
 
 # Install lib_webbh (needs gcc + libpq-dev at compile time)
+# Copy setup.py first for dependency caching
+COPY shared/lib_webbh/setup.py /build/lib_webbh/setup.py
+RUN touch /build/lib_webbh/__init__.py && \
+    mkdir -p /build/lib_webbh/prompts /build/lib_webbh/platform_api && \
+    touch /build/lib_webbh/prompts/__init__.py /build/lib_webbh/platform_api/__init__.py && \
+    pip install --no-cache-dir --target=/py-tools /build/lib_webbh
+
+# Copy full source — only triggers fast --no-deps reinstall
 COPY shared/lib_webbh /build/lib_webbh
-RUN pip install --no-cache-dir --target=/py-tools /build/lib_webbh
+RUN rm -rf /py-tools/lib_webbh /py-tools/lib_webbh-*.dist-info && \
+    cp -a /build/lib_webbh /py-tools/lib_webbh
 
 # ============================================================
 # Stage 4: Runtime
@@ -63,6 +73,7 @@ RUN pip install --no-cache-dir --target=/py-tools /build/lib_webbh
 FROM python:3.10-slim-bookworm
 
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=300
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -76,7 +87,10 @@ COPY workers/recon_core/resolvers.txt /usr/local/bin/resolvers.txt
 
 RUN echo "deb http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" | tee -a /etc/apt/sources.list
 
-RUN wget  https://http.kali.org/kali/pool/main/k/kali-archive-keyring/kali-archive-keyring_2025.2_all.deb
+RUN wget --tries=3 --timeout=30 --waitretry=5 \
+    https://http.kali.org/kali/pool/main/k/kali-archive-keyring/kali-archive-keyring_2025.2_all.deb \
+    || wget --tries=3 --timeout=30 --waitretry=5 \
+    https://archive.kali.org/kali/pool/main/k/kali-archive-keyring/kali-archive-keyring_2025.2_all.deb
 
 
 RUN dpkg -i kali-archive-keyring_2025.2_all.deb

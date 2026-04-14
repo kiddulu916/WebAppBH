@@ -166,7 +166,7 @@ async def test_fuzzing_pipeline_skips_completed_stages():
         ran_stages.append(stage.name)
         return {"found": 0, "in_scope": 0, "new": 0}
 
-    pipeline._get_completed_phase = AsyncMock(return_value="vhost_fuzzing")
+    pipeline._get_resume_stage = AsyncMock(return_value="vhost_fuzzing")
     pipeline._run_stage = mock_run_stage
     pipeline._update_phase = AsyncMock()
     pipeline._mark_completed = AsyncMock()

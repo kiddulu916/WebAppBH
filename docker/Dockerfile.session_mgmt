@@ -9,6 +9,7 @@ COPY shared/ /app/shared/
 RUN pip install -e /app/shared/lib_webbh
 
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=300
 ENV WORKER_TYPE=session_mgmt
 
 CMD ["python", "-m", "workers.session_mgmt.main"]

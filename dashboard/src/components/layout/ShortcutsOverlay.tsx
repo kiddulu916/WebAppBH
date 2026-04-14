@@ -13,6 +13,7 @@ const SHORTCUTS = [
   { keys: "\u2318 K", desc: "Command Palette" },
   { keys: "l", desc: "Toggle Live Feed" },
   { keys: "p", desc: "Toggle System Pulse" },
+  { keys: "t", desc: "Toggle Theme" },
   { keys: "?", desc: "This help" },
   { keys: "Esc", desc: "Close overlay" },
 ];

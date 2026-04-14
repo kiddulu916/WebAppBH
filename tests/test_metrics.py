@@ -35,7 +35,7 @@ def test_counter_labels_severity():
     from orchestrator.metrics import vulns_found
     from prometheus_client import generate_latest
 
-    vulns_found.labels(severity="high").inc()
+    vulns_found.labels(severity="high", worker_type="input_validation").inc()
     output = generate_latest().decode()
     assert 'severity="high"' in output
 

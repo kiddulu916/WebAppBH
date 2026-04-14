@@ -12,6 +12,7 @@ import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import tests._patch_logger  # noqa: F401
+import lib_webbh.messaging as _messaging
 
 from lib_webbh.database import (
     Base, Target, Asset, JobState, Vulnerability, Parameter,
@@ -24,6 +25,14 @@ from lib_webbh.database import (
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def _reset_redis_singleton():
+    """Reset the Redis singleton between tests to prevent event loop contamination."""
+    _messaging._redis = None
+    yield
+    _messaging._redis = None
 
 
 @pytest_asyncio.fixture
@@ -77,19 +86,38 @@ async def seed_running_jobs(seed_target):
     return tid
 
 
-@pytest.fixture
-def client():
-    with patch("orchestrator.event_engine.EventEngine") as MockEventEngine:
+@pytest_asyncio.fixture
+async def client():
+    mock_pipe = MagicMock()
+    mock_pipe.zremrangebyscore = MagicMock(return_value=mock_pipe)
+    mock_pipe.zadd = MagicMock(return_value=mock_pipe)
+    mock_pipe.zcard = MagicMock(return_value=mock_pipe)
+    mock_pipe.expire = MagicMock(return_value=mock_pipe)
+    mock_pipe.delete = MagicMock(return_value=mock_pipe)
+    mock_pipe.execute = AsyncMock(return_value=[0, True, 1, True])
+
+    mock_redis = MagicMock()
+    mock_redis.xadd = AsyncMock()
+    mock_redis.xlen = AsyncMock(return_value=0)
+    mock_redis.xrange = AsyncMock(return_value=[])
+    mock_redis.delete = AsyncMock()
+    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+
+    with patch("orchestrator.event_engine.EventEngine") as MockEventEngine, \
+         patch("lib_webbh.messaging.get_redis", return_value=mock_redis), \
+         patch("orchestrator.main.get_redis", return_value=mock_redis), \
+         patch("orchestrator.rate_limit.get_redis", return_value=mock_redis):
         mock_engine_instance = MagicMock()
         mock_engine_instance.run = AsyncMock()
         MockEventEngine.return_value = mock_engine_instance
         from httpx import ASGITransport, AsyncClient
         from orchestrator.main import app
         transport = ASGITransport(app=app)
-        return AsyncClient(
+        async with AsyncClient(
             transport=transport, base_url="http://test",
             headers={"X-API-KEY": "test-api-key-1234"},
-        )
+        ) as ac:
+            yield ac
 
 
 @pytest.mark.anyio

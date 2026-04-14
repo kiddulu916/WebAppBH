@@ -99,7 +99,35 @@ export interface AssetWithLocations {
 }
 
 interface AssetsResponse {
+  total: number;
+  page: number;
+  page_size: number;
   assets: AssetWithLocations[];
+}
+
+/* ------------------------------------------------------------------ */
+/* Worker Health                                                       */
+/* ------------------------------------------------------------------ */
+
+export interface WorkerHealthEntry {
+  name: string;
+  status: string;
+  image: string;
+  started_at: string | null;
+  cpu_percent: number | null;
+  memory_mb: number | null;
+  memory_limit_mb: number | null;
+  restart_count: number;
+  health_status: string | null;
+}
+
+interface WorkerHealthResponse {
+  host: {
+    cpu_percent: number;
+    memory_percent: number;
+    is_healthy: boolean;
+  };
+  workers: WorkerHealthEntry[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -218,6 +246,30 @@ export interface SearchResult {
   id: number;
   value: string;
   subtype: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* LLM Insights / Triage                                               */
+/* ------------------------------------------------------------------ */
+
+export interface InsightRow {
+  id: number;
+  target_id: number;
+  vulnerability_id: number;
+  vulnerability_title: string;
+  vulnerability_severity: string;
+  severity_assessment: string | null;
+  exploitability: string | null;
+  false_positive_likelihood: number;
+  chain_hypotheses: { with_vuln_id: number; description: string }[] | null;
+  next_steps: string | null;
+  bounty_estimate: { low: number; high: number; currency: string } | null;
+  duplicate_likelihood: number;
+  owasp_cwe: { owasp: string; cwe_id: number; cwe_name: string } | null;
+  report_readiness_score: number;
+  asset_criticality: string | null;
+  confidence: number;
+  created_at: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -591,6 +643,24 @@ export const api = {
     return request<{ success: boolean; target_id: number }>(
       `/api/v1/targets/${targetId}`,
       { method: "DELETE" },
+    );
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Worker Health                                                        */
+  /* ------------------------------------------------------------------ */
+
+  getWorkerHealth() {
+    return request<WorkerHealthResponse>("/api/v1/worker_health");
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* LLM Insights / Triage                                               */
+  /* ------------------------------------------------------------------ */
+
+  getInsights(targetId: number) {
+    return request<{ insights: InsightRow[] }>(
+      `/api/v1/targets/${targetId}/insights`,
     );
   },
 };

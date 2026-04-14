@@ -133,7 +133,8 @@ WORKER_SPECS: list[dict[str, Any]] = [
         "id": "chain_worker",
         "module_path": "workers.chain_worker.pipeline",
         "stages": [
-            "data_collection", "chain_evaluation", "chain_execution", "reporting",
+            "data_collection", "chain_evaluation", "ai_chain_discovery",
+            "chain_execution", "reporting",
         ],
         "container": "chain-worker-1",
         "run_kwargs": {},
@@ -245,6 +246,7 @@ async def _seed_job_state(
             target_id=target_id,
             container_name=container_name,
             current_phase=current_phase,
+            last_completed_stage=current_phase,
             status=status,
             last_seen=datetime.now(timezone.utc),
         )

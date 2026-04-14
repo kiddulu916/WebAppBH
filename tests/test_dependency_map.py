@@ -8,7 +8,8 @@ def test_dependency_map_has_all_workers():
     expected_workers = {
         "info_gathering", "config_mgmt", "identity_mgmt", "authentication",
         "authorization", "session_mgmt", "input_validation", "error_handling",
-        "cryptography", "business_logic", "client_side", "chain_worker", "reporting",
+        "cryptography", "business_logic", "client_side", "chain_worker",
+        "reasoning", "reporting",
     }
     assert set(DEPENDENCY_MAP.keys()) == expected_workers
 
@@ -87,6 +88,6 @@ def test_resolve_effective_with_creds():
     effective = resolve_effective_dependencies(has_credentials=True)
 
     # All workers should be present
-    assert len(effective) == 13
+    assert len(effective) == 14
     assert "identity_mgmt" in effective
     assert "authentication" in effective

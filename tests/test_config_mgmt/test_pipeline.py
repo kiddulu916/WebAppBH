@@ -53,7 +53,7 @@ async def test_run_pipeline_skips_completed_stages():
 
     pipeline = Pipeline(target_id=1, container_name="test-container")
 
-    with patch.object(pipeline, "_get_completed_phase", return_value="file_extension_handling"):
+    with patch.object(pipeline, "_get_resume_stage", return_value="file_extension_handling"):
         with patch.object(pipeline, "_run_stage", new_callable=AsyncMock) as mock_run:
             mock_run.return_value = {"found": 0, "in_scope": 0, "new": 0}
             with patch.object(pipeline, "_update_phase", new_callable=AsyncMock):
@@ -80,7 +80,7 @@ async def test_run_pipeline_from_start():
 
     pipeline = Pipeline(target_id=1, container_name="test-container")
 
-    with patch.object(pipeline, "_get_completed_phase", return_value=None):
+    with patch.object(pipeline, "_get_resume_stage", return_value=None):
         with patch.object(pipeline, "_run_stage", new_callable=AsyncMock) as mock_run:
             mock_run.return_value = {"found": 0, "in_scope": 0, "new": 0}
             with patch.object(pipeline, "_update_phase", new_callable=AsyncMock):

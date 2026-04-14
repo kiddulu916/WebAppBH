@@ -16,6 +16,7 @@ import {
   Workflow,
   CalendarClock,
   DollarSign,
+  Brain,
   Settings,
 } from "lucide-react";
 import { useUIStore } from "@/stores/ui";
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { href: "/campaign/assets", label: "Assets", icon: Activity },
   { href: "/campaign/cloud", label: "Cloud", icon: Cloud },
   { href: "/campaign/vulns", label: "Vulnerabilities", icon: Bug },
+  { href: "/campaign/triage", label: "AI Triage", icon: Brain },
   { href: "/campaign/findings", label: "Findings", icon: Search },
   { href: "/campaign/bounties", label: "Bounties", icon: DollarSign },
   { href: "/campaign/schedules", label: "Schedules", icon: CalendarClock },

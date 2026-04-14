@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime
 
-from sqlalchemy import select
 
-from lib_webbh import JobState, get_session, push_task, setup_logger
+from lib_webbh import push_task, setup_logger
+from lib_webbh.pipeline_checkpoint import CheckpointMixin
 from lib_webbh.scope import ScopeManager
 
 from workers.api_worker.base_tool import ApiTestTool
@@ -66,7 +65,7 @@ _rebuild_index()
 # ---------------------------------------------------------------------------
 
 
-class Pipeline:
+class Pipeline(CheckpointMixin):
     """Orchestrates the 4-stage API testing pipeline with checkpointing."""
 
     def __init__(self, target_id: int, container_name: str) -> None:
@@ -87,7 +86,7 @@ class Pipeline:
         """Execute the pipeline, resuming from last completed stage."""
         _rebuild_index()
 
-        completed_phase = await self._get_completed_phase()
+        completed_phase = await self._get_resume_stage()
         start_index = 0
 
         if completed_phase and completed_phase in STAGE_INDEX:
@@ -109,6 +108,7 @@ class Pipeline:
                 "stage": stage.name,
                 "stats": stats,
             })
+            await self._checkpoint_stage(stage.name)
 
         await self._mark_completed()
         await push_task(f"events:{self.target_id}", {
@@ -160,42 +160,8 @@ class Pipeline:
     # Checkpoint helpers
     # ------------------------------------------------------------------
 
-    async def _get_completed_phase(self) -> str | None:
-        async with get_session() as session:
-            stmt = select(JobState).where(
-                JobState.target_id == self.target_id,
-                JobState.container_name == self.container_name,
-                JobState.status == "COMPLETED",
-            )
-            result = await session.execute(stmt)
-            job = result.scalar_one_or_none()
-            return job.current_phase if job else None
 
-    async def _update_phase(self, phase: str) -> None:
-        async with get_session() as session:
-            stmt = select(JobState).where(
-                JobState.target_id == self.target_id,
-                JobState.container_name == self.container_name,
-            )
-            result = await session.execute(stmt)
-            job = result.scalar_one_or_none()
-            if job:
-                job.current_phase = phase
-                job.last_seen = datetime.utcnow()
-                await session.commit()
 
-    async def _mark_completed(self) -> None:
-        async with get_session() as session:
-            stmt = select(JobState).where(
-                JobState.target_id == self.target_id,
-                JobState.container_name == self.container_name,
-            )
-            result = await session.execute(stmt)
-            job = result.scalar_one_or_none()
-            if job:
-                job.status = "COMPLETED"
-                job.last_seen = datetime.utcnow()
-                await session.commit()
 
     # ------------------------------------------------------------------
     # Internal helpers

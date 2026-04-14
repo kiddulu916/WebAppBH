@@ -10,6 +10,7 @@ import ShortcutsOverlay from "@/components/layout/ShortcutsOverlay";
 import SystemCheck from "@/components/common/SystemCheck";
 import GlobalEventStream from "@/components/common/GlobalEventStream";
 import OnboardingTour from "@/components/common/OnboardingTour";
+import ThemeInit from "@/components/common/ThemeInit";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -37,6 +38,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-bg-void text-text-primary`}
       >
         <SystemCheck>
+          <ThemeInit />
           <GlobalEventStream />
           <div className="flex min-h-screen min-w-[1024px]">
             <IconRail />

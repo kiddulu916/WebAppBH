@@ -487,6 +487,68 @@ async def control_worker(body: ControlAction):
 
 
 # ---------------------------------------------------------------------------
+# GET /api/v1/worker_health — detailed health for all workers
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/worker_health")
+async def worker_health():
+    """Return container-level health: status, CPU, memory, restart count, uptime."""
+    containers = await worker_manager.list_webbh_containers()
+    loop = asyncio.get_running_loop()
+
+    def _get_stats() -> list[dict]:
+        client = worker_manager.get_client()
+        results = []
+        for ci in containers:
+            entry: dict = {
+                "name": ci.name,
+                "status": ci.status,
+                "image": ci.image,
+                "started_at": ci.started_at,
+                "cpu_percent": None,
+                "memory_mb": None,
+                "memory_limit_mb": None,
+                "restart_count": 0,
+                "health_status": None,
+            }
+            try:
+                c = client.containers.get(ci.name)
+                entry["restart_count"] = c.attrs.get("RestartCount", 0)
+                health = c.attrs.get("State", {}).get("Health", {})
+                entry["health_status"] = health.get("Status") if health else None
+
+                if ci.status == "running":
+                    stats = c.stats(stream=False)
+                    # CPU calculation
+                    cpu_delta = stats["cpu_stats"]["cpu_usage"]["total_usage"] - stats["precpu_stats"]["cpu_usage"]["total_usage"]
+                    system_delta = stats["cpu_stats"]["system_cpu_usage"] - stats["precpu_stats"]["system_cpu_usage"]
+                    num_cpus = len(stats["cpu_stats"]["cpu_usage"].get("percpu_usage", [1]))
+                    if system_delta > 0 and num_cpus > 0:
+                        entry["cpu_percent"] = round((cpu_delta / system_delta) * num_cpus * 100.0, 2)
+                    # Memory
+                    mem = stats.get("memory_stats", {})
+                    entry["memory_mb"] = round(mem.get("usage", 0) / (1024 * 1024), 1)
+                    entry["memory_limit_mb"] = round(mem.get("limit", 0) / (1024 * 1024), 1)
+            except Exception:
+                pass
+            results.append(entry)
+        return results
+
+    stats = await loop.run_in_executor(None, _get_stats)
+
+    # Also get host resource snapshot
+    resource_snap = await worker_manager.check_resources()
+
+    return {
+        "host": {
+            "cpu_percent": resource_snap.cpu_percent,
+            "memory_percent": resource_snap.memory_percent,
+            "is_healthy": resource_snap.is_healthy,
+        },
+        "workers": stats,
+    }
+
+
+# ---------------------------------------------------------------------------
 # POST /api/v1/kill — hard-kill all active workers
 # ---------------------------------------------------------------------------
 @app.post("/api/v1/kill")
@@ -942,18 +1004,38 @@ async def list_targets():
 # GET /api/v1/assets — list assets for a target (with locations)
 # ---------------------------------------------------------------------------
 @app.get("/api/v1/assets")
-async def list_assets(target_id: int = Query(..., description="Target ID to filter assets")):
+async def list_assets(
+    target_id: int = Query(..., description="Target ID to filter assets"),
+    asset_type: Optional[str] = Query(None, description="Filter by asset type"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(100, ge=1, le=500, description="Items per page"),
+):
     async with get_session() as session:
+        base = select(Asset).where(Asset.target_id == target_id)
+        if asset_type:
+            base = base.where(Asset.asset_type == asset_type)
+
+        # Total count
+        count_result = await session.execute(
+            select(func.count()).select_from(base.subquery())
+        )
+        total = count_result.scalar() or 0
+
+        # Paginated results
         stmt = (
-            select(Asset)
-            .where(Asset.target_id == target_id)
+            base
             .options(selectinload(Asset.locations))
             .order_by(Asset.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
         result = await session.execute(stmt)
         assets = result.scalars().all()
 
     return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
         "assets": [
             {
                 "id": a.id,
@@ -987,19 +1069,41 @@ async def list_assets(target_id: int = Query(..., description="Target ID to filt
 async def list_vulnerabilities(
     target_id: int = Query(..., description="Target ID to filter vulnerabilities"),
     severity: Optional[str] = Query(None, description="Filter by severity level"),
+    worker_type: Optional[str] = Query(None, description="Filter by worker type"),
+    confirmed: Optional[bool] = Query(None, description="Filter by confirmed status"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(100, ge=1, le=500, description="Items per page"),
 ):
     async with get_session() as session:
-        stmt = (
-            select(Vulnerability)
-            .where(Vulnerability.target_id == target_id)
-            .options(selectinload(Vulnerability.asset))
-        )
+        base = select(Vulnerability).where(Vulnerability.target_id == target_id)
         if severity is not None:
-            stmt = stmt.where(Vulnerability.severity == severity)
+            base = base.where(Vulnerability.severity == severity)
+        if worker_type is not None:
+            base = base.where(Vulnerability.worker_type == worker_type)
+        if confirmed is not None:
+            base = base.where(Vulnerability.confirmed == confirmed)
+
+        # Total count
+        count_result = await session.execute(
+            select(func.count()).select_from(base.subquery())
+        )
+        total = count_result.scalar() or 0
+
+        # Paginated results
+        stmt = (
+            base
+            .options(selectinload(Vulnerability.asset))
+            .order_by(Vulnerability.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
         result = await session.execute(stmt)
         vulns = result.scalars().all()
 
     return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
         "vulnerabilities": [
             {
                 "id": v.id,
@@ -1011,6 +1115,11 @@ async def list_vulnerabilities(
                 "description": v.description,
                 "poc": v.poc,
                 "source_tool": v.source_tool,
+                "worker_type": v.worker_type,
+                "vuln_type": v.vuln_type,
+                "confirmed": v.confirmed,
+                "false_positive": v.false_positive,
+                "cvss_score": v.cvss_score,
                 "created_at": v.created_at.isoformat() if v.created_at else None,
                 "updated_at": v.updated_at.isoformat() if v.updated_at else None,
             }

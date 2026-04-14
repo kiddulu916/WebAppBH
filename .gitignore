@@ -17,3 +17,5 @@ test-results/
 .kilo/
 .kilo/*
 !.kilo/.gitkeep
+secrets/*.txt
+secrets/*.key

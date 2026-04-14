@@ -129,9 +129,12 @@ export interface JobState extends Timestamps {
   target_id: number;
   container_name: string;
   current_phase: string | null;
+  last_completed_stage: string | null;
   status: JobStatus;
   last_seen: string | null; // ISO-8601
   last_tool_executed: string | null;
+  started_at: string | null; // ISO-8601
+  completed_at: string | null; // ISO-8601
 }
 
 export interface Alert extends Timestamps {

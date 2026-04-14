@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useCampaignStore } from "@/stores/campaign";
 import { api } from "@/lib/api";
+import ScanTimeline from "@/components/c2/ScanTimeline";
 import type { PlaybookRow, StageConfig } from "@/lib/api";
 import type { ExecutionState, StageExecution } from "@/types/schema";
 
@@ -210,6 +211,7 @@ function MonitorStageEntry({ stage }: { stage: StageExecution }) {
 
 export default function FlowPage() {
   const activeTarget = useCampaignStore((s) => s.activeTarget);
+  const jobs = useCampaignStore((s) => s.jobs);
 
   /* ---- Configurator state ---- */
   const [playbooks, setPlaybooks] = useState<PlaybookRow[]>([]);
@@ -548,6 +550,13 @@ export default function FlowPage() {
           )}
         </div>
       </div>
+
+      {/* Gantt-style timeline */}
+      {activeTarget && (
+        <div className="rounded-lg border border-border bg-bg-secondary p-4">
+          <ScanTimeline jobs={jobs} />
+        </div>
+      )}
     </div>
   );
 }

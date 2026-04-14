@@ -21,6 +21,7 @@ RUN pip install -r /app/workers/client_side/requirements.txt
 RUN playwright install chromium
 
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=300
 ENV WORKER_TYPE=client_side
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 

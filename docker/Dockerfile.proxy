@@ -1,11 +1,13 @@
 # docker/Dockerfile.proxy
-FROM python:3.10-slim
+FROM python:3.12-slim
+ENV PIP_DEFAULT_TIMEOUT=300
 
-RUN pip install mitmproxy>=10.0 aiohttp>=3.9
+RUN pip install --no-cache-dir "mitmproxy>=10.0" "aiohttp>=3.9"
 
 COPY workers/proxy/ /app/workers/proxy/
 
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=300
 
 # Proxy on 8080, Rule Manager API on 8081
 EXPOSE 8080 8081

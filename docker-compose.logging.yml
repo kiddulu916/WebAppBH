@@ -1,0 +1,35 @@
+# Logging stack — use with: docker compose -f docker-compose.yml -f docker-compose.logging.yml up
+services:
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: webbh-loki
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - webbh-net
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: webbh-promtail
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - webbh-net
+
+volumes:
+  loki_data:
+
+networks:
+  webbh-net:
+    external: true

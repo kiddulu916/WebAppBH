@@ -54,6 +54,49 @@
   --scanline-color: rgba(0, 232, 123, 0.03);
 }
 
+/* ── Light theme overrides ── */
+:root.light {
+  --bg-void:       #f5f6fa;
+  --bg-primary:    #ebedf5;
+  --bg-secondary:  #ffffff;
+  --bg-tertiary:   #f0f1f5;
+  --bg-surface:    #e8eaf0;
+  --bg-glow:       #f4f0eb;
+
+  --border:        #d4d8e0;
+  --border-accent: #bfc5d2;
+  --border-glow:   rgba(200, 110, 30, 0.12);
+
+  --text-primary:   #1a1e2e;
+  --text-secondary: #5a6278;
+  --text-muted:     #8892a8;
+  --text-code:      #3a4258;
+
+  --neon-orange:      #d96a10;
+  --neon-orange-dim:  #b85a10;
+  --neon-orange-glow: rgba(200, 100, 16, 0.08);
+
+  --neon-blue:      #2060cc;
+  --neon-blue-dim:  #184da0;
+  --neon-blue-glow: rgba(32, 96, 204, 0.06);
+
+  --neon-green:      #00a858;
+  --neon-green-dim:  #008a48;
+  --neon-green-glow: rgba(0, 168, 88, 0.06);
+
+  --warning:       #b8860b;
+  --danger:        #d42f3f;
+  --critical:      #c0182a;
+
+  --sev-critical: #c0182a;
+  --sev-high:     #d45030;
+  --sev-medium:   var(--neon-orange);
+  --sev-low:      var(--neon-blue);
+  --sev-info:     var(--text-muted);
+
+  --scanline-color: transparent;
+}
+
 @theme inline {
   --color-bg-void: var(--bg-void);
   --color-bg-primary: var(--bg-primary);

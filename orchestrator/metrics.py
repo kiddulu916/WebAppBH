@@ -13,7 +13,7 @@ targets_created = Counter(
 vulns_found = Counter(
     "webbh_vulns_found_total",
     "Total vulnerabilities discovered",
-    ["severity"],
+    ["severity", "worker_type"],
 )
 scans_triggered = Counter(
     "webbh_scans_triggered_total",
@@ -24,6 +24,11 @@ bounties_submitted = Counter(
     "webbh_bounties_submitted_total",
     "Bounty submissions created",
     ["platform"],
+)
+worker_tasks_processed = Counter(
+    "webbh_worker_tasks_processed_total",
+    "Tasks processed by workers",
+    ["worker_type"],
 )
 
 # Gauges
@@ -39,6 +44,14 @@ queue_depth = Gauge(
 connected_sse_clients = Gauge(
     "webbh_sse_clients",
     "Connected SSE clients",
+)
+db_pool_active = Gauge(
+    "webbh_db_pool_active",
+    "Active database pool connections",
+)
+targets_total = Gauge(
+    "webbh_targets_total",
+    "Total targets in database",
 )
 
 # Histograms

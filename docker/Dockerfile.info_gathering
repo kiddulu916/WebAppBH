@@ -1,7 +1,15 @@
 # docker/Dockerfile.info_gathering
 FROM webbh-base:latest
 
-RUN apt-get update && apt-get install -y nmap libpcap git wget golang whatweb massdns
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    nmap libpcap-dev git wget golang whatweb make gcc libc6-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Build massdns from source (not in standard Debian repos)
+RUN git clone --depth 1 https://github.com/blechschmidt/massdns.git /tmp/massdns && \
+    cd /tmp/massdns && make && cp bin/massdns /usr/local/bin/massdns && \
+    rm -rf /tmp/massdns
 
 # Go tools installed via go install
 RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
@@ -23,6 +31,7 @@ COPY shared/ /app/shared/
 RUN pip install -e /app/shared/lib_webbh
 
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=300
 ENV WORKER_TYPE=info_gathering
 
 CMD ["python", "-m", "workers.info_gathering.main"]

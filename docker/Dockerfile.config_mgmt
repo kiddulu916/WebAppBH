@@ -14,6 +14,7 @@ RUN go install github.com/ffuf/ffuf/v2@latest
 FROM python:3.10-slim-bookworm
 
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=300
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -23,9 +24,17 @@ RUN apt-get update && \
 # Go binaries
 COPY --from=go-builder /go/bin/ffuf /usr/local/bin/
 
-# Install lib_webbh
+# Copy setup.py first for dependency caching
+COPY shared/lib_webbh/setup.py /app/shared/lib_webbh/setup.py
+RUN touch /app/shared/lib_webbh/__init__.py && \
+    mkdir -p /app/shared/lib_webbh/prompts /app/shared/lib_webbh/platform_api && \
+    touch /app/shared/lib_webbh/prompts/__init__.py /app/shared/lib_webbh/platform_api/__init__.py && \
+    pip install --no-cache-dir /app/shared/lib_webbh
+
+# Copy full source — overwrite stub with real lib_webbh
 COPY shared/lib_webbh /app/shared/lib_webbh
-RUN pip install --no-cache-dir /app/shared/lib_webbh
+RUN rm -rf /usr/local/lib/python3.10/site-packages/lib_webbh /usr/local/lib/python3.10/site-packages/lib_webbh-*.dist-info && \
+    cp -a /app/shared/lib_webbh /usr/local/lib/python3.10/site-packages/lib_webbh
 
 # Shared directories
 RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs

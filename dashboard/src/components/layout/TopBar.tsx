@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Wifi, WifiOff, Command, Power, Plus } from "lucide-react";
+import { ChevronDown, Wifi, WifiOff, Command, Power, Plus, Sun, Moon } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
 import { useUIStore } from "@/stores/ui";
@@ -14,6 +14,8 @@ export default function TopBar() {
   const { connected, activeTarget, currentPhase, jobs, setActiveTarget } =
     useCampaignStore();
   const setCommandPaletteOpen = useUIStore((s) => s.setCommandPaletteOpen);
+  const theme = useUIStore((s) => s.theme);
+  const toggleTheme = useUIStore((s) => s.toggleTheme);
   const [open, setOpen] = useState(false);
   const [targets, setTargets] = useState<Target[]>([]);
   const ref = useRef<HTMLDivElement>(null);
@@ -154,6 +156,13 @@ export default function TopBar() {
         >
           <Power className="h-3 w-3" />
           <span>KILL</span>
+        </button>
+        <button
+          onClick={toggleTheme}
+          className="flex items-center rounded border border-border p-1 text-text-muted transition-colors hover:border-border-accent hover:text-text-secondary"
+          title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+        >
+          {theme === "dark" ? <Sun className="h-3 w-3" /> : <Moon className="h-3 w-3" />}
         </button>
         <button
           onClick={() => setCommandPaletteOpen(true)}
