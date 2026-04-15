@@ -92,7 +92,6 @@ RUN wget --tries=3 --timeout=30 --waitretry=5 \
     || wget --tries=3 --timeout=30 --waitretry=5 \
     https://archive.kali.org/kali/pool/main/k/kali-archive-keyring/kali-archive-keyring_2025.2_all.deb
 
-
 RUN dpkg -i kali-archive-keyring_2025.2_all.deb
 
 RUN rm kali-archive-keyring_2025.2_all.deb

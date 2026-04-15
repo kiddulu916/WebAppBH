@@ -1,12 +1,29 @@
 # ============================================================
-# Stage 1: Builder — install mobile tooling
+# Stage 1: jadx builder (needs JDK 21+ and gradle)
+# ============================================================
+FROM eclipse-temurin:21-jdk-jammy AS jadx-builder
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 https://github.com/skylot/jadx.git /tmp/jadx-src && \
+    cd /tmp/jadx-src && \
+    ./gradlew dist && \
+    mkdir -p /opt/jadx && \
+    cp -a build/jadx/* /opt/jadx/ && \
+    chmod +x /opt/jadx/bin/jadx && \
+    rm -rf /tmp/jadx-src /root/.gradle
+
+# ============================================================
+# Stage 2: Builder — install mobile tooling
 # ============================================================
 FROM python:3.11-slim-bookworm AS builder
 ENV PIP_DEFAULT_TIMEOUT=300
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        wget unzip default-jdk-headless git && \
+        wget unzip git && \
     rm -rf /var/lib/apt/lists/*
 
 # apktool
@@ -16,13 +33,8 @@ RUN wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts
     wget -q https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar \
         -O /usr/local/bin/apktool.jar
 
-# jadx
-RUN wget --tries=3 --timeout=30 --waitretry=5 -q \
-        https://github.com/skylot/jadx/releases/download/v1.5.0/jadx-1.5.0.zip \
-        -O /tmp/jadx.zip && \
-    unzip -q /tmp/jadx.zip -d /opt/jadx && \
-    chmod +x /opt/jadx/bin/jadx && \
-    rm /tmp/jadx.zip
+# jadx — copy from builder
+COPY --from=jadx-builder /opt/jadx /opt/jadx
 
 # apkeep (Rust binary — use prebuilt release)
 RUN ARCH=$(dpkg --print-architecture) && \
@@ -61,7 +73,7 @@ ENV PIP_DEFAULT_TIMEOUT=300
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        libpq5 default-jre-headless android-tools-adb && \
+        libpq5 openjdk-17-jre-headless android-tools-adb && \
     rm -rf /var/lib/apt/lists/*
 
 # apktool

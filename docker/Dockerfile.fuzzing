@@ -12,7 +12,7 @@ RUN go install github.com/dwisiswant0/crlfuzz/cmd/crlfuzz@latest
 # ============================================================
 # Stage 2: Rust tool builder (feroxbuster)
 # ============================================================
-FROM rust:1.77-bookworm AS rust-builder
+FROM rust:latest AS rust-builder
 
 RUN cargo install feroxbuster
 
@@ -44,24 +44,7 @@ RUN rm -rf /py-tools/lib_webbh /py-tools/lib_webbh-*.dist-info && \
     cp -a /build/lib_webbh /py-tools/lib_webbh
 
 # ============================================================
-# Stage 4: SecLists downloader
-# ============================================================
-FROM debian:bookworm-slim AS seclists
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends wget unzip ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN mkdir -p /seclists && \
-    wget -q https://github.com/danielmiessler/SecLists/archive/refs/heads/master.zip -O /tmp/seclists.zip && \
-    unzip -q /tmp/seclists.zip -d /tmp && \
-    cp /tmp/SecLists-master/Discovery/Web-Content/common.txt /seclists/ && \
-    cp /tmp/SecLists-master/Discovery/Web-Content/directory-list-2.3-medium.txt /seclists/ && \
-    cp /tmp/SecLists-master/Discovery/DNS/subdomains-top1million-5000.txt /seclists/ && \
-    rm -rf /tmp/seclists.zip /tmp/SecLists-master
-
-# ============================================================
-# Stage 5: Runtime
+# Stage 4: Runtime
 # ============================================================
 FROM python:3.10-slim-bookworm
 
@@ -70,7 +53,7 @@ ENV PIP_DEFAULT_TIMEOUT=300
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        libpq5 && \
+        libpq5 git && \
     rm -rf /var/lib/apt/lists/*
 
 # Go binaries
@@ -83,14 +66,21 @@ COPY --from=rust-builder /usr/local/cargo/bin/feroxbuster /usr/local/bin/
 # Python tools
 COPY --from=py-builder /py-tools /usr/local/lib/python3.10/site-packages/
 
-# SecLists wordlists
-COPY --from=seclists /seclists /app/wordlists
+# SecLists — full repo clone for all wordlists
+RUN git clone --depth 1 https://github.com/danielmiessler/SecLists.git /opt/SecLists && \
+    rm -rf /opt/SecLists/.git
 
-# Oralyzer
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends git && \
-    git clone https://github.com/nicedayfor/oralyzer.git /opt/oralyzer && \
-    rm -rf /var/lib/apt/lists/*
+# Symlink commonly-used wordlists to /app/wordlists/ for backward compat
+RUN mkdir -p /app/wordlists && \
+    ln -s /opt/SecLists/Discovery/Web-Content/common.txt /app/wordlists/common.txt && \
+    ln -s /opt/SecLists/Discovery/Web-Content/directory-list-2.3-medium.txt /app/wordlists/directory-list-2.3-medium.txt && \
+    ln -s /opt/SecLists/Discovery/DNS/subdomains-top1million-5000.txt /app/wordlists/subdomains-top1million-5000.txt
+
+# Oralyzer — open redirect scanner
+RUN git clone --depth 1 https://github.com/r0075h3ll/Oralyzer.git /opt/oralyzer && \
+    cd /opt/oralyzer && pip install --no-cache-dir -r requirements.txt && \
+    ln -s /opt/oralyzer/oralyzer.py /usr/local/bin/oralyzer && \
+    rm -rf /opt/oralyzer/.git
 
 # Shared directories
 RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs

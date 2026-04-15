@@ -10,8 +10,10 @@ RUN go install github.com/ffuf/ffuf/v2@latest
 
 # Download trufflehog release binary
 RUN ARCH=$(dpkg --print-architecture) && \
-    wget -q https://github.com/trufflesecurity/trufflehog/releases/latest/download/trufflehog_linux_${ARCH}.tar.gz && \
-    tar xzf trufflehog_linux_${ARCH}.tar.gz -C /usr/local/bin trufflehog
+    VERSION=$(wget -qO- https://api.github.com/repos/trufflesecurity/trufflehog/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+') && \
+    wget --tries=3 --timeout=30 --waitretry=5 -q \
+        "https://github.com/trufflesecurity/trufflehog/releases/download/v${VERSION}/trufflehog_${VERSION}_linux_${ARCH}.tar.gz" && \
+    tar xzf trufflehog_${VERSION}_linux_${ARCH}.tar.gz -C /usr/local/bin trufflehog
 
 # ============================================================
 # Stage 2: Python pip + lib_webbh builder
