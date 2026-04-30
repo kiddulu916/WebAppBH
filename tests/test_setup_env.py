@@ -54,3 +54,31 @@ def test_idempotent_does_not_overwrite():
         with open(env_path) as f:
             second_content = f.read()
         assert first_content == second_content
+
+
+def test_env_file_is_owner_read_only():
+    """The .env file holds secrets and must not be world-readable."""
+    import stat
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        env_path = os.path.join(tmpdir, ".env")
+        generate_env(output_path=env_path)
+        perms = stat.S_IMODE(os.stat(env_path).st_mode)
+        assert perms & 0o077 == 0, f"file mode {oct(perms)} grants group/world access"
+
+
+def test_api_key_not_printed_to_stdout(capsys):
+    """Generated API key must not be printed in stdout (would leak to logs)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        env_path = os.path.join(tmpdir, ".env")
+        generate_env(output_path=env_path)
+        with open(env_path) as f:
+            api_key = ""
+            for line in f:
+                if line.startswith("WEB_APP_BH_API_KEY="):
+                    api_key = line.strip().split("=", 1)[1]
+                    break
+        captured = capsys.readouterr()
+        assert api_key
+        assert api_key not in captured.out
+        assert api_key not in captured.err

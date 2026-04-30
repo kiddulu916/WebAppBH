@@ -9,6 +9,7 @@ from typing import Any
 
 from lib_webbh import get_session, setup_logger
 from lib_webbh.database import JobState, Target
+from lib_webbh.logger import redact_sensitive
 from lib_webbh.messaging import listen_priority_queues, get_redis
 from lib_webbh.scope import ScopeManager
 from sqlalchemy import select
@@ -36,10 +37,13 @@ async def _start_zap() -> subprocess.Popen | None:
             ["zap.sh", "-daemon", "-port", str(ZAP_PORT), "-config", "api.disablekey=true"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        logger.info("ZAP daemon started", extra={"port": ZAP_PORT})
+        logger.info("ZAP daemon started", extra={"port": ZAP_PORT, "pid": proc.pid})
         return proc
     except FileNotFoundError:
         logger.warning("ZAP not found, skipping")
+        return None
+    except OSError as exc:
+        logger.error("Failed to start ZAP", extra={"error": str(exc)})
         return None
 
 
@@ -65,11 +69,30 @@ async def _start_msfrpcd() -> subprocess.Popen | None:
             ["msfrpcd", "-P", MSFRPC_PASS, "-p", str(MSFRPC_PORT), "-S", "-f"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        logger.info("msfrpcd started", extra={"port": MSFRPC_PORT})
+        logger.info("msfrpcd started", extra={"port": MSFRPC_PORT, "pid": proc.pid})
         return proc
     except FileNotFoundError:
         logger.warning("msfrpcd not found, skipping")
         return None
+    except OSError as exc:
+        logger.error("Failed to start msfrpcd", extra={"error": str(exc)})
+        return None
+
+
+def _terminate_subprocess(proc: subprocess.Popen | None, name: str, timeout: float = 10.0) -> None:
+    """Terminate a subprocess, escalating to SIGKILL if it does not exit in time."""
+    if proc is None or proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        logger.warning("%s did not terminate within %.1fs; sending SIGKILL", name, timeout)
+        proc.kill()
+        try:
+            proc.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            logger.error("%s could not be killed", name)
 
 
 async def _wait_for_msfrpcd(retries: int = 30, delay: float = 2.0) -> bool:
@@ -110,29 +133,33 @@ async def handle_message(msg_id: str, data: dict[str, Any]) -> None:
     log.info("Received chain task", extra={"trigger": data.get("trigger_phase")})
 
     async with get_session() as session:
-        target = (await session.execute(
-            select(Target).where(Target.id == target_id)
-        )).scalar_one_or_none()
-        if target is None:
-            log.error("Target not found")
-            return
-        stmt = select(JobState).where(
-            JobState.target_id == target_id,
-            JobState.container_name == container_name,
-        )
-        job = (await session.execute(stmt)).scalar_one_or_none()
-        if job is None:
-            job = JobState(
-                target_id=target_id, container_name=container_name,
-                status="RUNNING", current_phase="init",
-                last_seen=datetime.utcnow(),
+        try:
+            target = (await session.execute(
+                select(Target).where(Target.id == target_id)
+            )).scalar_one_or_none()
+            if target is None:
+                log.error("Target not found")
+                return
+            stmt = select(JobState).where(
+                JobState.target_id == target_id,
+                JobState.container_name == container_name,
             )
-            session.add(job)
-        else:
-            job.status = "RUNNING"
-            job.current_phase = "init"
-            job.last_seen = datetime.utcnow()
-        await session.commit()
+            job = (await session.execute(stmt)).scalar_one_or_none()
+            if job is None:
+                job = JobState(
+                    target_id=target_id, container_name=container_name,
+                    status="RUNNING", current_phase="init",
+                    last_seen=datetime.utcnow(),
+                )
+                session.add(job)
+            else:
+                job.status = "RUNNING"
+                job.current_phase = "init"
+                job.last_seen = datetime.utcnow()
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
     scope_manager = ScopeManager(target.target_profile or {})
     heartbeat = asyncio.create_task(_heartbeat_loop(target_id, container_name))
@@ -146,14 +173,19 @@ async def handle_message(msg_id: str, data: dict[str, Any]) -> None:
     except Exception as exc:
         log.error("Pipeline failed", extra={"error": str(exc)})
         async with get_session() as session:
-            stmt = select(JobState).where(
-                JobState.target_id == target_id,
-                JobState.container_name == container_name,
-            )
-            job = (await session.execute(stmt)).scalar_one_or_none()
-            if job:
-                job.status = "FAILED"
-                await session.commit()
+            try:
+                stmt = select(JobState).where(
+                    JobState.target_id == target_id,
+                    JobState.container_name == container_name,
+                )
+                job = (await session.execute(stmt)).scalar_one_or_none()
+                if job:
+                    job.status = "FAILED"
+                    job.error = redact_sensitive(str(exc))
+                    await session.commit()
+            except Exception:
+                await session.rollback()
+                log.exception("Failed to record FAILED status in JobState")
     finally:
         heartbeat.cancel()
         try:
@@ -166,25 +198,29 @@ async def main() -> None:
     logger.info("Chain worker starting")
     zap_proc = await _start_zap()
     msf_proc = await _start_msfrpcd()
-    if zap_proc:
-        await _wait_for_zap()
-    if msf_proc:
-        await _wait_for_msfrpcd()
+    try:
+        if zap_proc:
+            await _wait_for_zap()
+        if msf_proc:
+            await _wait_for_msfrpcd()
 
-    consumer_group = "chain_worker_group"
-    consumer_name = get_container_name()
-    logger.info("Listening for tasks", extra={"consumer": consumer_name})
+        consumer_group = "chain_worker_group"
+        consumer_name = get_container_name()
+        logger.info("Listening for tasks", extra={"consumer": consumer_name})
 
-    async for message in listen_priority_queues(
-        "chain_worker_queue", consumer_group, consumer_name
-    ):
-        try:
-            await handle_message(message["msg_id"], message["payload"])
-        except Exception as e:
-            logger.error("Message handling failed", extra={"error": str(e)})
+        async for message in listen_priority_queues(
+            "chain_worker_queue", consumer_group, consumer_name
+        ):
+            try:
+                await handle_message(message["msg_id"], message["payload"])
+            except Exception as e:
+                logger.error("Message handling failed", extra={"error": str(e)})
 
-        r = get_redis()
-        await r.xack(message["stream"], consumer_group, message["msg_id"])
+            r = get_redis()
+            await r.xack(message["stream"], consumer_group, message["msg_id"])
+    finally:
+        _terminate_subprocess(zap_proc, "ZAP")
+        _terminate_subprocess(msf_proc, "msfrpcd")
 
 
 if __name__ == "__main__":

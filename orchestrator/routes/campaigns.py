@@ -19,28 +19,32 @@ class CampaignCreate(BaseModel):
 @router.post("", status_code=201)
 async def create_campaign(body: CampaignCreate):
     async with get_session() as session:
-        campaign = Campaign(
-            name=body.name,
-            description=body.description,
-            scope_config=body.scope_config,
-            rate_limit=body.rate_limit,
-            has_credentials=body.tester_credentials is not None,
-        )
-        session.add(campaign)
-        await session.flush()
-
-        for t in body.targets:
-            target = Target(
-                company_name=t.get("company_name", body.name),
-                base_domain=t["domain"],
-                campaign_id=campaign.id,
-                target_type="seed",
-                priority=100,
+        try:
+            campaign = Campaign(
+                name=body.name,
+                description=body.description,
+                scope_config=body.scope_config,
+                rate_limit=body.rate_limit,
+                has_credentials=body.tester_credentials is not None,
             )
-            session.add(target)
+            session.add(campaign)
+            await session.flush()
 
-        await session.commit()
-        await session.refresh(campaign)
+            for t in body.targets:
+                target = Target(
+                    company_name=t.get("company_name", body.name),
+                    base_domain=t["domain"],
+                    campaign_id=campaign.id,
+                    target_type="seed",
+                    priority=100,
+                )
+                session.add(target)
+
+            await session.commit()
+            await session.refresh(campaign)
+        except Exception:
+            await session.rollback()
+            raise
 
         return {"id": campaign.id, "name": campaign.name, "status": campaign.status}
 

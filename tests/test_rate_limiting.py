@@ -57,8 +57,24 @@ async def test_rate_limit_blocks_excess():
         assert exc_info.value.status_code == 429
 
 
-async def test_rate_limit_skips_on_redis_error():
-    """If Redis is unavailable, skip rate limiting gracefully."""
+async def test_rate_limit_fails_closed_on_redis_error():
+    """Default behavior: Redis unavailable -> 503, never silently bypass."""
+    from orchestrator.rate_limit import rate_limit_check
+    from fastapi import HTTPException
+
+    request = MagicMock()
+    request.method = "GET"
+    request.client.host = "127.0.0.1"
+
+    with patch("orchestrator.rate_limit.get_redis", side_effect=Exception("Redis down")):
+        with patch("orchestrator.rate_limit._FAIL_OPEN", False):
+            with pytest.raises(HTTPException) as exc_info:
+                await rate_limit_check(request)
+            assert exc_info.value.status_code == 503
+
+
+async def test_rate_limit_fail_open_when_opted_in():
+    """With RATE_LIMIT_FAIL_OPEN=1, Redis errors silently allow the request."""
     from orchestrator.rate_limit import rate_limit_check
 
     request = MagicMock()
@@ -66,4 +82,33 @@ async def test_rate_limit_skips_on_redis_error():
     request.client.host = "127.0.0.1"
 
     with patch("orchestrator.rate_limit.get_redis", side_effect=Exception("Redis down")):
-        await rate_limit_check(request)  # Should not raise
+        with patch("orchestrator.rate_limit._FAIL_OPEN", True):
+            await rate_limit_check(request)  # Should not raise
+
+
+def test_parse_positive_int_rejects_negative():
+    from orchestrator.rate_limit import _parse_positive_int
+
+    with patch.dict(os.environ, {"RL_TEST": "-5"}):
+        assert _parse_positive_int("RL_TEST", 99) == 99
+
+
+def test_parse_positive_int_rejects_zero():
+    from orchestrator.rate_limit import _parse_positive_int
+
+    with patch.dict(os.environ, {"RL_TEST": "0"}):
+        assert _parse_positive_int("RL_TEST", 99) == 99
+
+
+def test_parse_positive_int_rejects_garbage():
+    from orchestrator.rate_limit import _parse_positive_int
+
+    with patch.dict(os.environ, {"RL_TEST": "not-a-number"}):
+        assert _parse_positive_int("RL_TEST", 99) == 99
+
+
+def test_parse_positive_int_accepts_valid():
+    from orchestrator.rate_limit import _parse_positive_int
+
+    with patch.dict(os.environ, {"RL_TEST": "42"}):
+        assert _parse_positive_int("RL_TEST", 99) == 42
