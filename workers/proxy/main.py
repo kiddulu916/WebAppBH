@@ -44,8 +44,8 @@ def start_mitmproxy(store: RuleStore) -> subprocess.Popen:
     with open(addon_script, "w") as f:
         f.write(
             f"""\
-import json, urllib.request
-from mitmproxy import http
+import json, sys, urllib.request
+from mitmproxy import ctx, http
 
 _API = "http://127.0.0.1:{API_PORT}"
 
@@ -55,7 +55,13 @@ def _get_rules(url: str) -> list:
         req = urllib.request.Request(f"{{_API}}/rules")
         with urllib.request.urlopen(req, timeout=1) as resp:
             rules = json.loads(resp.read())
-    except Exception:
+    except Exception as exc:
+        # Log to mitmproxy's event log so failures are visible instead of
+        # silently dropping all rules.
+        try:
+            ctx.log.warn(f"proxy addon: rule fetch failed: {{exc}}")
+        except Exception:
+            print(f"proxy addon: rule fetch failed: {{exc}}", file=sys.stderr)
         return []
     import fnmatch
     return [r for r in rules if fnmatch.fnmatch(url, r.get("match", {{}}).get("url_pattern", "*"))]

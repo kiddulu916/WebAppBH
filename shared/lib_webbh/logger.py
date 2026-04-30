@@ -10,10 +10,49 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from typing import Any, Dict, Optional
+
+
+# ---------------------------------------------------------------------------
+# Sensitive value redaction
+# ---------------------------------------------------------------------------
+
+# Patterns that identify likely-sensitive substrings. Each must use a single
+# capture group for the value to be redacted; non-capturing groups guard the
+# surrounding context.
+_REDACTION_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # Bearer / Authorization headers (token after the scheme)
+    re.compile(r"(?i)(?:Authorization|Proxy-Authorization)\s*[:=]\s*\S+\s+(\S+)"),
+    # X-API-KEY-style headers and api_key=... query/form params
+    re.compile(r"(?i)(?:x[-_]?api[-_]?key|api[-_]?key|apikey|access[-_]?token|secret[-_]?key|password)\s*[:=]\s*([^\s&'\"]+)"),
+    # Cookie session values (PHPSESSID, JSESSIONID, etc.)
+    re.compile(r"(?i)(?:session(?:id)?|phpsessid|jsessionid)\s*[:=]\s*([^\s;'\"]+)"),
+    # JWT-shaped strings (three base64url segments)
+    re.compile(r"\b(eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,})\b"),
+)
+
+_REDACTED = "[REDACTED]"
+
+
+def redact_sensitive(text: str | None, max_len: int = 4000) -> str | None:
+    """Mask common credential / token patterns in arbitrary strings.
+
+    Intended for any free-text field that may be persisted (e.g. JobState.error)
+    or logged. Long strings are also truncated to ``max_len`` so an attacker
+    cannot fill the database with verbose error payloads.
+    """
+    if text is None:
+        return None
+    redacted = text
+    for pattern in _REDACTION_PATTERNS:
+        redacted = pattern.sub(lambda m: m.group(0).replace(m.group(1), _REDACTED), redacted)
+    if len(redacted) > max_len:
+        redacted = redacted[:max_len] + "...[truncated]"
+    return redacted
 
 
 # ---------------------------------------------------------------------------
