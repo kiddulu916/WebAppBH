@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import TargetTree from "@/components/targets/TargetTree";
-import type { TargetNode } from "@/types/campaign";
+import type { TargetNode } from "@/types/schema";
 
 export default function TargetsPage() {
   const params = useParams();

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { TargetNode } from "@/types/campaign";
+import type { TargetNode } from "@/types/schema";
 
 interface TargetTreeProps {
   targets: TargetNode[];
@@ -10,12 +10,12 @@ export default function TargetTree({ targets, campaignId }: TargetTreeProps) {
   const renderTarget = (target: TargetNode, depth: number) => {
     const statusColor =
       target.status === "complete"
-        ? "text-green-400"
+        ? "text-neon-green"
         : target.status === "running"
-          ? "text-amber-400"
+          ? "text-neon-orange"
           : target.status === "queued"
-            ? "text-blue-400"
-            : "text-gray-400";
+            ? "text-neon-blue"
+            : "text-text-muted";
 
     const statusIcon =
       target.status === "complete"

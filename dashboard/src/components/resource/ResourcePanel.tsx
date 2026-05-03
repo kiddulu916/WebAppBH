@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { ResourceStatus } from "@/types/campaign";
+import type { ResourceStatus } from "@/types/schema";
 
 interface ResourcePanelProps {
   status: ResourceStatus | null;
@@ -9,15 +9,15 @@ interface ResourcePanelProps {
 }
 
 const TIER_COLORS: Record<string, string> = {
-  green: "text-green-400",
-  yellow: "text-yellow-400",
-  red: "text-red-400",
-  critical: "text-red-500 font-bold",
+  green: "text-neon-green",
+  yellow: "text-warning",
+  red: "text-danger",
+  critical: "text-danger font-bold",
 };
 
 function ProgressBar({ value, max, label }: { value: number; max: number; label: string }) {
   const percent = Math.min((value / max) * 100, 100);
-  const color = percent > 90 ? "bg-red-500" : percent > 70 ? "bg-yellow-500" : "bg-green-500";
+  const color = percent > 90 ? "bg-danger" : percent > 70 ? "bg-warning" : "bg-neon-green";
 
   return (
     <div className="space-y-1">
@@ -101,19 +101,19 @@ export default function ResourcePanel({ status, onClose }: ResourcePanelProps) {
             <div className="text-sm font-medium text-text-primary mb-2">Thresholds</div>
             <div className="space-y-2 text-xs">
               <div className="flex justify-between">
-                <span className="text-green-400">Green</span>
+                <span className="text-neon-green">Green</span>
                 <span className="text-text-secondary">
                   CPU: {status.thresholds.green.cpu}% | Mem: {status.thresholds.green.memory}% | Workers: {status.thresholds.green.workers}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-yellow-400">Yellow</span>
+                <span className="text-warning">Yellow</span>
                 <span className="text-text-secondary">
                   CPU: {status.thresholds.yellow.cpu}% | Mem: {status.thresholds.yellow.memory}% | Workers: {status.thresholds.yellow.workers}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-red-400">Red</span>
+                <span className="text-danger">Red</span>
                 <span className="text-text-secondary">
                   CPU: {status.thresholds.red.cpu}% | Mem: {status.thresholds.red.memory}% | Workers: {status.thresholds.red.workers}
                 </span>
@@ -124,7 +124,7 @@ export default function ResourcePanel({ status, onClose }: ResourcePanelProps) {
           {/* Admin overrides */}
           <button
             onClick={() => setShowOverrides(!showOverrides)}
-            className="w-full text-sm text-accent-primary hover:underline"
+            className="w-full text-sm text-accent hover:underline"
           >
             {showOverrides ? "Hide" : "Show"} Admin Overrides
           </button>
@@ -140,7 +140,7 @@ export default function ResourcePanel({ status, onClose }: ResourcePanelProps) {
                   <option value="critical">Critical</option>
                 </select>
               </div>
-              <button className="w-full rounded-md bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90">
+              <button className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">
                 Apply Override
               </button>
             </div>

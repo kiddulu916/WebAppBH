@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import ChainDetail from "@/components/chains/ChainDetail";
-import type { ChainFindingView, Finding } from "@/types/campaign";
+import type { ChainFindingView, Finding } from "@/types/schema";
 
 export default function ChainDetailPage() {
   const params = useParams();

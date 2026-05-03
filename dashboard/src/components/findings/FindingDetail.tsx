@@ -1,6 +1,6 @@
 "use client";
 
-import type { Finding } from "@/types/campaign";
+import type { Finding } from "@/types/schema";
 
 interface FindingDetailProps {
   finding: Finding;
@@ -10,11 +10,11 @@ interface FindingDetailProps {
 
 export default function FindingDetail({ finding, onMarkFalsePositive, onExport }: FindingDetailProps) {
   const severityColors: Record<string, string> = {
-    critical: "bg-red-500/20 text-red-400 border-red-500/30",
-    high: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-    medium: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-    low: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-    info: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+    critical: "bg-sev-critical/20 text-sev-critical border-sev-critical/30",
+    high: "bg-sev-high/20 text-sev-high border-sev-high/30",
+    medium: "bg-sev-medium/20 text-sev-medium border-sev-medium/30",
+    low: "bg-sev-low/20 text-sev-low border-sev-low/30",
+    info: "bg-bg-surface text-text-muted border-border",
   };
 
   return (
@@ -35,12 +35,12 @@ export default function FindingDetail({ finding, onMarkFalsePositive, onExport }
               <span className="text-xs text-text-secondary font-mono">{finding.section_id}</span>
             )}
             {finding.confirmed && (
-              <span className="px-2 py-0.5 rounded text-xs bg-green-500/20 text-green-400">
+              <span className="px-2 py-0.5 rounded text-xs bg-neon-green-glow text-neon-green">
                 Confirmed
               </span>
             )}
             {finding.false_positive && (
-              <span className="px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400">
+              <span className="px-2 py-0.5 rounded text-xs bg-danger/20 text-danger">
                 False Positive
               </span>
             )}
@@ -58,7 +58,7 @@ export default function FindingDetail({ finding, onMarkFalsePositive, onExport }
           {onExport && (
             <button
               onClick={onExport}
-              className="px-3 py-1.5 rounded text-xs font-medium bg-accent-primary text-white hover:bg-accent-primary/90"
+              className="btn-launch"
             >
               Export
             </button>

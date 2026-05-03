@@ -1,17 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ResourceStatus } from "@/types/campaign";
+import type { ResourceStatus } from "@/types/schema";
 
 interface ResourceIndicatorProps {
   onClick: () => void;
 }
 
 const TIER_COLORS: Record<string, string> = {
-  green: "bg-green-500",
-  yellow: "bg-yellow-500",
-  red: "bg-red-500",
-  critical: "bg-black border border-red-500",
+  green: "bg-neon-green",
+  yellow: "bg-warning",
+  red: "bg-danger",
+  critical: "bg-bg-void border border-danger",
 };
 
 export default function ResourceIndicator({ onClick }: ResourceIndicatorProps) {
@@ -39,7 +39,7 @@ export default function ResourceIndicator({ onClick }: ResourceIndicatorProps) {
   }, []);
 
   if (loading) {
-    return <div className="w-3 h-3 rounded-full bg-gray-500 animate-pulse" />;
+    return <div className="w-3 h-3 rounded-full bg-text-muted animate-pulse" />;
   }
 
   return (

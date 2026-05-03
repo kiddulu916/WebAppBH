@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import FindingDetail from "@/components/findings/FindingDetail";
-import type { Finding } from "@/types/campaign";
+import type { Finding } from "@/types/schema";
 
 export default function FindingDetailPage() {
   const params = useParams();

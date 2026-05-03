@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ChainFindingView } from "@/types/campaign";
+import type { ChainFindingView } from "@/types/schema";
 
 interface ChainListProps {
   chains: ChainFindingView[];
@@ -7,11 +7,11 @@ interface ChainListProps {
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: "text-red-400",
-  high: "text-orange-400",
-  medium: "text-yellow-400",
-  low: "text-blue-400",
-  info: "text-gray-400",
+  critical: "text-sev-critical",
+  high: "text-sev-high",
+  medium: "text-sev-medium",
+  low: "text-sev-low",
+  info: "text-text-muted",
 };
 
 export default function ChainList({ chains, campaignId }: ChainListProps) {

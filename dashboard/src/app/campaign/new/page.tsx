@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { ScopeConfig, CredentialConfig } from "@/types/campaign";
+import type { ScopeConfig, CredentialConfig } from "@/types/schema";
 
 export default function CampaignCreatorPage() {
   const router = useRouter();
@@ -144,7 +144,7 @@ export default function CampaignCreatorPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+              className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
               placeholder="My Bug Bounty Campaign"
             />
           </div>
@@ -154,7 +154,7 @@ export default function CampaignCreatorPage() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+              className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
               placeholder="Optional description"
             />
           </div>
@@ -169,14 +169,14 @@ export default function CampaignCreatorPage() {
                 type="text"
                 value={t}
                 onChange={(e) => updateSeedTarget(i, e.target.value)}
-                className="flex-1 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                className="flex-1 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                 placeholder="example.com"
               />
               {seedTargets.length > 1 && (
                 <button
                   type="button"
                   onClick={() => removeSeedTarget(i)}
-                  className="px-3 py-2 text-sm text-red-400 hover:text-red-300"
+                  className="px-3 py-2 text-sm text-danger hover:text-danger/80"
                 >
                   Remove
                 </button>
@@ -186,7 +186,7 @@ export default function CampaignCreatorPage() {
           <button
             type="button"
             onClick={addSeedTarget}
-            className="text-sm text-accent-primary hover:underline"
+            className="text-sm text-accent hover:underline"
           >
             + Add seed target
           </button>
@@ -203,14 +203,14 @@ export default function CampaignCreatorPage() {
                   type="text"
                   value={s}
                   onChange={(e) => updateInScope(i, e.target.value)}
-                  className="flex-1 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                  className="flex-1 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                   placeholder="*.example.com"
                 />
                 {inScope.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeInScope(i)}
-                    className="px-3 py-2 text-sm text-red-400 hover:text-red-300"
+                    className="px-3 py-2 text-sm text-danger hover:text-danger/80"
                   >
                     Remove
                   </button>
@@ -220,7 +220,7 @@ export default function CampaignCreatorPage() {
             <button
               type="button"
               onClick={addInScope}
-              className="text-sm text-accent-primary hover:underline mt-2"
+              className="text-sm text-accent hover:underline mt-2"
             >
               + Add in-scope pattern
             </button>
@@ -233,14 +233,14 @@ export default function CampaignCreatorPage() {
                   type="text"
                   value={s}
                   onChange={(e) => updateOutOfScope(i, e.target.value)}
-                  className="flex-1 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                  className="flex-1 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                   placeholder="admin.example.com"
                 />
                 {outOfScope.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeOutOfScope(i)}
-                    className="px-3 py-2 text-sm text-red-400 hover:text-red-300"
+                    className="px-3 py-2 text-sm text-danger hover:text-danger/80"
                   >
                     Remove
                   </button>
@@ -250,7 +250,7 @@ export default function CampaignCreatorPage() {
             <button
               type="button"
               onClick={addOutOfScope}
-              className="text-sm text-accent-primary hover:underline mt-2"
+              className="text-sm text-accent hover:underline mt-2"
             >
               + Add out-of-scope pattern
             </button>
@@ -276,7 +276,7 @@ export default function CampaignCreatorPage() {
                   type="text"
                   value={testerUsername}
                   onChange={(e) => setTesterUsername(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                 />
               </div>
               <div>
@@ -285,7 +285,7 @@ export default function CampaignCreatorPage() {
                   type="password"
                   value={testerPassword}
                   onChange={(e) => setTesterPassword(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                 />
               </div>
               <div>
@@ -293,7 +293,7 @@ export default function CampaignCreatorPage() {
                 <select
                   value={testerAuthType}
                   onChange={(e) => setTesterAuthType(e.target.value as "form" | "basic" | "bearer" | "oauth")}
-                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                 >
                   <option value="form">Form</option>
                   <option value="basic">Basic</option>
@@ -307,7 +307,7 @@ export default function CampaignCreatorPage() {
                   type="text"
                   value={testerLoginUrl}
                   onChange={(e) => setTesterLoginUrl(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                   placeholder="https://example.com/login"
                 />
               </div>
@@ -334,7 +334,7 @@ export default function CampaignCreatorPage() {
                   type="text"
                   value={testingUsername}
                   onChange={(e) => setTestingUsername(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                 />
               </div>
               <div>
@@ -343,7 +343,7 @@ export default function CampaignCreatorPage() {
                   type="email"
                   value={testingEmail}
                   onChange={(e) => setTestingEmail(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                 />
               </div>
               <div>
@@ -352,7 +352,7 @@ export default function CampaignCreatorPage() {
                   type="text"
                   value={testingProfileUrl}
                   onChange={(e) => setTestingProfileUrl(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                   placeholder="https://example.com/profile"
                 />
               </div>
@@ -369,7 +369,7 @@ export default function CampaignCreatorPage() {
             onChange={(e) => setRateLimit(Number(e.target.value))}
             min={1}
             max={200}
-            className="w-32 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent-primary focus:outline-none"
+            className="w-32 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
           />
           <p className="text-xs text-text-secondary">Requests per second (1-200, default 50)</p>
         </section>
@@ -377,7 +377,7 @@ export default function CampaignCreatorPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-md bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:bg-accent-primary/90 disabled:opacity-50"
+          className="w-full rounded-md btn-launch px-4 py-2 text-sm disabled:opacity-50"
         >
           {loading ? "Creating..." : "Create Campaign"}
         </button>

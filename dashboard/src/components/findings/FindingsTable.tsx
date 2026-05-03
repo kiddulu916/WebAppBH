@@ -10,7 +10,7 @@ import {
   flexRender,
   createColumnHelper,
 } from "@tanstack/react-table";
-import type { Finding } from "@/types/campaign";
+import type { Finding } from "@/types/schema";
 
 interface FindingsTableProps {
   findings: Finding[];
@@ -20,11 +20,11 @@ interface FindingsTableProps {
 const columnHelper = createColumnHelper<Finding>();
 
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: "bg-red-500/20 text-red-400",
-  high: "bg-orange-500/20 text-orange-400",
-  medium: "bg-yellow-500/20 text-yellow-400",
-  low: "bg-blue-500/20 text-blue-400",
-  info: "bg-gray-500/20 text-gray-400",
+  critical: "bg-sev-critical/20 text-sev-critical",
+  high: "bg-sev-high/20 text-sev-high",
+  medium: "bg-sev-medium/20 text-sev-medium",
+  low: "bg-sev-low/20 text-sev-low",
+  info: "bg-bg-surface text-text-muted",
 };
 
 export default function FindingsTable({ findings, campaignId }: FindingsTableProps) {

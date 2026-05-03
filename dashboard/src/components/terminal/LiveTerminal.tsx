@@ -1,25 +1,25 @@
 "use client";
 
 import { useRef, useEffect, useState, useMemo } from "react";
-import type { TargetEvent } from "@/types/campaign";
+import type { SSEEvent } from "@/types/events";
 
 interface LiveTerminalProps {
-  events: TargetEvent[];
+  events: SSEEvent[];
   collapsed?: boolean;
 }
 
 const EVENT_COLORS: Record<string, string> = {
-  worker_started: "text-white",
-  worker_complete: "text-green-400",
-  worker_failed: "text-red-400",
-  stage_started: "text-gray-400",
-  stage_complete: "text-gray-400",
-  finding: "text-yellow-400",
-  finding_critical: "text-red-400 font-bold",
-  finding_high: "text-yellow-400",
-  escalated_access: "text-red-400 font-bold",
-  target_expanded: "text-blue-400",
-  resource_tier_change: "text-yellow-400",
+  worker_started: "text-text-primary",
+  worker_complete: "text-neon-green",
+  worker_failed: "text-danger",
+  stage_started: "text-text-muted",
+  stage_complete: "text-text-muted",
+  finding: "text-warning",
+  finding_critical: "text-danger font-bold",
+  finding_high: "text-warning",
+  escalated_access: "text-danger font-bold",
+  target_expanded: "text-neon-blue",
+  resource_tier_change: "text-warning",
 };
 
 const FILTER_OPTIONS = [
@@ -29,39 +29,43 @@ const FILTER_OPTIONS = [
   { label: "Errors", value: "errors" },
 ];
 
-function getEventColor(event: TargetEvent): string {
-  if (event.event === "finding" || event.event === "NEW_ASSET") {
-    const sev = event.severity?.toLowerCase();
-    if (sev === "critical") return EVENT_COLORS.finding_critical;
-    if (sev === "high") return EVENT_COLORS.finding_high;
+function getEventColor(event: SSEEvent): string {
+  const e = event.event as string;
+  if (e === "finding" || e === "NEW_ASSET") {
+    const sev = (event as Record<string, unknown>).severity as string | undefined;
+    if (sev?.toLowerCase() === "critical") return EVENT_COLORS.finding_critical;
+    if (sev?.toLowerCase() === "high") return EVENT_COLORS.finding_high;
     return EVENT_COLORS.finding;
   }
-  if (event.event === "escalated_access") return EVENT_COLORS.escalated_access;
-  if (event.event === "target_expanded" || event.event === "NEW_ASSET") return EVENT_COLORS.target_expanded;
-  if (event.event === "resource_tier_change") return EVENT_COLORS.resource_tier_change;
-  if (event.event === "worker_started") return EVENT_COLORS.worker_started;
-  if (event.event === "worker_complete") return EVENT_COLORS.worker_complete;
-  if (event.event === "worker_failed") return EVENT_COLORS.worker_failed;
-  if (event.event === "stage_started" || event.event === "stage_complete") return EVENT_COLORS.stage_complete;
+  if (e === "escalated_access") return EVENT_COLORS.escalated_access;
+  if (e === "target_expanded" || e === "NEW_ASSET") return EVENT_COLORS.target_expanded;
+  if (e === "resource_tier_change") return EVENT_COLORS.resource_tier_change;
+  if (e === "WORKER_SPAWNED" || e === "worker_started") return EVENT_COLORS.worker_started;
+  if (e === "PIPELINE_COMPLETE" || e === "worker_complete") return EVENT_COLORS.worker_complete;
+  if (e === "worker_failed") return EVENT_COLORS.worker_failed;
+  if (e === "STAGE_COMPLETE" || e === "stage_started" || e === "stage_complete") return EVENT_COLORS.stage_complete;
   return "text-text-secondary";
 }
 
-function formatEventLine(event: TargetEvent): string {
+function formatEventLine(event: SSEEvent): string {
+  const d = event as Record<string, unknown>;
   const time = event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : "--:--:--";
-  const worker = event.worker ? `[${event.worker}]` : "";
-  const msg = event.title || event.event;
-  const extra = event.error ? ` - ${event.error}` : event.count !== undefined ? ` (${event.count})` : "";
+  const worker = d.worker ? `[${d.worker}]` : "";
+  const msg = (d.title as string) || event.event;
+  const extra = d.error ? ` - ${d.error}` : d.count !== undefined ? ` (${d.count})` : "";
   return `${time} ${worker} ${msg}${extra}`;
 }
 
-function matchesFilter(event: TargetEvent, filter: string): boolean {
+function matchesFilter(event: SSEEvent, filter: string): boolean {
+  const e = event.event as string;
+  const d = event as Record<string, unknown>;
   switch (filter) {
     case "findings":
-      return event.event === "finding" || event.event === "NEW_ASSET" || event.severity !== undefined;
+      return e === "finding" || e === "NEW_ASSET" || d.severity !== undefined;
     case "lifecycle":
-      return ["worker_started", "worker_complete", "worker_failed", "worker_queued", "worker_skipped"].includes(event.event);
+      return ["worker_started", "worker_complete", "worker_failed", "worker_queued", "worker_skipped", "WORKER_SPAWNED", "PIPELINE_COMPLETE"].includes(e);
     case "errors":
-      return event.event === "worker_failed" || event.error !== undefined;
+      return e === "worker_failed" || d.error !== undefined;
     default:
       return true;
   }

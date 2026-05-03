@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { TargetNode } from "@/types/campaign";
+import type { TargetNode } from "@/types/schema";
 
 interface TargetRowProps {
   target: TargetNode;
@@ -9,12 +9,12 @@ interface TargetRowProps {
 export default function TargetRow({ target, campaignId }: TargetRowProps) {
   const statusColor =
     target.status === "complete"
-      ? "text-green-400"
+      ? "text-neon-green"
       : target.status === "running"
-        ? "text-amber-400"
+        ? "text-neon-orange"
         : target.status === "queued"
-          ? "text-blue-400"
-          : "text-gray-400";
+          ? "text-neon-blue"
+          : "text-text-muted";
 
   const statusIcon =
     target.status === "complete"

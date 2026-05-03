@@ -1,6 +1,6 @@
 "use client";
 
-import type { ChainFindingView, Finding } from "@/types/campaign";
+import type { ChainFindingView, Finding } from "@/types/schema";
 
 interface ChainDetailProps {
   chain: ChainFindingView;
@@ -8,11 +8,11 @@ interface ChainDetailProps {
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: "bg-red-500/20 text-red-400 border-red-500/30",
-  high: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  medium: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  low: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  info: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  critical: "bg-sev-critical/20 text-sev-critical border-sev-critical/30",
+  high: "bg-sev-high/20 text-sev-high border-sev-high/30",
+  medium: "bg-sev-medium/20 text-sev-medium border-sev-medium/30",
+  low: "bg-sev-low/20 text-sev-low border-sev-low/30",
+  info: "bg-bg-surface text-text-muted border-border",
 };
 
 export default function ChainDetail({ chain, linkedFindings }: ChainDetailProps) {

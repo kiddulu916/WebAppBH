@@ -6,9 +6,8 @@ import { usePathname, useParams } from "next/navigation";
 import ResourceIndicator from "@/components/resource/ResourceIndicator";
 import ResourcePanel from "@/components/resource/ResourcePanel";
 import LiveTerminal from "@/components/terminal/LiveTerminal";
-import { useCampaignStore } from "@/stores/campaignStore";
-import { usePipelineStore } from "@/stores/pipelineStore";
-import type { TargetEvent } from "@/types/campaign";
+import { useCampaignStore } from "@/stores/campaign";
+import type { SSEEvent } from "@/types/events";
 
 const TABS = [
   { label: "Overview", href: "/overview" },
@@ -24,11 +23,11 @@ export default function CampaignLayout({ children }: { children: React.ReactNode
   const campaignId = params.id as string;
   const activeCampaign = useCampaignStore((s) => s.activeCampaign);
   const [showResourcePanel, setShowResourcePanel] = useState(false);
-  const [terminalEvents, setTerminalEvents] = useState<TargetEvent[]>([]);
+  const [terminalEvents, setTerminalEvents] = useState<SSEEvent[]>([]);
 
-  const resourceStatus = usePipelineStore((s) => s.resourceStatus);
+  const resourceStatus = useCampaignStore((s) => s.resourceStatus);
 
-  const addTerminalEvent = (event: TargetEvent) => {
+  const addTerminalEvent = (event: SSEEvent) => {
     setTerminalEvents((prev) => [...prev.slice(-500), event]);
   };
 
@@ -60,10 +59,10 @@ export default function CampaignLayout({ children }: { children: React.ReactNode
             <span
               className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                 activeCampaign.status === "running"
-                  ? "bg-amber-500/20 text-amber-400"
+                  ? "bg-neon-orange-glow text-neon-orange"
                   : activeCampaign.status === "complete"
-                    ? "bg-green-500/20 text-green-400"
-                    : "bg-gray-500/20 text-gray-400"
+                    ? "bg-neon-green-glow text-neon-green"
+                    : "bg-bg-surface text-text-muted"
               }`}
             >
               {activeCampaign.status}
@@ -83,7 +82,7 @@ export default function CampaignLayout({ children }: { children: React.ReactNode
               href={`/campaign/${campaignId}${tab.href}`}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 isActive
-                  ? "border-accent-primary text-accent-primary"
+                  ? "border-accent text-accent"
                   : "border-transparent text-text-secondary hover:text-text-primary"
               }`}
             >
