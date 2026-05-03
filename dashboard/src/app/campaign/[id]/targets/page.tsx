@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import TargetTree from "@/components/targets/TargetTree";
 import type { TargetNode } from "@/types/schema";
+import { api } from "@/lib/api";
 
 export default function TargetsPage() {
   const params = useParams();
@@ -14,11 +15,19 @@ export default function TargetsPage() {
   useEffect(() => {
     const fetchTargets = async () => {
       try {
-        const res = await fetch(`/api/campaigns/${campaignId}/targets`);
-        if (res.ok) {
-          const data = await res.json();
-          setTargets(data);
-        }
+        const data = await api.getTargets();
+        setTargets(data.targets.map(t => ({
+          id: t.id,
+          domain: t.base_domain,
+          target_type: "seed" as const,
+          priority: 0,
+          status: t.status || "pending",
+          wildcard: false,
+          wildcard_count: null,
+          parent_target_id: null,
+          worker_states: {},
+          vulnerability_count: t.vuln_count || 0,
+        })));
       } catch {
         // ignore
       } finally {

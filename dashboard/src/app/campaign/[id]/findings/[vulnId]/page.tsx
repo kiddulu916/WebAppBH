@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import FindingDetail from "@/components/findings/FindingDetail";
-import type { Finding } from "@/types/schema";
+import type { Finding, VulnSeverity } from "@/types/schema";
+import { api } from "@/lib/api";
 
 export default function FindingDetailPage() {
   const params = useParams();
@@ -15,11 +16,24 @@ export default function FindingDetailPage() {
   useEffect(() => {
     const fetchFinding = async () => {
       try {
-        const res = await fetch(`/api/campaigns/${campaignId}/findings/${vulnId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setFinding(data);
-        }
+        const v = await api.getVulnerability(Number(vulnId));
+        setFinding({
+          id: v.id,
+          target_id: v.target_id,
+          severity: v.severity as VulnSeverity,
+          title: v.title,
+          vuln_type: v.severity,
+          section_id: null,
+          worker_type: null,
+          stage_name: null,
+          source_tool: v.source_tool,
+          confirmed: false,
+          false_positive: false,
+          description: v.description,
+          evidence: null,
+          remediation: null,
+          created_at: v.created_at || "",
+        });
       } catch {
         // ignore
       } finally {
@@ -32,11 +46,7 @@ export default function FindingDetailPage() {
   const handleMarkFalsePositive = async () => {
     if (!finding) return;
     try {
-      await fetch(`/api/campaigns/${campaignId}/findings/${vulnId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ false_positive: true }),
-      });
+      await api.updateVulnerability(Number(vulnId), { false_positive: true });
       setFinding({ ...finding, false_positive: true });
     } catch {
       // ignore

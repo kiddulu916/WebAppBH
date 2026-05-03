@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import ChainList from "@/components/chains/ChainList";
 import type { ChainFindingView } from "@/types/schema";
+import { api } from "@/lib/api";
 
 export default function ChainsPage() {
   const params = useParams();
@@ -14,11 +15,27 @@ export default function ChainsPage() {
   useEffect(() => {
     const fetchChains = async () => {
       try {
-        const res = await fetch(`/api/campaigns/${campaignId}/chains`);
-        if (res.ok) {
-          const data = await res.json();
-          setChains(data);
+        const targetsRes = await api.getTargets();
+        const allChains: ChainFindingView[] = [];
+        for (const target of targetsRes.targets) {
+          try {
+            const pathsRes = await api.getAttackPaths(target.id);
+            for (const path of pathsRes.paths) {
+              allChains.push({
+                id: path.id,
+                target_id: target.id,
+                chain_description: path.description,
+                severity: path.severity,
+                total_impact: null,
+                linked_vulnerability_ids: path.steps.map(s => s.vuln_id),
+                created_at: new Date().toISOString(),
+              });
+            }
+          } catch {
+            // target may not have attack paths
+          }
         }
+        setChains(allChains);
       } catch {
         // ignore
       } finally {

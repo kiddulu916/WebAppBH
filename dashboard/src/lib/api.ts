@@ -324,6 +324,17 @@ export const api = {
     return request<VulnerabilitiesResponse>(`/api/v1/vulnerabilities${qs}`);
   },
 
+  getVulnerability(vulnId: number) {
+    return request<import("@/types/schema").Vulnerability>(`/api/v1/vulnerabilities/${vulnId}`);
+  },
+
+  updateVulnerability(vulnId: number, data: { false_positive?: boolean }) {
+    return request<import("@/types/schema").Vulnerability>(`/api/v1/vulnerabilities/${vulnId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
   getCloudAssets(targetId: number) {
     return request<CloudAssetsResponse>(`/api/v1/cloud_assets?target_id=${targetId}`);
   },
@@ -644,6 +655,32 @@ export const api = {
       `/api/v1/targets/${targetId}`,
       { method: "DELETE" },
     );
+  },
+
+  /* ------------------------------------------------------------------ */
+  /* Campaigns                                                           */
+  /* ------------------------------------------------------------------ */
+
+  getCampaigns() {
+    return request<{ campaigns: import("@/types/schema").Campaign[] }>("/api/v1/campaigns");
+  },
+
+  getCampaign(id: number) {
+    return request<import("@/types/schema").Campaign>(`/api/v1/campaigns/${id}`);
+  },
+
+  createCampaign(data: { name: string; description?: string; scope_config?: unknown; rate_limit?: number; has_credentials?: boolean }) {
+    return request<{ id: number; name: string; status: string }>("/api/v1/campaigns", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  updateCampaign(id: number, data: { name?: string; description?: string; status?: string }) {
+    return request<{ id: number; status: string }>(`/api/v1/campaigns/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
   },
 
   /* ------------------------------------------------------------------ */

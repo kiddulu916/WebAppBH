@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import FindingsTable from "@/components/findings/FindingsTable";
 import type { Finding } from "@/types/schema";
+import type { VulnSeverity } from "@/types/schema";
+import { api } from "@/lib/api";
 
 export default function FindingsPage() {
   const params = useParams();
@@ -14,11 +16,36 @@ export default function FindingsPage() {
   useEffect(() => {
     const fetchFindings = async () => {
       try {
-        const res = await fetch(`/api/campaigns/${campaignId}/findings`);
-        if (res.ok) {
-          const data = await res.json();
-          setFindings(data);
+        const targetsRes = await api.getTargets();
+        const allFindings: Finding[] = [];
+        for (const target of targetsRes.targets) {
+          try {
+            const vulnRes = await api.getVulnerabilities(target.id);
+            for (const v of vulnRes.vulnerabilities) {
+              allFindings.push({
+                id: v.id,
+                target_id: v.target_id,
+                severity: v.severity as VulnSeverity,
+                title: v.title,
+                vuln_type: v.severity,
+                section_id: null,
+                worker_type: null,
+                stage_name: null,
+                source_tool: v.source_tool,
+                confirmed: false,
+                false_positive: false,
+                description: v.description,
+                evidence: null,
+                remediation: null,
+                created_at: v.created_at || "",
+                target_domain: v.asset_value || undefined,
+              });
+            }
+          } catch {
+            // target may not have vulnerabilities
+          }
         }
+        setFindings(allFindings);
       } catch {
         // ignore
       } finally {
