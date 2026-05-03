@@ -33,7 +33,7 @@ from lib_webbh.scope import ScopeManager, ScopeResult, record_scope_violation
 from lib_webbh.messaging import push_task, listen_queue, get_pending, push_priority_task, listen_priority_queues
 
 # Logger
-from lib_webbh.logger import setup_logger
+from lib_webbh.logger import setup_logger, redact_sensitive
 
 # Diffing
 from lib_webbh.diffing import compute_diff, DiffResult
@@ -118,6 +118,7 @@ __all__ = [
     "push_priority_task",
     "listen_priority_queues",
     "setup_logger",
+    "redact_sensitive",
     "compute_diff",
     "DiffResult",
     "correlate_findings",

@@ -33,6 +33,9 @@ class BatchInserter:
             if len(self._buffer) >= self.batch_size:
                 await self._flush_locked()
             elif self._flush_task is None or self._flush_task.done():
+                # Schedule the timer task while holding _lock so a concurrent
+                # add() cannot observe a half-initialised _flush_task and
+                # spawn a duplicate timer.
                 self._flush_task = asyncio.create_task(self._timed_flush())
 
     async def _timed_flush(self) -> None:
@@ -43,14 +46,27 @@ class BatchInserter:
                 await self._flush_locked()
 
     async def _flush_locked(self) -> None:
-        """Flush the buffer. Must be called with _lock held."""
+        """Flush the buffer. Must be called with _lock held.
+
+        On failure the in-flight batch is restored to the head of the buffer
+        so callers can retry on the next flush instead of losing rows.
+        """
         if not self._buffer:
             return
         batch = self._buffer[:]
         self._buffer.clear()
-        async with get_session() as session:
-            session.add_all(batch)
-            await session.commit()
+        try:
+            async with get_session() as session:
+                try:
+                    session.add_all(batch)
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    raise
+        except Exception:
+            # Restore unflushed rows so a retry can pick them up.
+            self._buffer[:0] = batch
+            raise
         self._total_flushed += len(batch)
 
     async def flush(self) -> int:

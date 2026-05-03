@@ -30,11 +30,13 @@ def generate_env(output_path: str = "/app/shared/config/.env") -> None:
     )
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    with open(output_path, "w") as f:
+    # Write with restrictive permissions so only the owner can read the secrets.
+    fd = os.open(output_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
         f.write(env_content)
 
-    print(f"[setup_env] API Key: {api_key}")
-    print(f"[setup_env] .env written to: {output_path}")
+    print(f"[setup_env] .env written to: {output_path} (mode 0600)")
+    print("[setup_env] API key generated; read it from the file above.")
 
 
 if __name__ == "__main__":

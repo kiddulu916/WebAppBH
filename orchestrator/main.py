@@ -106,6 +106,8 @@ logger = setup_logger("orchestrator")
 # Configuration
 # ---------------------------------------------------------------------------
 API_KEY = os.environ.get("WEB_APP_BH_API_KEY", "")
+# Set ALLOW_UNAUTHENTICATED=1 to opt into running without an API key (dev only).
+ALLOW_UNAUTHENTICATED = os.environ.get("ALLOW_UNAUTHENTICATED", "").lower() in ("1", "true", "yes")
 # * Comma-separated origins for browser clients (dashboard on :3000, etc.)
 _CORS_RAW = os.environ.get(
     "CORS_ORIGINS",
@@ -124,7 +126,13 @@ _api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
 
 async def verify_api_key(api_key: str | None = Depends(_api_key_header)) -> str:
     if not API_KEY:
-        return "no-auth-configured"
+        if ALLOW_UNAUTHENTICATED:
+            return "no-auth-configured"
+        raise HTTPException(
+            status_code=503,
+            detail="Server misconfigured: WEB_APP_BH_API_KEY is not set. "
+                   "Set ALLOW_UNAUTHENTICATED=1 to disable auth (dev only).",
+        )
     if api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     return api_key
@@ -275,7 +283,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await conn.run_sync(_add_missing_columns)
 
     if not API_KEY:
-        logger.warning("WEB_APP_BH_API_KEY is not set — all endpoints are unauthenticated")
+        if ALLOW_UNAUTHENTICATED:
+            logger.warning(
+                "WEB_APP_BH_API_KEY is not set and ALLOW_UNAUTHENTICATED=1 — "
+                "all endpoints are unauthenticated (dev mode)"
+            )
+        else:
+            logger.error(
+                "WEB_APP_BH_API_KEY is not set — endpoints will return 503. "
+                "Set the env var or ALLOW_UNAUTHENTICATED=1 for dev."
+            )
 
     # Load persisted intel API keys from .env.intel if available
     env_intel_path = pathlib.Path("/app/shared/config/.env.intel")
@@ -684,8 +701,11 @@ async def worker_health():
                     mem = stats.get("memory_stats", {})
                     entry["memory_mb"] = round(mem.get("usage", 0) / (1024 * 1024), 1)
                     entry["memory_limit_mb"] = round(mem.get("limit", 0) / (1024 * 1024), 1)
-            except Exception:
-                pass
+            except Exception as exc:
+                # Container disappeared mid-poll, stats payload missing keys, etc.
+                # Surface the failure without aborting the whole response.
+                entry["stats_error"] = str(exc)
+                logger.warning("Failed to read container stats", extra={"container": ci.name, "error": str(exc)})
             results.append(entry)
         return results
 
@@ -1009,8 +1029,12 @@ async def stream_events(target_id: int, request: Request):
     redis = get_redis()
     try:
         await redis.xgroup_create(queue, group, id="0", mkstream=True)
-    except Exception:
-        pass  # group already exists
+    except Exception as exc:
+        # BUSYGROUP simply means the consumer group already exists; everything
+        # else is a real failure that should surface to the client.
+        if "BUSYGROUP" not in str(exc):
+            logger.error("Failed to create SSE consumer group", extra={"queue": queue, "error": str(exc)})
+            raise HTTPException(status_code=503, detail="Event stream unavailable") from exc
 
     last_event_id = request.headers.get("Last-Event-ID")
 
@@ -1048,11 +1072,16 @@ async def stream_events(target_id: int, request: Request):
             pass
         finally:
             connected_sse_clients.dec()
-            # Release any claimed-but-unacked messages
+            # Release any claimed-but-unacked messages so other consumers can
+            # pick them up. Best-effort: if Redis is gone, the XAUTOCLAIM TTL
+            # on pending entries will eventually free them anyway.
             try:
                 await redis.xautoclaim(queue, group, consumer, min_idle_time=0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "SSE xautoclaim cleanup failed",
+                    extra={"queue": queue, "consumer": consumer, "error": str(exc)},
+                )
 
     return EventSourceResponse(_generate())
 
