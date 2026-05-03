@@ -48,7 +48,7 @@ export default function ReportViewer({ content, title }: ReportViewerProps) {
           </button>
           <button
             onClick={handleDownload}
-            className="px-3 py-1.5 rounded text-xs font-medium bg-accent-primary text-white hover:bg-accent-primary/90"
+            className="px-3 py-1.5 rounded text-xs font-medium btn-launch"
           >
             Download .md
           </button>

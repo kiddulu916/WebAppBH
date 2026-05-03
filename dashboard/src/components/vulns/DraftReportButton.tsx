@@ -64,7 +64,7 @@ export default function DraftReportButton({ vulnId }: DraftReportButtonProps) {
             onClick={copyDraft}
             className="absolute right-2 top-2 rounded p-1 text-text-muted hover:text-accent"
           >
-            {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+            {copied ? <Check className="h-3 w-3 text-neon-green" /> : <Copy className="h-3 w-3" />}
           </button>
           <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs text-text-secondary">
             {draft}

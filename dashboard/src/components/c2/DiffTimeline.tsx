@@ -38,7 +38,7 @@ export default function DiffTimeline({ events }: DiffTimelineProps) {
               {added && added.length > 0 && (
                 <div className="mt-2 space-y-1">
                   {added.map((a) => (
-                    <div key={a} className="flex items-center gap-1 text-xs text-green-400">
+                    <div key={a} className="flex items-center gap-1 text-xs text-neon-green">
                       <Plus className="h-3 w-3" />
                       <span className="font-mono">{a}</span>
                     </div>
@@ -48,7 +48,7 @@ export default function DiffTimeline({ events }: DiffTimelineProps) {
               {removed && removed.length > 0 && (
                 <div className="mt-2 space-y-1">
                   {removed.map((r) => (
-                    <div key={r} className="flex items-center gap-1 text-xs text-red-400">
+                    <div key={r} className="flex items-center gap-1 text-xs text-danger">
                       <Minus className="h-3 w-3" />
                       <span className="font-mono">{r}</span>
                     </div>

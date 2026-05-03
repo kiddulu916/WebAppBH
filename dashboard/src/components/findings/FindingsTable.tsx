@@ -53,7 +53,7 @@ export default function FindingsTable({ findings, campaignId }: FindingsTablePro
         cell: (info) => (
           <Link
             href={`/campaign/${campaignId}/findings/${info.row.original.id}`}
-            className="text-accent-primary hover:underline"
+            className="text-accent hover:underline"
           >
             {info.getValue()}
           </Link>

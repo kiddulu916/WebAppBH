@@ -35,7 +35,7 @@ const TYPE_BADGE: Record<string, string> = {
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "text-danger bg-danger/10 border-danger/20",
   high: "text-neon-orange bg-neon-orange-glow border-neon-orange/20",
-  medium: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
+  medium: "text-sev-medium bg-sev-medium/10 border-sev-medium/20",
   low: "text-neon-blue bg-neon-blue-glow border-neon-blue/20",
   info: "text-text-muted bg-bg-surface border-border",
 };

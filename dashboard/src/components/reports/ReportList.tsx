@@ -19,11 +19,11 @@ interface ReportListProps {
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: "text-red-400",
-  high: "text-orange-400",
-  medium: "text-yellow-400",
-  low: "text-blue-400",
-  info: "text-gray-400",
+  critical: "text-sev-critical",
+  high: "text-sev-high",
+  medium: "text-sev-medium",
+  low: "text-sev-low",
+  info: "text-text-muted",
 };
 
 export default function ReportList({ reports, campaignId, onView, onDownload, onCopy }: ReportListProps) {
@@ -39,7 +39,7 @@ export default function ReportList({ reports, campaignId, onView, onDownload, on
           onClick={() => setActiveTab("individual")}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
             activeTab === "individual"
-              ? "border-accent-primary text-accent-primary"
+              ? "border-accent text-accent"
               : "border-transparent text-text-secondary hover:text-text-primary"
           }`}
         >
@@ -49,7 +49,7 @@ export default function ReportList({ reports, campaignId, onView, onDownload, on
           onClick={() => setActiveTab("chain")}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
             activeTab === "chain"
-              ? "border-accent-primary text-accent-primary"
+              ? "border-accent text-accent"
               : "border-transparent text-text-secondary hover:text-text-primary"
           }`}
         >
@@ -61,7 +61,7 @@ export default function ReportList({ reports, campaignId, onView, onDownload, on
       <div className="flex justify-end">
         <Link
           href={`/api/campaigns/${campaignId}/reports/export`}
-          className="px-3 py-1.5 rounded text-xs font-medium bg-accent-primary text-white hover:bg-accent-primary/90"
+          className="px-3 py-1.5 rounded text-xs font-medium btn-launch"
         >
           Export All as ZIP
         </Link>
@@ -80,7 +80,7 @@ export default function ReportList({ reports, campaignId, onView, onDownload, on
               <div className="flex-1">
                 <Link
                   href={`/campaign/${campaignId}/reports/${report.id}`}
-                  className="font-medium text-text-primary hover:text-accent-primary"
+                  className="font-medium text-text-primary hover:text-accent"
                 >
                   {report.title}
                 </Link>

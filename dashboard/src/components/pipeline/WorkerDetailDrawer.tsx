@@ -1,10 +1,10 @@
 "use client";
 
-import type { WorkerState } from "@/types/campaign";
+import type { PipelineWorkerState } from "@/types/schema";
 
 interface WorkerDetailDrawerProps {
   worker: string;
-  state: WorkerState;
+  state: PipelineWorkerState;
   stages: { id: string; name: string; sectionId: string }[];
   findingCount: number;
   onClose: () => void;
@@ -17,7 +17,7 @@ export default function WorkerDetailDrawer({ worker, state, stages, findingCount
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50" />
       <div
-        className="relative w-96 h-full bg-bg-surface border-l border-border overflow-y-auto"
+        className="relative w-96 h-full bg-bg-surface border-l border-border overflow-y-auto animate-slide-right"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-4 space-y-4">
@@ -70,11 +70,11 @@ export default function WorkerDetailDrawer({ worker, state, stages, findingCount
                   key={stage.id}
                   className={`flex items-center gap-2 p-2 rounded text-sm ${
                     isCompleted
-                      ? "bg-green-500/10 text-green-400"
+                      ? "bg-neon-green-glow text-neon-green"
                       : isCurrent
-                        ? "bg-amber-500/10 text-amber-400"
+                        ? "bg-neon-orange-glow text-neon-orange"
                         : isPending
-                          ? "bg-bg-void text-gray-500"
+                          ? "bg-bg-tertiary text-text-muted"
                           : "text-text-secondary"
                   }`}
                 >
@@ -91,16 +91,16 @@ export default function WorkerDetailDrawer({ worker, state, stages, findingCount
           </div>
 
           {state.error && (
-            <div className="p-3 rounded bg-red-500/10 border border-red-500/30">
-              <div className="text-sm font-medium text-red-400">Error</div>
-              <div className="text-xs text-red-300 mt-1">{state.error}</div>
+            <div className="p-3 rounded bg-danger/10 border border-danger/30">
+              <div className="text-sm font-medium text-danger">Error</div>
+              <div className="text-xs text-danger/80 mt-1">{state.error}</div>
             </div>
           )}
 
           {state.skip_reason && (
-            <div className="p-3 rounded bg-gray-500/10 border border-gray-500/30">
-              <div className="text-sm font-medium text-gray-400">Skipped</div>
-              <div className="text-xs text-gray-300 mt-1">{state.skip_reason}</div>
+            <div className="p-3 rounded bg-bg-surface border border-border">
+              <div className="text-sm font-medium text-text-muted">Skipped</div>
+              <div className="text-xs text-text-secondary mt-1">{state.skip_reason}</div>
             </div>
           )}
         </div>

@@ -17,7 +17,7 @@ export default function ScopeDriftAlerts({ events }: ScopeDriftAlertsProps) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <Shield className="h-4 w-4 text-yellow-400" />
+        <Shield className="h-4 w-4 text-warning" />
         <span className="text-sm font-semibold text-text-primary">
           Scope Drift Detected ({drifts.length})
         </span>
@@ -28,9 +28,9 @@ export default function ScopeDriftAlerts({ events }: ScopeDriftAlertsProps) {
           return (
             <div
               key={i}
-              className="flex items-center gap-2 rounded border border-yellow-500/30 bg-yellow-500/5 px-3 py-2"
+              className="flex items-center gap-2 rounded border border-warning/30 bg-warning/5 px-3 py-2"
             >
-              <AlertTriangle className="h-3 w-3 shrink-0 text-yellow-400" />
+              <AlertTriangle className="h-3 w-3 shrink-0 text-warning" />
               <span className="font-mono text-xs text-text-secondary">
                 {String(data.asset_value ?? "")}
               </span>

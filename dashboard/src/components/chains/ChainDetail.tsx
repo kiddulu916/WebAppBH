@@ -52,7 +52,7 @@ export default function ChainDetail({ chain, linkedFindings }: ChainDetailProps)
               key={finding.id}
               className="flex items-start gap-3 p-3 rounded bg-bg-void border border-border"
             >
-              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-accent-primary/20 text-accent-primary flex items-center justify-center text-xs font-medium">
+              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-medium">
                 {idx + 1}
               </div>
               <div className="flex-1">

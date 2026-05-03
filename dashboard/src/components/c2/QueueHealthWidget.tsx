@@ -10,17 +10,17 @@ interface QueueStatus {
 }
 
 const HEALTH_COLORS: Record<string, string> = {
-  idle: "text-gray-400",
-  healthy: "text-green-400",
-  pressure: "text-yellow-400",
-  critical: "text-red-400",
+  idle: "text-text-muted",
+  healthy: "text-neon-green",
+  pressure: "text-warning",
+  critical: "text-danger",
 };
 
 const HEALTH_BG: Record<string, string> = {
-  idle: "bg-gray-500/10",
-  healthy: "bg-green-500/10",
-  pressure: "bg-yellow-500/10",
-  critical: "bg-red-500/10",
+  idle: "bg-bg-surface",
+  healthy: "bg-neon-green-glow",
+  pressure: "bg-warning/10",
+  critical: "bg-danger/10",
 };
 
 export default function QueueHealthWidget() {
