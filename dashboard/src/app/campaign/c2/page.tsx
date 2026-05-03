@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Activity, Columns2, Settings, RotateCcw } from "lucide-react";
+import { Activity, Settings, RotateCcw } from "lucide-react";
 import AssetTree, { type TreeNode } from "@/components/c2/AssetTree";
-import PhasePipeline from "@/components/c2/PhasePipeline";
-import WorkerGrid from "@/components/c2/WorkerGrid";
-import SplitConsole from "@/components/c2/SplitConsole";
+import PipelineGrid from "@/components/pipeline/PipelineGrid";
+import WorkerDetailDrawer from "@/components/pipeline/WorkerDetailDrawer";
+import { WORKER_STAGE_COUNTS } from "@/types/schema";
+import type { PipelineWorkerState } from "@/types/schema";
+import { WSTG_STAGES } from "@/lib/wstg-stages";
 import SystemPulse from "@/components/c2/SystemPulse";
+import WorkerHealthPanel from "@/components/c2/WorkerHealthPanel";
 import CampaignTimeline from "@/components/c2/CampaignTimeline";
 import AssetDetailDrawer from "@/components/c2/AssetDetailDrawer";
 import SettingsDrawer from "@/components/c2/SettingsDrawer";
@@ -63,6 +66,54 @@ function buildTree(
 }
 
 /* ------------------------------------------------------------------ */
+/* Map JobState[] → PipelineWorkerState record for PipelineGrid        */
+/* ------------------------------------------------------------------ */
+
+function statusPriority(s: string): number {
+  switch (s) {
+    case "running": return 4;
+    case "queued": return 3;
+    case "failed": return 2;
+    case "complete": return 1;
+    default: return 0;
+  }
+}
+
+function jobsToWorkerStates(jobs: JobState[]): Record<string, PipelineWorkerState> {
+  const states: Record<string, PipelineWorkerState> = {};
+  for (const job of jobs) {
+    const workerKey = job.container_name
+      .replace(/^webbh-/, "")
+      .replace(/-t\d+$/, "")
+      .replace(/-/g, "_");
+
+    const status = (() => {
+      switch (job.status) {
+        case "RUNNING": return "running" as const;
+        case "QUEUED": return "queued" as const;
+        case "COMPLETED": return "complete" as const;
+        case "FAILED": return "failed" as const;
+        case "PAUSED": return "running" as const;
+        default: return "pending" as const;
+      }
+    })();
+
+    const existing = states[workerKey];
+    if (!existing || statusPriority(status) > statusPriority(existing.status)) {
+      states[workerKey] = {
+        status,
+        current_section_id: job.current_phase ?? undefined,
+        last_tool_executed: job.last_tool_executed ?? undefined,
+        started_at: job.started_at ?? undefined,
+        completed_at: job.completed_at ?? undefined,
+        total_stages: WORKER_STAGE_COUNTS[workerKey] ?? 0,
+      };
+    }
+  }
+  return states;
+}
+
+/* ------------------------------------------------------------------ */
 /* C2 Console Page                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -75,7 +126,6 @@ export default function C2Page() {
   const [localJobs, setLocalJobs] = useState<JobState[]>([]);
   const [treeRoots, setTreeRoots] = useState<TreeNode[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [splitView, setSplitView] = useState(false);
   const [rerunOpen, setRerunOpen] = useState(false);
   const [rerunMode, setRerunMode] = useState<"menu" | "pick">("menu");
   const [playbooks, setPlaybooks] = useState<PlaybookRow[]>([]);
@@ -83,6 +133,7 @@ export default function C2Page() {
   const [selectedAsset, setSelectedAsset] =
     useState<AssetWithLocations | null>(null);
   const [allAssets, setAllAssets] = useState<AssetWithLocations[]>([]);
+  const [selectedWorker, setSelectedWorker] = useState<string | null>(null);
   const lastMergedIdx = useRef(0);
 
   // Merge store jobs and local jobs (local poll takes priority for freshness)
@@ -290,17 +341,6 @@ export default function C2Page() {
             )}
           </div>
           <button
-            onClick={() => setSplitView(!splitView)}
-            className={`rounded p-1.5 transition-colors ${
-              splitView
-                ? "bg-neon-blue/10 text-neon-blue"
-                : "text-text-muted hover:bg-bg-surface hover:text-text-primary"
-            }`}
-            title="Split Console View"
-          >
-            <Columns2 className="h-4 w-4" />
-          </button>
-          <button
             onClick={() => setSettingsOpen(true)}
             className="rounded p-1.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-text-primary"
             title="Settings"
@@ -310,9 +350,13 @@ export default function C2Page() {
         </div>
       </div>
 
-      {/* Phase Pipeline */}
-      <div data-testid="c2-phase-pipeline">
-        <PhasePipeline jobs={jobs} />
+      {/* WSTG Pipeline Grid */}
+      <div data-testid="c2-phase-pipeline" className="rounded-lg border border-border bg-bg-secondary p-4">
+        <div className="section-label mb-3">WSTG PIPELINE</div>
+        <PipelineGrid
+          workerStates={jobsToWorkerStates(jobs)}
+          onWorkerClick={setSelectedWorker}
+        />
       </div>
 
       {/* Main content: Asset Tree (1/3) + Worker Grid (2/3) */}
@@ -330,17 +374,17 @@ export default function C2Page() {
           </div>
         </div>
 
-        {/* Right -- Worker Grid / Split Console */}
+        {/* Right -- Events placeholder */}
         <div className="col-span-2" data-testid="c2-worker-grid">
           <div className="rounded-lg border border-border bg-bg-secondary p-4">
-            {splitView ? (
-              <SplitConsole jobs={jobs} events={events} />
-            ) : (
-              <WorkerGrid jobs={jobs} events={events} onRefresh={refreshJobs} />
-            )}
+            <div className="section-label mb-3">EVENTS</div>
+            <div className="text-sm text-text-muted">Event feed — see live terminal below</div>
           </div>
         </div>
       </div>
+
+      {/* Worker Health */}
+      <WorkerHealthPanel />
 
       {/* System Pulse (conditional on systemPulseOpen) */}
       <SystemPulse />
@@ -364,6 +408,17 @@ export default function C2Page() {
         asset={selectedAsset}
         onClose={() => setSelectedAsset(null)}
       />
+
+      {/* Worker Detail Drawer */}
+      {selectedWorker && (
+        <WorkerDetailDrawer
+          worker={selectedWorker}
+          state={jobsToWorkerStates(jobs)[selectedWorker] || { status: "pending" }}
+          stages={WSTG_STAGES[selectedWorker] || []}
+          findingCount={0}
+          onClose={() => setSelectedWorker(null)}
+        />
+      )}
 
       {/* Settings Drawer */}
       <SettingsDrawer
