@@ -321,3 +321,69 @@ body::before {
   box-shadow: 0 0 0 1px rgba(255, 140, 50, 0.15);
   outline: none;
 }
+
+/* ── NEONHIVE v2 — Micro-interactions ── */
+
+/* 1. Glitch text animation */
+@keyframes glitch {
+  0%, 100% { clip-path: inset(0 0 0 0); transform: none; }
+  20% { clip-path: inset(20% 0 60% 0); transform: translateX(-2px); }
+  40% { clip-path: inset(60% 0 10% 0); transform: translateX(2px); }
+  60% { clip-path: inset(40% 0 30% 0); transform: translateX(-1px); }
+}
+.animate-glitch { animation: glitch 0.3s ease-out; }
+
+/* 2. Scanline hover for cards */
+.card-scanline {
+  position: relative;
+  overflow: hidden;
+}
+.card-scanline::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(0, 232, 123, 0.04) 2px, rgba(0, 232, 123, 0.04) 4px
+  );
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 1;
+}
+.card-scanline:hover::before { opacity: 1; }
+
+/* 3. Holographic border for campaign cards */
+@property --holo-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes holo-rotate {
+  to { --holo-angle: 360deg; }
+}
+
+.card-holo {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--bg-secondary), var(--bg-secondary)) padding-box,
+    conic-gradient(from var(--holo-angle), var(--neon-orange), var(--neon-green), var(--neon-blue), var(--neon-orange)) border-box;
+  animation: holo-rotate 4s linear infinite;
+}
+
+/* 4. Data stream effect for live counters */
+@keyframes data-rain {
+  from { background-position: 0 0; }
+  to { background-position: 0 20px; }
+}
+
+.live-data-stream {
+  background-image: linear-gradient(
+    180deg,
+    transparent 50%,
+    rgba(0, 232, 123, 0.03) 50%
+  );
+  background-size: 100% 4px;
+  animation: data-rain 0.5s linear infinite;
+}

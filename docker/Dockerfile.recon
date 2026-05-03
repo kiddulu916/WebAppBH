@@ -77,7 +77,7 @@ ENV PIP_DEFAULT_TIMEOUT=300
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    libpq5 libpcap0.8 git wget gnupg && \
+    libpq5 libpcap0.8 git && \
     rm -rf /var/lib/apt/lists/*
 
 # massdns from builder (no build-essential needed in runtime)
@@ -85,20 +85,7 @@ COPY --from=massdns-builder /usr/local/bin/massdns /usr/local/bin/massdns
 
 COPY workers/recon_core/resolvers.txt /usr/local/bin/resolvers.txt
 
-RUN echo "deb http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" | tee -a /etc/apt/sources.list
-
-RUN wget --tries=3 --timeout=30 --waitretry=5 \
-    https://http.kali.org/kali/pool/main/k/kali-archive-keyring/kali-archive-keyring_2025.2_all.deb \
-    || wget --tries=3 --timeout=30 --waitretry=5 \
-    https://archive.kali.org/kali/pool/main/k/kali-archive-keyring/kali-archive-keyring_2025.2_all.deb
-
-RUN dpkg -i kali-archive-keyring_2025.2_all.deb
-
-RUN rm kali-archive-keyring_2025.2_all.deb
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends paramspider && \
-    rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir git+https://github.com/devanshbatham/paramspider.git
 
 # Go binaries
 COPY --from=go-builder /go/bin/subfinder /usr/local/bin/

@@ -11,6 +11,10 @@ GET   /api/v1/alerts               – list alerts for a target
 PATCH /api/v1/alerts/{alert_id}    – update alert read status
 PATCH /api/v1/targets/{target_id}  – update target profile (headers, rate limits)
 DELETE /api/v1/targets/{target_id} – permanently delete a target
+POST  /api/v1/campaigns             – create a campaign
+GET   /api/v1/campaigns             – list all campaigns
+GET   /api/v1/campaigns/{id}        – get single campaign
+PATCH /api/v1/campaigns/{id}        – update campaign
 GET   /api/v1/status               – real-time job states
 POST  /api/v1/control              – pause / stop / restart workers
 POST  /api/v1/kill                 – hard-kill all active workers
@@ -66,6 +70,7 @@ from lib_webbh import (
     AssetSnapshot,
     Base,
     BountySubmission,
+    Campaign,
     CloudAsset,
     CustomPlaybook,
     Identity,
@@ -209,6 +214,23 @@ class RerunRequest(BaseModel):
     playbook_name: str = Field(..., min_length=1, max_length=100)
 
 
+class CampaignCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    scope_config: Optional[dict] = None
+    rate_limit: int = Field(default=50, ge=1)
+    has_credentials: bool = False
+
+
+class CampaignUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    status: Optional[str] = Field(default=None, max_length=50)
+    scope_config: Optional[dict] = None
+    rate_limit: Optional[int] = Field(default=None, ge=1)
+    has_credentials: Optional[bool] = None
+
+
 # ---------------------------------------------------------------------------
 # Schema sync — add columns that exist in ORM models but not in the DB
 # ---------------------------------------------------------------------------
@@ -223,7 +245,19 @@ def _add_missing_columns(connection) -> None:
             if col.name not in db_columns:
                 col_type = col.type.compile(dialect=connection.dialect)
                 nullable = "NULL" if col.nullable else "NOT NULL"
-                ddl = f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {col_type} {nullable}'
+                default_clause = ""
+                if not col.nullable:
+                    if col.server_default is not None:
+                        default_clause = f" DEFAULT {col.server_default.arg.text}"
+                    elif col.default is not None and not callable(col.default.arg):
+                        val = col.default.arg
+                        if isinstance(val, bool):
+                            default_clause = f" DEFAULT {'true' if val else 'false'}"
+                        elif isinstance(val, (int, float)):
+                            default_clause = f" DEFAULT {val}"
+                        else:
+                            default_clause = f" DEFAULT '{val}'"
+                ddl = f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {col_type}{default_clause} {nullable}'
                 logger.info("Adding missing column", extra={"ddl": ddl})
                 connection.execute(text(ddl))
 
@@ -301,8 +335,6 @@ async def health():
 
 app.include_router(_health_router)
 
-from orchestrator.routes.campaigns import router as campaigns_router
-app.include_router(campaigns_router)
 
 from orchestrator.routes.resources import router as resources_router, set_guard
 app.include_router(resources_router)
@@ -418,6 +450,130 @@ async def create_target(body: TargetCreate):
         "profile_path": str(profile_path),
         "playbook": playbook_config.name,
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/campaigns — create a campaign
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/campaigns", status_code=201)
+async def create_campaign(body: CampaignCreate):
+    async with get_session() as session:
+        campaign = Campaign(
+            name=body.name,
+            description=body.description,
+            scope_config=body.scope_config,
+            rate_limit=body.rate_limit,
+            has_credentials=body.has_credentials,
+        )
+        session.add(campaign)
+        await session.commit()
+        await session.refresh(campaign)
+        return {
+            "id": campaign.id,
+            "name": campaign.name,
+            "description": campaign.description,
+            "status": campaign.status,
+            "scope_config": campaign.scope_config,
+            "rate_limit": campaign.rate_limit,
+            "has_credentials": campaign.has_credentials,
+            "started_at": campaign.started_at,
+            "completed_at": campaign.completed_at,
+        }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/campaigns — list all campaigns
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/campaigns")
+async def list_campaigns():
+    async with get_session() as session:
+        stmt = (
+            select(Campaign)
+            .options(selectinload(Campaign.targets))
+            .order_by(Campaign.created_at.desc())
+        )
+        result = await session.execute(stmt)
+        campaigns = result.scalars().all()
+        return [
+            {
+                "id": c.id,
+                "name": c.name,
+                "description": c.description,
+                "status": c.status,
+                "scope_config": c.scope_config,
+                "rate_limit": c.rate_limit,
+                "has_credentials": c.has_credentials,
+                "started_at": c.started_at,
+                "completed_at": c.completed_at,
+                "target_count": len(c.targets),
+            }
+            for c in campaigns
+        ]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/campaigns/{campaign_id} — get single campaign
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/campaigns/{campaign_id}")
+async def get_campaign(campaign_id: int):
+    async with get_session() as session:
+        stmt = (
+            select(Campaign)
+            .options(selectinload(Campaign.targets))
+            .where(Campaign.id == campaign_id)
+        )
+        result = await session.execute(stmt)
+        campaign = result.scalar_one_or_none()
+        if not campaign:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        return {
+            "id": campaign.id,
+            "name": campaign.name,
+            "description": campaign.description,
+            "status": campaign.status,
+            "scope_config": campaign.scope_config,
+            "rate_limit": campaign.rate_limit,
+            "has_credentials": campaign.has_credentials,
+            "started_at": campaign.started_at,
+            "completed_at": campaign.completed_at,
+            "target_count": len(campaign.targets),
+            "targets": [
+                {"id": t.id, "company_name": t.company_name, "base_domain": t.base_domain}
+                for t in campaign.targets
+            ],
+        }
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/campaigns/{campaign_id} — update campaign
+# ---------------------------------------------------------------------------
+@app.patch("/api/v1/campaigns/{campaign_id}")
+async def update_campaign(campaign_id: int, body: CampaignUpdate):
+    async with get_session() as session:
+        result = await session.execute(
+            select(Campaign).where(Campaign.id == campaign_id)
+        )
+        campaign = result.scalar_one_or_none()
+        if not campaign:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        updates = body.model_dump(exclude_none=True)
+        for key, value in updates.items():
+            setattr(campaign, key, value)
+        if "scope_config" in updates:
+            attributes.flag_modified(campaign, "scope_config")
+        await session.commit()
+        await session.refresh(campaign)
+        return {
+            "id": campaign.id,
+            "name": campaign.name,
+            "description": campaign.description,
+            "status": campaign.status,
+            "scope_config": campaign.scope_config,
+            "rate_limit": campaign.rate_limit,
+            "has_credentials": campaign.has_credentials,
+            "started_at": campaign.started_at,
+            "completed_at": campaign.completed_at,
+        }
 
 
 # ---------------------------------------------------------------------------
