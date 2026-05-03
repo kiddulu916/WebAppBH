@@ -9,7 +9,6 @@ import { WORKER_STAGE_COUNTS } from "@/types/schema";
 import type { PipelineWorkerState } from "@/types/schema";
 import { WORKER_STAGES } from "@/lib/worker-stages";
 import SystemPulse from "@/components/c2/SystemPulse";
-import WorkerHealthPanel from "@/components/c2/WorkerHealthPanel";
 import CampaignTimeline from "@/components/c2/CampaignTimeline";
 import AssetDetailDrawer from "@/components/c2/AssetDetailDrawer";
 import SettingsDrawer from "@/components/c2/SettingsDrawer";
@@ -359,9 +358,8 @@ export default function C2Page() {
         />
       </div>
 
-      {/* Main content: Asset Tree (1/3) + Worker Grid (2/3) */}
+      {/* Asset Tree (1/3) + Campaign Timeline (2/3) */}
       <div className="grid grid-cols-3 gap-5">
-        {/* Left -- Asset Tree */}
         <div className="col-span-1" data-testid="c2-asset-tree">
           <div className="rounded-lg border border-border bg-bg-secondary p-4">
             <div className="section-label mb-3">ASSET TREE</div>
@@ -373,25 +371,18 @@ export default function C2Page() {
             </div>
           </div>
         </div>
-
-        {/* Right -- Events placeholder */}
-        <div className="col-span-2" data-testid="c2-worker-grid">
+        <div className="col-span-2">
           <div className="rounded-lg border border-border bg-bg-secondary p-4">
-            <div className="section-label mb-3">EVENTS</div>
-            <div className="text-sm text-text-muted">Event feed — see live terminal below</div>
+            <div className="section-label mb-3">CAMPAIGN TIMELINE</div>
+            <CampaignTimeline jobs={jobs} />
           </div>
         </div>
       </div>
 
-      {/* Worker Health */}
-      <WorkerHealthPanel />
-
-      {/* System Pulse (conditional on systemPulseOpen) */}
-      <SystemPulse />
-
-      {/* Campaign Timeline */}
-      <div data-testid="c2-timeline">
-        <CampaignTimeline jobs={jobs} />
+      {/* System Pulse + Queue Health */}
+      <div className="grid grid-cols-2 gap-5">
+        <SystemPulse />
+        <QueueHealthWidget />
       </div>
 
       {/* Diff Timeline + Scope Drift Alerts */}
@@ -399,9 +390,6 @@ export default function C2Page() {
         <DiffTimeline events={events} />
         <ScopeDriftAlerts events={events} />
       </div>
-
-      {/* Queue Health */}
-      <QueueHealthWidget />
 
       {/* Asset Detail Drawer */}
       <AssetDetailDrawer
