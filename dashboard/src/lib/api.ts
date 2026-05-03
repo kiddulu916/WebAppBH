@@ -325,11 +325,11 @@ export const api = {
   },
 
   getVulnerability(vulnId: number) {
-    return request<import("@/types/schema").Vulnerability>(`/api/v1/vulnerabilities/${vulnId}`);
+    return request<VulnWithAsset>(`/api/v1/vulnerabilities/${vulnId}`);
   },
 
   updateVulnerability(vulnId: number, data: { false_positive?: boolean }) {
-    return request<import("@/types/schema").Vulnerability>(`/api/v1/vulnerabilities/${vulnId}`, {
+    return request<VulnWithAsset>(`/api/v1/vulnerabilities/${vulnId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     });
@@ -689,6 +689,25 @@ export const api = {
 
   getWorkerHealth() {
     return request<WorkerHealthResponse>("/api/v1/worker_health");
+  },
+
+  getResourceStatus() {
+    return request<import("@/types/schema").ResourceStatus>("/api/v1/resources/status");
+  },
+
+  getReports(targetId?: number) {
+    const qs = targetId ? `?target_id=${targetId}` : "";
+    return request<{ reports: { id: string; title: string; severity: string; target_domain: string; type: string; created_at: string }[] }>(
+      `/api/v1/reports${qs}`,
+    );
+  },
+
+  getReport(reportId: string) {
+    return request<{ id: string; title: string; content: string }>(`/api/v1/reports/${reportId}`);
+  },
+
+  downloadReport(reportId: string) {
+    return `${BASE_URL}/api/v1/reports/${reportId}/download`;
   },
 
   /* ------------------------------------------------------------------ */

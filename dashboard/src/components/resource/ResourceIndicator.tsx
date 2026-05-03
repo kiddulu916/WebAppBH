@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 import type { ResourceStatus } from "@/types/schema";
 
 interface ResourceIndicatorProps {
@@ -21,13 +22,10 @@ export default function ResourceIndicator({ onClick }: ResourceIndicatorProps) {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await fetch("/api/resources/status");
-        if (res.ok) {
-          const data = await res.json();
-          setStatus(data);
-        }
+        const data = await api.getResourceStatus();
+        setStatus(data);
       } catch {
-        // ignore
+        // ignore — endpoint may not exist yet
       } finally {
         setLoading(false);
       }

@@ -35,11 +35,11 @@ interface CampaignState {
   /* connectivity */
   connected: boolean;
 
-  /* pipeline (merged from pipelineStore) */
+  /* pipeline state */
   workerStates: Record<string, PipelineWorkerState>;
   resourceStatus: ResourceStatus | null;
 
-  /* campaign (merged from campaignStore) */
+  /* campaign state */
   activeCampaign: Campaign | null;
 
   /* actions */

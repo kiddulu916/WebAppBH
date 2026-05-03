@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useParams } from "next/navigation";
 import ResourceIndicator from "@/components/resource/ResourceIndicator";
@@ -31,21 +31,19 @@ export default function CampaignLayout({ children }: { children: React.ReactNode
     setTerminalEvents((prev) => [...prev.slice(-500), event]);
   };
 
-  // Simulate SSE connection for terminal events
-  useState(() => {
-    if (typeof window !== "undefined") {
-      const source = new EventSource(`/api/sse/${campaignId}`);
-      source.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          addTerminalEvent(data);
-        } catch {
-          // ignore
-        }
-      };
-      return () => source.close();
-    }
-  });
+  // SSE connection for terminal events
+  useEffect(() => {
+    const source = new EventSource(`/api/sse/${campaignId}`);
+    source.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        addTerminalEvent(data);
+      } catch {
+        // ignore parse errors
+      }
+    };
+    return () => source.close();
+  }, [campaignId]);
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-4rem)]">

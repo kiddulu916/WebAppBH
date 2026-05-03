@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ReportList from "@/components/reports/ReportList";
+import { api } from "@/lib/api";
 import { toast } from "sonner";
 
 interface Report {
@@ -24,13 +25,10 @@ export default function ReportsPage() {
   useEffect(() => {
     const fetchReports = async () => {
       try {
-        const res = await fetch(`/api/campaigns/${campaignId}/reports`);
-        if (res.ok) {
-          const data = await res.json();
-          setReports(data);
-        }
+        const { reports: data } = await api.getReports();
+        setReports(data as Report[]);
       } catch {
-        // ignore
+        // ignore — endpoint may not exist yet
       } finally {
         setLoading(false);
       }
@@ -44,15 +42,16 @@ export default function ReportsPage() {
 
   const handleDownload = async (id: string) => {
     try {
-      const res = await fetch(`/api/campaigns/${campaignId}/reports/${id}/download`);
+      const url = api.downloadReport(id);
+      const res = await fetch(url);
       if (res.ok) {
         const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
+        const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = url;
+        a.href = blobUrl;
         a.download = `report-${id}.md`;
         a.click();
-        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(blobUrl);
         toast.success("Report downloaded");
       }
     } catch {

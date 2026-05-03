@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
 import type { ScopeConfig, CredentialConfig } from "@/types/schema";
 
 export default function CampaignCreatorPage() {
@@ -105,16 +106,13 @@ export default function CampaignCreatorPage() {
     };
 
     try {
-      const res = await fetch("/api/campaigns", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      const data = await api.createCampaign({
+        name,
+        description: description || undefined,
+        scope_config: scopeConfig,
+        rate_limit: rateLimit,
+        has_credentials: !!credentialConfig,
       });
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(body || "Failed to create campaign");
-      }
-      const data = await res.json();
       toast.success("Campaign created");
       router.push(`/campaign/${data.id}/overview`);
     } catch (err: unknown) {
