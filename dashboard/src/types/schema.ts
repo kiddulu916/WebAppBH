@@ -190,3 +190,203 @@ export interface GraphEdge {
   source: string;
   target: string;
 }
+
+// ---------------------------------------------------------------------------
+// Campaign
+// ---------------------------------------------------------------------------
+
+export type CampaignStatus = "pending" | "running" | "paused" | "complete" | "cancelled";
+
+export interface Campaign extends Timestamps {
+  id: number;
+  name: string;
+  description: string | null;
+  status: CampaignStatus;
+  scope_config: {
+    in_scope: string[];
+    out_of_scope: string[];
+  } | null;
+  rate_limit: number;
+  has_credentials: boolean;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline / Worker State
+// ---------------------------------------------------------------------------
+
+export type PipelineWorkerStatus = "pending" | "queued" | "running" | "complete" | "failed" | "skipped";
+
+export interface PipelineWorkerState {
+  status: PipelineWorkerStatus;
+  current_stage_index?: number;
+  total_stages?: number;
+  current_section_id?: string;
+  last_tool_executed?: string;
+  started_at?: string;
+  completed_at?: string;
+  skipped?: boolean;
+  skip_reason?: string;
+  error?: string;
+}
+
+export interface ResourceStatus {
+  tier: "green" | "yellow" | "red" | "critical";
+  cpu_percent: number;
+  memory_percent: number;
+  active_workers: number;
+  thresholds: {
+    green: { cpu: number; memory: number; workers: number };
+    yellow: { cpu: number; memory: number; workers: number };
+    red: { cpu: number; memory: number; workers: number };
+  };
+}
+
+export const INFRA_WORKER_NAMES = [
+  "proxy",
+  "callback",
+  "sandbox_worker",
+] as const;
+
+export const PIPELINE_WORKER_NAMES = [
+  "info_gathering",
+  "config_mgmt",
+  "identity_mgmt",
+  "authentication",
+  "authorization",
+  "session_mgmt",
+  "input_validation",
+  "error_handling",
+  "cryptography",
+  "business_logic",
+  "client_side",
+  "mobile_worker",
+  "reasoning_worker",
+  "chain_worker",
+  "reporting",
+] as const;
+
+export const ALL_WORKER_NAMES = [...INFRA_WORKER_NAMES, ...PIPELINE_WORKER_NAMES] as const;
+
+export type WorkerName = (typeof ALL_WORKER_NAMES)[number];
+
+export const WORKER_STAGE_COUNTS: Record<string, number> = {
+  proxy: 0,
+  callback: 0,
+  sandbox_worker: 0,
+  info_gathering: 10,
+  config_mgmt: 11,
+  identity_mgmt: 5,
+  authentication: 10,
+  authorization: 4,
+  session_mgmt: 9,
+  input_validation: 15,
+  error_handling: 2,
+  cryptography: 4,
+  business_logic: 9,
+  client_side: 13,
+  mobile_worker: 8,
+  reasoning_worker: 3,
+  chain_worker: 4,
+  reporting: 1,
+};
+
+export const WORKER_DEPENDENCIES: Record<string, string[]> = {
+  proxy: [],
+  callback: [],
+  sandbox_worker: [],
+  info_gathering: [],
+  config_mgmt: ["info_gathering"],
+  identity_mgmt: ["config_mgmt"],
+  authentication: ["identity_mgmt"],
+  authorization: ["authentication"],
+  session_mgmt: ["authentication"],
+  input_validation: ["authentication"],
+  error_handling: ["authorization", "session_mgmt", "input_validation"],
+  cryptography: ["authorization", "session_mgmt", "input_validation"],
+  business_logic: ["authorization", "session_mgmt", "input_validation"],
+  client_side: ["authorization", "session_mgmt", "input_validation"],
+  mobile_worker: ["authorization", "session_mgmt", "input_validation"],
+  reasoning_worker: ["error_handling", "cryptography", "business_logic", "client_side", "mobile_worker"],
+  chain_worker: ["reasoning_worker"],
+  reporting: ["chain_worker"],
+};
+
+// ---------------------------------------------------------------------------
+// Findings (extended vulnerability view)
+// ---------------------------------------------------------------------------
+
+export interface Finding extends Timestamps {
+  id: number;
+  target_id: number;
+  severity: VulnSeverity;
+  title: string;
+  vuln_type: string;
+  section_id: string | null;
+  worker_type: string | null;
+  stage_name: string | null;
+  source_tool: string | null;
+  confirmed: boolean;
+  false_positive: boolean;
+  description: string | null;
+  evidence: Record<string, unknown> | null;
+  remediation: string | null;
+  created_at: string;
+  target_domain?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Chain findings
+// ---------------------------------------------------------------------------
+
+export interface ChainFindingView {
+  id: number;
+  target_id: number;
+  chain_description: string;
+  severity: string;
+  total_impact: string | null;
+  linked_vulnerability_ids: number[] | null;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Target hierarchy
+// ---------------------------------------------------------------------------
+
+export interface TargetNode {
+  id: number;
+  domain: string;
+  target_type: "seed" | "child";
+  priority: number;
+  status: string;
+  wildcard: boolean;
+  wildcard_count: number | null;
+  parent_target_id: number | null;
+  worker_states: Record<string, PipelineWorkerState>;
+  vulnerability_count: number;
+  children?: TargetNode[];
+}
+
+// ---------------------------------------------------------------------------
+// Scope & Credentials
+// ---------------------------------------------------------------------------
+
+export interface ScopeConfig {
+  in_scope: string[];
+  out_of_scope: string[];
+}
+
+export interface CredentialConfig {
+  tester: {
+    username: string;
+    password: string;
+    auth_type: "form" | "basic" | "bearer" | "oauth";
+    login_url?: string;
+  } | null;
+  testing_user: {
+    username: string;
+    email: string;
+    profile_url?: string;
+  } | null;
+}

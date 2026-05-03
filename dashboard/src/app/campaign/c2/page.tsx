@@ -7,7 +7,7 @@ import PipelineGrid from "@/components/pipeline/PipelineGrid";
 import WorkerDetailDrawer from "@/components/pipeline/WorkerDetailDrawer";
 import { WORKER_STAGE_COUNTS } from "@/types/schema";
 import type { PipelineWorkerState } from "@/types/schema";
-import { WSTG_STAGES } from "@/lib/wstg-stages";
+import { WORKER_STAGES } from "@/lib/worker-stages";
 import SystemPulse from "@/components/c2/SystemPulse";
 import WorkerHealthPanel from "@/components/c2/WorkerHealthPanel";
 import CampaignTimeline from "@/components/c2/CampaignTimeline";
@@ -350,9 +350,9 @@ export default function C2Page() {
         </div>
       </div>
 
-      {/* WSTG Pipeline Grid */}
+      {/* Pipeline Grid */}
       <div data-testid="c2-phase-pipeline" className="rounded-lg border border-border bg-bg-secondary p-4">
-        <div className="section-label mb-3">WSTG PIPELINE</div>
+        <div className="section-label mb-3">PIPELINE</div>
         <PipelineGrid
           workerStates={jobsToWorkerStates(jobs)}
           onWorkerClick={setSelectedWorker}
@@ -414,7 +414,7 @@ export default function C2Page() {
         <WorkerDetailDrawer
           worker={selectedWorker}
           state={jobsToWorkerStates(jobs)[selectedWorker] || { status: "pending" }}
-          stages={WSTG_STAGES[selectedWorker] || []}
+          stages={WORKER_STAGES[selectedWorker] || []}
           findingCount={0}
           onClose={() => setSelectedWorker(null)}
         />
