@@ -56,39 +56,25 @@ A modular, event-driven Bug Bounty Framework that automates the full offensive s
 
 Workers are organized by OWASP WSTG section. Each follows the same pattern: `base_tool.py` → `tools/` → `pipeline.py` → `concurrency.py` → `main.py`.
 
-| Worker | WSTG | Purpose | Key Capabilities |
-|--------|------|---------|-----------------|
-| **info-gathering** | 4.1 | Passive + active information collection | WHOIS, DNS, subdomain enumeration, fingerprinting, port mapping, subdomain takeover detection |
-| **identity-mgmt** | 4.3 | Identity and account enumeration | User enumeration, account lockout, role mapping |
-| **authentication** | 4.4 | Authentication mechanism testing | Credential brute-force, password policy, MFA bypass, token analysis |
-| **authorization** | 4.5 | Access control testing | IDOR, privilege escalation, horizontal/vertical access control |
-| **session-mgmt** | 4.6 | Session security analysis | Cookie flags, session fixation, CSRF, token predictability |
-| **input-validation** | 4.7 | Injection and input-based vulnerabilities | SQLi, XSS, XXE, SSRF, SSTI, command injection, path traversal |
-| **error-handling** | 4.8 | Error disclosure and stack trace detection | Verbose error fingerprinting, debug endpoint discovery |
-| **cryptography** | 4.9 | TLS/SSL and algorithm auditing | TLS version/cipher, padding oracle, plaintext leak scanner |
-| **business-logic** | 4.10 | Business logic flaw detection | Race conditions, workflow bypass, price manipulation |
-| **client-side** | 4.11 | Browser-based client-side testing | DOM XSS, postMessage abuse, CSP bypass (Playwright) |
-| **chain-worker** | — | Multi-step exploit chaining | Correlates escalation contexts, builds attack chains, feeds reporting |
-| **reporting-worker** | — | Report generation | PDF + Markdown, vulnerability deduplication, remediation mapping, LLM write-up |
-| **reasoning-worker** | — | LLM vulnerability analysis | 10-dimension insight enrichment via local Ollama |
-| **sandbox-worker** | — | Payload mutation engine | WAF fingerprinting, per-context payload variants, mutation outcome tracking |
-| **proxy** | — | Traffic interception | mitmproxy addon with rule-based request/response manipulation |
-| **callback** | — | OOB interaction listener | HTTP/DNS/TLS listeners for blind vulnerability confirmation |
-| **mobile-worker** | — | Mobile app SAST + DAST | MobSF static analysis, Frida dynamic instrumentation, docker-android emulator |
-
-### Legacy Workers (migration period)
-
-The following workers predate the WSTG-aligned architecture and are retained during the M11 migration period:
-
-| Worker | Status |
-|--------|--------|
-| **recon-core** | Superseded by `info-gathering` |
-| **webapp-worker** | Absorbed by `input-validation` |
-| **fuzzing-worker** | Absorbed by `config-mgmt` + `input-validation` |
-| **api-worker** | Absorbed by `input-validation` |
-| **vuln-scanner** | Absorbed by `input-validation` |
-| **network-worker** | Absorbed by `config-mgmt` |
-| **cloud-worker** | Absorbed by `config-mgmt` |
+| Worker | Purpose | Key Capabilities |
+|--------|---------|-----------------|
+| **info-gathering** | Passive + active information collection | WHOIS, DNS, subdomain enumeration, fingerprinting, port mapping, subdomain takeover detection |
+| **identity-mgmt** | Identity and account enumeration | User enumeration, account lockout, role mapping |
+| **authentication** | Authentication mechanism testing | Credential brute-force, password policy, MFA bypass, token analysis |
+| **authorization** | Access control testing | IDOR, privilege escalation, horizontal/vertical access control |
+| **session-mgmt** | Session security analysis | Cookie flags, session fixation, CSRF, token predictability |
+| **input-validation** | Injection and input-based vulnerabilities | SQLi, XSS, XXE, SSRF, SSTI, command injection, path traversal |
+| **error-handling** | Error disclosure and stack trace detection | Verbose error fingerprinting, debug endpoint discovery |
+| **cryptography** | TLS/SSL and algorithm auditing | TLS version/cipher, padding oracle, plaintext leak scanner |
+| **business-logic** | Business logic flaw detection | Race conditions, workflow bypass, price manipulation |
+| **client-side** | Browser-based client-side testing | DOM XSS, postMessage abuse, CSP bypass (Playwright) |
+| **chain-worker** | Multi-step exploit chaining | Correlates escalation contexts, builds attack chains, feeds reporting |
+| **reporting-worker** | Report generation | PDF + Markdown, vulnerability deduplication, remediation mapping, LLM write-up |
+| **reasoning-worker** | LLM vulnerability analysis | 10-dimension insight enrichment via local Ollama |
+| **sandbox-worker** | Payload mutation engine | WAF fingerprinting, per-context payload variants, mutation outcome tracking |
+| **proxy** | Traffic interception | mitmproxy addon with rule-based request/response manipulation |
+| **callback** | OOB interaction listener | HTTP/DNS/TLS listeners for blind vulnerability confirmation |
+| **mobile-worker** | Mobile app SAST + DAST | MobSF static analysis, Frida dynamic instrumentation, docker-android emulator |
 
 ## Quick Start
 
@@ -272,16 +258,16 @@ WebAppBH/
 │   └── schema.sql          # PostgreSQL schema (24 tables)
 ├── orchestrator/           # FastAPI control plane, event engine, worker manager
 ├── workers/
-│   ├── info_gathering/     # WSTG 4.1 — passive + active recon
-│   ├── identity_mgmt/      # WSTG 4.3 — identity enumeration
-│   ├── authentication/     # WSTG 4.4 — auth mechanism testing
-│   ├── authorization/      # WSTG 4.5 — access control testing
-│   ├── session_mgmt/       # WSTG 4.6 — session security
-│   ├── input_validation/   # WSTG 4.7 — injection testing
-│   ├── error_handling/     # WSTG 4.8 — error disclosure
-│   ├── cryptography/       # WSTG 4.9 — TLS/crypto auditing
-│   ├── business_logic/     # WSTG 4.10 — business logic flaws
-│   ├── client_side/        # WSTG 4.11 — browser/DOM testing
+│   ├── info_gathering/     # passive + active recon
+│   ├── identity_mgmt/      # identity enumeration
+│   ├── authentication/     # auth mechanism testing
+│   ├── authorization/      # access control testing
+│   ├── session_mgmt/       # session security
+│   ├── input_validation/   # injection testing
+│   ├── error_handling/     # error disclosure
+│   ├── cryptography/       # TLS/crypto auditing
+│   ├── business_logic/     # business logic flaws
+│   ├── client_side/        # browser/DOM testing
 │   ├── chain_worker/       # Exploit chain discovery
 │   ├── reporting_worker/   # PDF + Markdown report generation
 │   ├── reasoning_worker/   # LLM vulnerability analysis (Ollama)

@@ -124,7 +124,10 @@ SHARED_REPORTS = Path(os.environ.get("SHARED_REPORTS_DIR", "/app/shared/reports"
 _api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
 
 
-async def verify_api_key(api_key: str | None = Depends(_api_key_header)) -> str:
+async def verify_api_key(request: Request, api_key: str | None = Depends(_api_key_header)) -> str:
+    # Health endpoint is excluded from auth for Docker healthchecks
+    if request.url.path == "/health":
+        return "health-check"
     if not API_KEY:
         if ALLOW_UNAUTHENTICATED:
             return "no-auth-configured"

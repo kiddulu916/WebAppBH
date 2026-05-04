@@ -19,21 +19,21 @@ The current worker architecture is organized by **tool capability** (recon, fuzz
 
 ### Worker Inventory
 
-14 total workers: 11 WSTG-aligned core workers + 3 extension workers.
+14 total workers: 11 core workers + 3 extension workers.
 
-| Worker | Directory | Section | Pipeline Stages | Queue |
-|--------|-----------|---------|----------------|-------|
-| Info Gathering | `workers/info_gathering/` | 4.1 | 10 | `info_gathering_queue` |
-| Config Management | `workers/config_mgmt/` | 4.2 | 11 | `config_mgmt_queue` |
-| Identity Management | `workers/identity_mgmt/` | 4.3 | 5 | `identity_mgmt_queue` |
-| Authentication | `workers/authentication/` | 4.4 | 10 | `authentication_queue` |
-| Authorization | `workers/authorization/` | 4.5 | 4 | `authorization_queue` |
-| Session Management | `workers/session_mgmt/` | 4.6 | 9 | `session_mgmt_queue` |
-| Input Validation | `workers/input_validation/` | 4.7 | 15 | `input_validation_queue` |
-| Error Handling | `workers/error_handling/` | 4.8 | 2 | `error_handling_queue` |
-| Cryptography | `workers/cryptography/` | 4.9 | 4 | `cryptography_queue` |
-| Business Logic | `workers/business_logic/` | 4.10 | 9 | `business_logic_queue` |
-| Client-Side | `workers/client_side/` | 4.11 | 13 | `client_side_queue` |
+| Worker | Directory | Pipeline Stages | Queue |
+|--------|-----------|----------------|-------|
+| Info Gathering | `workers/info_gathering/` | 10 | `info_gathering_queue` |
+| Config Management | `workers/config_mgmt/` | 11 | `config_mgmt_queue` |
+| Identity Management | `workers/identity_mgmt/` | 5 | `identity_mgmt_queue` |
+| Authentication | `workers/authentication/` | 10 | `authentication_queue` |
+| Authorization | `workers/authorization/` `authorization_queue` |
+| Session Management | `workers/session_mgmt/` | 9 | `session_mgmt_queue` |
+| Input Validation | `workers/input_validation/` | 15 | `input_validation_queue` |
+| Error Handling | `workers/error_handling/` | 2 | `error_handling_queue` |
+| Cryptography | `workers/cryptography/` `cryptography_queue` |
+| Business Logic | `workers/business_logic/`  | 9 | `business_logic_queue` |
+| Client-Side | `workers/client_side/`  | 13 | `client_side_queue` |
 | Mobile | `workers/mobile/` | Extension | Unchanged | `mobile_queue` |
 | Chain | `workers/chain/` | Extension | Updated | `chain_queue` |
 | Reporting | `workers/reporting/` | Extension | Updated | `reporting_queue` |
