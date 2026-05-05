@@ -58,7 +58,7 @@ def client():
 
 @pytest.mark.anyio
 async def test_trigger_rescan_returns_201_queued(client, seed_target_with_assets):
-    with patch("orchestrator.main.push_task", new_callable=AsyncMock, return_value="msg-rescan") as mock_push:
+    with patch("orchestrator.main.push_priority_task", new_callable=AsyncMock, return_value="msg-rescan") as mock_push:
         resp = await client.post(f"/api/v1/targets/{seed_target_with_assets}/rescan")
     assert resp.status_code == 201
     body = resp.json()
@@ -67,23 +67,23 @@ async def test_trigger_rescan_returns_201_queued(client, seed_target_with_assets
     assert body["target_id"] == seed_target_with_assets
     mock_push.assert_called_once()
     call_args = mock_push.call_args
-    assert call_args[0][0] == "recon_queue"
+    assert call_args[0][0] == "info_gathering_queue"
     assert call_args[0][1]["rescan"] is True
 
 
 @pytest.mark.anyio
 async def test_trigger_rescan_increments_scan_number(client, seed_target_with_assets):
-    with patch("orchestrator.main.push_task", new_callable=AsyncMock, return_value="msg-1"):
+    with patch("orchestrator.main.push_priority_task", new_callable=AsyncMock, return_value="msg-1"):
         resp1 = await client.post(f"/api/v1/targets/{seed_target_with_assets}/rescan")
     assert resp1.json()["scan_number"] == 1
 
-    with patch("orchestrator.main.push_task", new_callable=AsyncMock, return_value="msg-2"):
+    with patch("orchestrator.main.push_priority_task", new_callable=AsyncMock, return_value="msg-2"):
         resp2 = await client.post(f"/api/v1/targets/{seed_target_with_assets}/rescan")
     assert resp2.json()["scan_number"] == 2
 
 
 @pytest.mark.anyio
 async def test_trigger_rescan_unknown_target(client, db):
-    with patch("orchestrator.main.push_task", new_callable=AsyncMock):
+    with patch("orchestrator.main.push_priority_task", new_callable=AsyncMock):
         resp = await client.post("/api/v1/targets/9999/rescan")
     assert resp.status_code == 404

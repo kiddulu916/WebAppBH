@@ -1,7 +1,7 @@
 """EndpointExtractorTool -- Stage 5: aggregate endpoints and feed back to recon.
 
 Collects URLs/domains from Jadx source, MobSF reports, and Frida runtime data.
-Deduplicates, scope-checks, upserts in-scope into assets, pushes to recon_queue.
+Deduplicates, scope-checks, upserts in-scope into assets, pushes to info_gathering_queue.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import json
 import re
 from pathlib import Path
 
-from lib_webbh import push_task, setup_logger
+from lib_webbh import push_priority_task, push_task, setup_logger
 from lib_webbh.scope import ScopeManager
 
 from workers.mobile_worker.base_tool import MobileTestTool, MOBILE_ANALYSIS_DIR
@@ -132,10 +132,9 @@ class EndpointExtractorTool(MobileTestTool):
 
     @staticmethod
     async def _push_to_recon(target_id: int, url: str) -> None:
-        """Push in-scope endpoint to recon_queue as high-priority task."""
-        await push_task("recon_queue", {
+        """Push in-scope endpoint to info_gathering_queue for further recon."""
+        await push_priority_task("info_gathering_queue", {
             "target_id": target_id,
             "url": url,
-            "priority": "high",
             "source": "mobile_endpoint_extractor",
-        })
+        }, priority_score=70)

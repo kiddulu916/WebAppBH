@@ -5,9 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
-from typing import Optional
-
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -41,7 +39,11 @@ class IdentityMgmtTool(InfrastructureMixin, ABC):
     weight_class: WeightClass
 
     @abstractmethod
-    def build_command(self, target, credentials: dict | None = None) -> list[str]:
+    def build_command(
+            self,
+            target,
+            credentials: dict | None = None
+        ) -> list[str]:
         """Return the CLI command as a list of strings."""
 
     @abstractmethod
@@ -52,7 +54,11 @@ class IdentityMgmtTool(InfrastructureMixin, ABC):
             list[dict] with observation details for identity findings
         """
 
-    async def run_subprocess(self, cmd: list[str], timeout: int = TOOL_TIMEOUT) -> str:
+    async def run_subprocess(
+            self,
+            cmd: list[str],
+            timeout: int = TOOL_TIMEOUT
+        ) -> str:
         """Run a command and return stdout."""
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -70,9 +76,13 @@ class IdentityMgmtTool(InfrastructureMixin, ABC):
 
         return stdout_bytes.decode("utf-8", errors="replace")
 
-    async def check_cooldown(self, target_id: int, container_name: str) -> bool:
+    async def check_cooldown(
+            self,
+            target_id: int,
+            container_name: str
+        ) -> bool:
         """Return True if this tool was completed within COOLDOWN_HOURS."""
-        cutoff = datetime.utcnow() - timedelta(hours=COOLDOWN_HOURS)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=COOLDOWN_HOURS)
         async with get_session() as session:
             stmt = select(JobState).where(
                 JobState.target_id == target_id,
@@ -157,7 +167,7 @@ class IdentityMgmtTool(InfrastructureMixin, ABC):
                 job = result.scalar_one_or_none()
                 if job:
                     job.last_tool_executed = self.name
-                    job.last_seen = datetime.utcnow()
+                    job.last_seen = datetime.now(timezone.utc)
                     await session.commit()
 
             stats = {

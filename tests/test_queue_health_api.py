@@ -32,21 +32,23 @@ def client():
 
 @pytest.mark.anyio
 async def test_queue_health_returns_all_queues(client):
-    with patch("lib_webbh.messaging.get_pending", new_callable=AsyncMock, return_value={"pending": 10}):
+    # Each tier returns 5 pending → total 20 per queue (healthy <= 50)
+    with patch("lib_webbh.messaging.get_pending", new_callable=AsyncMock, return_value={"pending": 5}):
         resp = await client.get("/api/v1/queue_health")
     assert resp.status_code == 200
     body = resp.json()
     assert "queues" in body
-    assert "recon_queue" in body["queues"]
-    assert body["queues"]["recon_queue"]["health"] == "healthy"
+    assert "info_gathering_queue" in body["queues"]
+    assert body["queues"]["info_gathering_queue"]["health"] == "healthy"
 
 
 @pytest.mark.anyio
 async def test_queue_health_pressure(client):
-    with patch("lib_webbh.messaging.get_pending", new_callable=AsyncMock, return_value={"pending": 120}):
+    # Each tier returns 30 pending → total 120 per queue (50 < 120 < 200 = pressure)
+    with patch("lib_webbh.messaging.get_pending", new_callable=AsyncMock, return_value={"pending": 30}):
         resp = await client.get("/api/v1/queue_health")
     body = resp.json()
-    assert body["queues"]["recon_queue"]["health"] == "pressure"
+    assert body["queues"]["info_gathering_queue"]["health"] == "pressure"
 
 
 @pytest.mark.anyio
@@ -56,4 +58,4 @@ async def test_queue_health_redis_error(client):
     assert resp.status_code == 200
     body = resp.json()
     # Should fall back to 0 pending = IDLE
-    assert body["queues"]["recon_queue"]["health"] == "idle"
+    assert body["queues"]["info_gathering_queue"]["health"] == "idle"

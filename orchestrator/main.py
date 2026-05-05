@@ -54,10 +54,9 @@ from pathlib import Path
 from typing import AsyncIterator, Literal, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
-from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy import func, inspect, or_, select, text
@@ -88,6 +87,7 @@ from lib_webbh import (
     get_session,
     is_valid_cron,
     next_run,
+    push_priority_task,
     push_task,
     setup_logger,
     enrich_shodan,
@@ -105,9 +105,6 @@ logger = setup_logger("orchestrator")
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-API_KEY = os.environ.get("WEB_APP_BH_API_KEY", "")
-# Set ALLOW_UNAUTHENTICATED=1 to opt into running without an API key (dev only).
-ALLOW_UNAUTHENTICATED = os.environ.get("ALLOW_UNAUTHENTICATED", "").lower() in ("1", "true", "yes")
 # * Comma-separated origins for browser clients (dashboard on :3000, etc.)
 _CORS_RAW = os.environ.get(
     "CORS_ORIGINS",
@@ -118,27 +115,6 @@ SHARED_CONFIG = Path(os.environ.get("SHARED_CONFIG_DIR", "/app/shared/config"))
 SHARED_RAW = Path(os.environ.get("SHARED_RAW_DIR", "/app/shared/raw"))
 SHARED_REPORTS = Path(os.environ.get("SHARED_REPORTS_DIR", "/app/shared/reports"))
 
-# ---------------------------------------------------------------------------
-# Security — X-API-KEY header
-# ---------------------------------------------------------------------------
-_api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
-
-
-async def verify_api_key(request: Request, api_key: str | None = Depends(_api_key_header)) -> str:
-    # Health endpoint is excluded from auth for Docker healthchecks
-    if request.url.path == "/health":
-        return "health-check"
-    if not API_KEY:
-        if ALLOW_UNAUTHENTICATED:
-            return "no-auth-configured"
-        raise HTTPException(
-            status_code=503,
-            detail="Server misconfigured: WEB_APP_BH_API_KEY is not set. "
-                   "Set ALLOW_UNAUTHENTICATED=1 to disable auth (dev only).",
-        )
-    if api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
-    return api_key
 
 
 # ---------------------------------------------------------------------------
@@ -285,18 +261,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_add_missing_columns)
 
-    if not API_KEY:
-        if ALLOW_UNAUTHENTICATED:
-            logger.warning(
-                "WEB_APP_BH_API_KEY is not set and ALLOW_UNAUTHENTICATED=1 — "
-                "all endpoints are unauthenticated (dev mode)"
-            )
-        else:
-            logger.error(
-                "WEB_APP_BH_API_KEY is not set — endpoints will return 503. "
-                "Set the env var or ALLOW_UNAUTHENTICATED=1 for dev."
-            )
-
     # Load persisted intel API keys from .env.intel if available
     env_intel_path = pathlib.Path("/app/shared/config/.env.intel")
     if env_intel_path.exists():
@@ -338,12 +302,11 @@ app = FastAPI(
     title="WebAppBH Orchestrator",
     version="0.1.0",
     lifespan=lifespan,
-    dependencies=[Depends(verify_api_key)],
 )
 
 
 # ---------------------------------------------------------------------------
-# Health endpoint — excluded from auth for Docker healthchecks
+# Health endpoint — Docker healthcheck
 # ---------------------------------------------------------------------------
 _health_router = APIRouter()
 
@@ -816,12 +779,18 @@ async def rerun_target(body: RerunRequest):
         )
 
         target.last_playbook = body.playbook_name
+
+        # Clear stale job_state rows so the worker starts fresh
+        from sqlalchemy import delete
+        await session.execute(
+            delete(JobState).where(JobState.target_id == body.target_id)
+        )
         await session.commit()
 
-    await push_task("recon_queue", {
+    await push_priority_task("info_gathering_queue", {
         "target_id": body.target_id,
         "action": "rerun",
-    })
+    }, priority_score=90)
 
     await push_task(f"events:{body.target_id}", {
         "event": "RERUN_STARTED",
@@ -1534,11 +1503,17 @@ async def trigger_rescan(target_id: int):
             asset_count=len(assets), asset_hashes=asset_hashes,
         )
         session.add(snapshot)
+
+        # Clear stale job_state rows so the worker starts fresh
+        from sqlalchemy import delete
+        await session.execute(
+            delete(JobState).where(JobState.target_id == target_id)
+        )
         await session.commit()
 
-    await push_task("recon_queue", {
+    await push_priority_task("info_gathering_queue", {
         "target_id": target_id, "rescan": True, "snapshot_scan_number": next_scan,
-    })
+    }, priority_score=90)
     scans_triggered.labels(trigger_type="rescan").inc()
     return {"target_id": target_id, "status": "queued", "scan_number": next_scan}
 
@@ -1823,16 +1798,37 @@ async def get_queue_health():
     from lib_webbh.messaging import get_pending
     from lib_webbh.queue_monitor import assess_queue_health
 
-    queues = ["recon_queue", "fuzzing_queue", "webapp_queue", "cloud_queue", "api_queue"]
+    PRIORITY_TIERS = ["critical", "high", "normal", "low"]
+
+    # Active worker queues (all use priority tiers)
+    queues = [
+        "info_gathering_queue",
+        "identity_mgmt_queue",
+        "authentication_queue",
+        "authorization_queue",
+        "config_mgmt_queue",
+        "input_validation_queue",
+        "error_handling_queue",
+        "cryptography_queue",
+        "session_mgmt_queue",
+        "business_logic_queue",
+        "client_side_queue",
+        "chain_worker_queue",
+        "reporting_queue",
+        "reasoning_queue",
+    ]
     results = {}
     for q in queues:
-        try:
-            info = await get_pending(q, f"{q.replace('_queue', '')}_group")
-            pending = info.get("pending", 0)
-        except Exception:
-            pending = 0
-        health = assess_queue_health(pending)
-        results[q] = {"pending": pending, "health": health.value}
+        total_pending = 0
+        group = f"{q.replace('_queue', '')}_group"
+        for tier in PRIORITY_TIERS:
+            try:
+                info = await get_pending(f"{q}:{tier}", group)
+                total_pending += info.get("pending", 0)
+            except Exception:
+                pass
+        health = assess_queue_health(total_pending)
+        results[q] = {"pending": total_pending, "health": health.value}
     return {"queues": results}
 
 
@@ -2543,12 +2539,12 @@ async def test_seed(body: TestSeedRequest):
         # --- Jobs (simulated worker states) ---
         now = datetime.now(timezone.utc)
         jobs_data = [
-            {"container_name": f"webbh-recon-t{body.target_id}",
-             "current_phase": "passive_discovery", "status": "RUNNING",
+            {"container_name": "info_gathering",
+             "current_phase": "enumerate_subdomains", "status": "RUNNING",
              "last_tool_executed": "subfinder", "last_seen": now},
-            {"container_name": f"webbh-recon-t{body.target_id}-2",
-             "current_phase": "active_probing", "status": "COMPLETED",
-             "last_tool_executed": "httpx", "last_seen": now},
+            {"container_name": "input_validation",
+             "current_phase": "xss_reflected", "status": "COMPLETED",
+             "last_tool_executed": "dalfox", "last_seen": now},
         ]
         job_ids = []
         for jd in jobs_data:

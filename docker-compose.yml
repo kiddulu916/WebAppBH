@@ -65,8 +65,6 @@ services:
       DB_PASS: ${DB_PASS:-changeme}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      WEB_APP_BH_API_KEY: ${WEB_APP_BH_API_KEY:-}
-      ALLOW_UNAUTHENTICATED: ${ALLOW_UNAUTHENTICATED:-}
       CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
       ENABLE_TEST_SEED: ${ENABLE_TEST_SEED:-true}
       SHODAN_API_KEY: ${SHODAN_API_KEY:-}
@@ -767,7 +765,6 @@ services:
       dockerfile: docker/Dockerfile.dashboard
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8001
-        NEXT_PUBLIC_API_KEY: ${WEB_APP_BH_API_KEY:-}
     container_name: webbh-dashboard
     restart: unless-stopped
     depends_on:
@@ -775,9 +772,7 @@ services:
         condition: service_healthy
     environment:
       API_URL: http://orchestrator:8001
-      API_KEY: ${WEB_APP_BH_API_KEY:-}
       NEXT_PUBLIC_API_URL: http://localhost:8001
-      NEXT_PUBLIC_API_KEY: ${WEB_APP_BH_API_KEY:-}
     ports:
       - "3000:3000"
     volumes:
