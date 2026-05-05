@@ -49,11 +49,11 @@ class EventEngine:
         worker_states = await self._get_worker_states(target.id)
 
         for worker_name, dependencies in dep_map.items():
-            if worker_states.get(worker_name) in ("running", "complete", "queued"):
+            if worker_states.get(worker_name) in ("RUNNING", "COMPLETED", "QUEUED"):
                 continue
 
             all_deps_met = all(
-                worker_states.get(dep) == "complete"
+                worker_states.get(dep) == "COMPLETED"
                 for dep in dependencies
             )
 
@@ -89,7 +89,7 @@ class EventEngine:
             job = JobState(
                 target_id=target.id,
                 container_name=worker_name,
-                status="queued",
+                status="QUEUED",
                 queued_at=datetime.now(timezone.utc),
             )
             session.add(job)

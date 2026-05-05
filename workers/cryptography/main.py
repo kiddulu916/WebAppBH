@@ -67,7 +67,7 @@ async def main():
                 job = JobState(
                     target_id=target_id,
                     container_name=WORKER_TYPE,
-                    status="running",
+                    status="RUNNING",
                     started_at=datetime.now(timezone.utc),
                 )
                 session.add(job)
@@ -82,7 +82,7 @@ async def main():
                     update(JobState)
                     .where(JobState.target_id == target_id)
                     .where(JobState.container_name == WORKER_TYPE)
-                    .values(status="complete", completed_at=datetime.now(timezone.utc))
+                    .values(status="COMPLETED", completed_at=datetime.now(timezone.utc))
                 )
                 await session.commit()
 
@@ -94,7 +94,7 @@ async def main():
                     update(JobState)
                     .where(JobState.target_id == target_id)
                     .where(JobState.container_name == WORKER_TYPE)
-                    .values(status="failed", error=str(e))
+                    .values(status="FAILED", error=str(e))
                 )
                 await session.commit()
 

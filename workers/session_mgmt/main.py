@@ -44,7 +44,7 @@ async def run_pipeline(target_id: int) -> None:
             job = JobState(
                 target_id=target_id,
                 container_name="session_mgmt",
-                status="complete",
+                status="COMPLETED",
                 skipped=True,
                 skip_reason="no credentials provided",
             )

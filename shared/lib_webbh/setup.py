@@ -15,6 +15,7 @@ setup(
         "tldextract>=5.0",
         "croniter>=1.3",
         "httpx>=0.27",
+        "aiohttp>=3.9",
         "alembic>=1.13",
         "prometheus-client>=0.20",
     ],

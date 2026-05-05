@@ -6,8 +6,9 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select, update
 
-from lib_webbh import get_session, setup_logger
-from lib_webbh.database import Target, JobState
+from lib_webbh import get_session, push_task, setup_logger
+from lib_webbh.database import Asset, AssetSnapshot, Target, JobState
+from lib_webbh.diffing import compute_diff
 from lib_webbh.messaging import listen_priority_queues, get_redis
 from lib_webbh.scope import ScopeManager
 
@@ -27,13 +28,14 @@ async def run_pipeline(target_id: int):
     async with get_session() as session:
         target = await session.get(Target, target_id)
         if not target:
-            logger.error("Target not found", target_id=target_id)
+            logger.error("Target not found", extra={"target_id": target_id})
             return
 
-        scope_manager = ScopeManager(target.base_domain)
+        profile = target.target_profile or {"in_scope_domains": [f"*.{target.base_domain}"]}
+        scope_manager = ScopeManager(profile)
 
     for stage_idx, stage in enumerate(STAGES):
-        logger.info("Stage started", stage=stage.name, section_id=stage.section_id)
+        logger.info("Stage started", extra={"stage": stage.name, "section_id": stage.section_id})
 
         # Update job state
         async with get_session() as session:
@@ -54,13 +56,59 @@ async def run_pipeline(target_id: int):
             weight = TOOL_WEIGHTS.get(tool_cls.__name__, "LIGHT")
             sem = heavy_sem if weight == "HEAVY" else light_sem
             async with sem:
-                tool = tool_cls()
-                await tool.execute(target_id, target=target, scope_manager=scope_manager)
+                try:
+                    tool = tool_cls()
+                    await tool.execute(target_id, target=target, scope_manager=scope_manager)
+                except Exception as tool_err:
+                    logger.warning(f"Tool {tool_cls.__name__} failed", extra={"error": str(tool_err)})
 
         if stage.tools:
             await asyncio.gather(*(run_tool(t) for t in stage.tools))
 
-        logger.info("Stage complete", stage=stage.name)
+        logger.info("Stage complete", extra={"stage": stage.name})
+
+
+async def _compute_and_emit_diff(target_id: int, scan_number: int) -> None:
+    """Compare current assets against the pre-rescan snapshot and emit diff event."""
+    async with get_session() as session:
+        snapshot = (await session.execute(
+            select(AssetSnapshot).where(
+                AssetSnapshot.target_id == target_id,
+                AssetSnapshot.scan_number == scan_number,
+            )
+        )).scalar_one_or_none()
+
+        if snapshot is None:
+            logger.warning("No snapshot found for diff", extra={"target_id": target_id, "scan_number": scan_number})
+            return
+
+        previous_hashes = snapshot.asset_hashes or {}
+
+        assets = (await session.execute(
+            select(Asset).where(Asset.target_id == target_id)
+        )).scalars().all()
+        current_hashes = {a.asset_value: f"{a.asset_type}:{a.source_tool}" for a in assets}
+
+    diff = compute_diff(previous_hashes, current_hashes)
+
+    if diff.has_changes:
+        logger.info("Rescan diff detected", extra={"target_id": target_id,
+                    "added": len(diff.added), "removed": len(diff.removed)})
+        await push_task(f"events:{target_id}", {
+            "event": "RECON_DIFF",
+            "scan_number": scan_number,
+            "added": diff.added,
+            "removed": diff.removed,
+            "unchanged_count": len(diff.unchanged),
+        })
+    else:
+        await push_task(f"events:{target_id}", {
+            "event": "RECON_DIFF",
+            "scan_number": scan_number,
+            "added": [],
+            "removed": [],
+            "unchanged_count": len(diff.unchanged),
+        })
 
 
 async def main():
@@ -71,7 +119,9 @@ async def main():
         f"{WORKER_TYPE}_queue", consumer_group, consumer_name
     ):
         target_id = message["payload"]["target_id"]
-        logger.info("Job received", target_id=target_id)
+        rescan = message["payload"].get("rescan", False)
+        snapshot_scan_number = message["payload"].get("snapshot_scan_number")
+        logger.info("Job received", extra={"target_id": target_id})
 
         try:
             # Create/update job state
@@ -79,7 +129,7 @@ async def main():
                 job = JobState(
                     target_id=target_id,
                     container_name=WORKER_TYPE,
-                    status="running",
+                    status="RUNNING",
                     started_at=datetime.now(timezone.utc),
                 )
                 session.add(job)
@@ -87,24 +137,28 @@ async def main():
 
             await run_pipeline(target_id)
 
+            # Compute rescan diff if this was a rescan with a snapshot
+            if rescan and snapshot_scan_number is not None:
+                await _compute_and_emit_diff(target_id, snapshot_scan_number)
+
             # Mark complete
             async with get_session() as session:
                 await session.execute(
                     update(JobState)
                     .where(JobState.target_id == target_id)
                     .where(JobState.container_name == WORKER_TYPE)
-                    .values(status="complete", completed_at=datetime.now(timezone.utc))
+                    .values(status="COMPLETED", completed_at=datetime.now(timezone.utc))
                 )
                 await session.commit()
 
         except Exception as e:
-            logger.error("Job failed", target_id=target_id, error=str(e))
+            logger.error("Job failed", extra={"target_id": target_id, "error": str(e)})
             async with get_session() as session:
                 await session.execute(
                     update(JobState)
                     .where(JobState.target_id == target_id)
                     .where(JobState.container_name == WORKER_TYPE)
-                    .values(status="failed", error=str(e))
+                    .values(status="FAILED", error=str(e))
                 )
                 await session.commit()
 

@@ -130,6 +130,26 @@ async def listen_priority_queues(
             if "BUSYGROUP" not in str(e):
                 raise
 
+    # Claim any pending messages from previous crashed runs
+    for tier_name, batch_size in tier_config:
+        stream_name = f"{queue_prefix}:{tier_name}"
+        try:
+            claimed = await r.xautoclaim(
+                stream_name, group, consumer, min_idle_time=30_000, count=50
+            )
+            # xautoclaim returns (next_start_id, claimed_messages, ...)
+            if claimed and len(claimed) > 1:
+                for msg_id, fields in claimed[1]:
+                    if fields:
+                        payload = json.loads(fields["payload"])
+                        yield {
+                            "stream": stream_name,
+                            "msg_id": msg_id,
+                            "payload": payload,
+                        }
+        except Exception:
+            pass  # Best-effort recovery
+
     while True:
         yielded_any = False
 

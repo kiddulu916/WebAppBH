@@ -84,15 +84,17 @@ class InfoGatheringTool(ABC):
             await session.refresh(asset)
             return asset.id
 
-    async def save_observation(self, target_id: int, observation_type: str,
-                               data: dict, source_tool: str) -> int:
-        """Insert an Observation record. Returns observation ID."""
+    async def save_observation(self, asset_id: int, tech_stack: dict | None = None,
+                               page_title: str | None = None, status_code: int | None = None,
+                               headers: dict | None = None) -> int:
+        """Insert an Observation record linked to an asset. Returns observation ID."""
         async with get_session() as session:
             obs = Observation(
-                target_id=target_id,
-                observation_type=observation_type,
-                data=data,
-                source_tool=source_tool,
+                asset_id=asset_id,
+                tech_stack=tech_stack,
+                page_title=page_title,
+                status_code=status_code,
+                headers=headers,
             )
             session.add(obs)
             await session.commit()
