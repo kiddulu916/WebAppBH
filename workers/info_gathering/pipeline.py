@@ -56,7 +56,10 @@ STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}
 import asyncio
 
 
-from lib_webbh import push_task, setup_logger
+from sqlalchemy import select
+
+from lib_webbh import Asset, push_task, setup_logger, get_session
+from lib_webbh.deep_classifier import DeepClassifier
 from lib_webbh.pipeline_checkpoint import CheckpointMixin
 from lib_webbh.scope import ScopeManager
 
@@ -151,4 +154,59 @@ class Pipeline(CheckpointMixin):
             aggregated["found"] += r.get("found", 0)
             aggregated["vulnerable"] += r.get("vulnerable", 0)
 
+        # Post-stage: deep-classify any pending assets
+        classified = await self._classify_pending_assets(scope_manager)
+        if classified:
+            aggregated["classified"] = classified
+
         return aggregated
+
+    async def _classify_pending_assets(self, scope_manager: ScopeManager) -> int:
+        """Run deep classification on all assets with scope_classification='pending'."""
+        if not scope_manager._in_scope_patterns:
+            return 0
+
+        classifier = DeepClassifier(
+            in_scope_domains=[
+                p for p in scope_manager._in_scope_patterns
+                if not any(c.isdigit() for c in p.split(".")[0])
+            ],
+            in_scope_ips=[
+                p for p in scope_manager._in_scope_patterns
+                if any(c.isdigit() for c in p.split(".")[0])
+            ],
+        )
+
+        classified_count = 0
+        async with get_session() as session:
+            stmt = select(Asset).where(
+                Asset.target_id == self.target_id,
+                Asset.scope_classification == "pending",
+            )
+            result = await session.execute(stmt)
+            pending_assets = result.scalars().all()
+
+            # Classify in batches of 5 concurrent
+            sem = asyncio.Semaphore(5)
+
+            async def _classify_one(asset: Asset):
+                async with sem:
+                    deep_result = await classifier.classify_deep(
+                        asset.asset_value,
+                        asset_type=asset.asset_type,
+                    )
+                    asset.scope_classification = deep_result.classification
+                    if deep_result.association_method:
+                        asset.association_method = deep_result.association_method
+
+            tasks = [_classify_one(a) for a in pending_assets]
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await session.commit()
+            classified_count = len(pending_assets)
+
+        if classified_count:
+            self.log.info(
+                f"Deep-classified {classified_count} pending assets",
+                extra={"classified": classified_count},
+            )
+        return classified_count

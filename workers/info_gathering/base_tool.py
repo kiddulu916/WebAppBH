@@ -55,13 +55,21 @@ class InfoGatheringTool(ABC):
         return stdout_bytes.decode("utf-8", errors="replace")
 
     async def scope_check(self, target_id: int, value: str, scope_manager: ScopeManager) -> bool:
-        """Check if a value is in scope before processing."""
+        """Check if a value is in scope before processing.
+
+        Uses classify() for pattern-based scope checking when available,
+        falls back to is_in_scope() for legacy ScopeManager instances.
+        """
+        if hasattr(scope_manager, 'classify') and scope_manager._in_scope_patterns:
+            result = scope_manager.classify(value)
+            return result.classification != "out-of-scope"
         result = scope_manager.is_in_scope(value)
         return result.in_scope
 
     async def save_asset(self, target_id: int, asset_type: str, asset_value: str,
-                         source_tool: str, **extra) -> int | None:
-        """Insert an Asset record. Returns asset ID or None if duplicate."""
+                         source_tool: str, scope_manager: ScopeManager | None = None,
+                         **extra) -> int | None:
+        """Insert an Asset record with fast scope classification. Returns asset ID or None if duplicate."""
         async with get_session() as session:
             stmt = select(Asset).where(
                 Asset.target_id == target_id,
@@ -72,11 +80,18 @@ class InfoGatheringTool(ABC):
             if result.scalar_one_or_none() is not None:
                 return None
 
+            # Fast scope classification (Layer 1)
+            scope_classification = "pending"
+            if scope_manager and scope_manager._in_scope_patterns:
+                scope_result = scope_manager.classify(asset_value)
+                scope_classification = scope_result.classification
+
             asset = Asset(
                 target_id=target_id,
                 asset_type=asset_type,
                 asset_value=asset_value,
                 source_tool=source_tool,
+                scope_classification=scope_classification,
                 **extra,
             )
             session.add(asset)

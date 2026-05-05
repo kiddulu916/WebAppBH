@@ -24,29 +24,57 @@ class ScopeResult:
     normalized: str
     asset_type: str  # "domain" | "ip" | "cidr"
     path: Optional[str] = None
+    classification: Optional[str] = None  # "in-scope" | "out-of-scope" | "pending"
+    matched_pattern: Optional[str] = None
 
 
 class ScopeManager:
     """Evaluate whether assets belong to the engagement scope.
 
-    Parameters
-    ----------
-    target_profile : dict
-        A dictionary with keys:
-        - in_scope_domains: list[str]   (e.g. ["*.example.com", "exact.io"])
-        - out_scope_domains: list[str]  (e.g. ["admin.example.com"])
-        - in_scope_cidrs: list[str]     (e.g. ["192.168.1.0/24"])
-        - in_scope_regex: list[str]     (e.g. [r".*\\.internal\\.corp$"])
+    Can be initialized two ways:
+
+    1. Legacy (target_profile dict):
+       ScopeManager(target_profile={
+           "in_scope_domains": ["*.example.com"],
+           "out_scope_domains": ["staging.example.com"],
+           "in_scope_cidrs": ["192.168.0.0/16"],
+           "in_scope_regex": [r".*\\.internal\\.corp$"],
+       })
+
+    2. New (raw pattern lists):
+       ScopeManager(
+           in_scope=["*.example.com", "example.com", "10.0.0.0/8"],
+           out_of_scope=["staging.example.com", "example.com/api/v1/internal/*"],
+       )
     """
 
-    def __init__(self, target_profile: dict) -> None:
+    def __init__(
+        self,
+        target_profile: dict | None = None,
+        *,
+        in_scope: list[str] | None = None,
+        out_of_scope: list[str] | None = None,
+    ) -> None:
         self._in_domains: list[str] = []
         self._in_exact_domains: list[str] = []
         self._out_domains: list[str] = []
         self._in_networks: list[netaddr.IPNetwork] = []
         self._regex_rules: list[re.Pattern] = []
+        # Raw patterns for the wildcard-based classify() path
+        self._in_scope_patterns: list[str] = []
+        self._out_of_scope_patterns: list[str] = []
 
-        # Parse domain rules
+        if in_scope is not None or out_of_scope is not None:
+            # New-style initialization with raw patterns
+            self._in_scope_patterns = list(in_scope or [])
+            self._out_of_scope_patterns = list(out_of_scope or [])
+            # Also populate legacy fields for is_in_scope() compatibility
+            self._populate_legacy_from_patterns(self._in_scope_patterns, self._out_of_scope_patterns)
+        elif target_profile is not None:
+            # Legacy initialization
+            self._populate_legacy_from_profile(target_profile)
+
+    def _populate_legacy_from_profile(self, target_profile: dict) -> None:
         for domain in target_profile.get("in_scope_domains", []):
             if domain.startswith("*."):
                 self._in_domains.append(domain[2:].lower())
@@ -56,17 +84,92 @@ class ScopeManager:
         for domain in target_profile.get("out_scope_domains", []):
             self._out_domains.append(domain.lower())
 
-        # Parse CIDR/network rules
         for cidr in target_profile.get("in_scope_cidrs", []):
             self._in_networks.append(netaddr.IPNetwork(cidr))
 
-        # Parse regex rules
         for pattern in target_profile.get("in_scope_regex", []):
             self._regex_rules.append(re.compile(pattern))
+
+    def _populate_legacy_from_patterns(self, in_patterns: list[str], out_patterns: list[str]) -> None:
+        from lib_webbh.wildcard import _IP_PATTERN
+
+        for p in in_patterns:
+            if "/" in p and not _IP_PATTERN.match(p):
+                continue  # path pattern — no legacy equivalent
+            try:
+                net = netaddr.IPNetwork(p)
+                self._in_networks.append(net)
+                continue
+            except (netaddr.AddrFormatError, ValueError):
+                pass
+            if _IP_PATTERN.match(p):
+                continue  # IP wildcard — handled by classify() only
+            if p.startswith("*.") or p.startswith("**."):
+                self._in_domains.append(p.lstrip("*").lstrip(".").lower())
+            else:
+                self._in_exact_domains.append(p.lower())
+
+        for p in out_patterns:
+            if "/" in p:
+                continue  # path exclusion — handled by classify() only
+            self._out_domains.append(p.lower())
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def classify(self, value: str) -> ScopeResult:
+        """Classify a value as in-scope, out-of-scope, or pending.
+
+        Uses the wildcard pattern engine for matching. Checks out-of-scope
+        patterns first (exclusions always win).
+
+        Returns ScopeResult with classification and matched_pattern fields.
+        """
+        from lib_webbh.wildcard import match_pattern
+
+        # 1. Check out-of-scope patterns first
+        for pattern in self._out_of_scope_patterns:
+            if match_pattern(value, pattern):
+                return ScopeResult(
+                    in_scope=False,
+                    original=value,
+                    normalized=value.lower(),
+                    asset_type=self._detect_type(value),
+                    classification="out-of-scope",
+                    matched_pattern=pattern,
+                )
+
+        # 2. Check in-scope patterns
+        for pattern in self._in_scope_patterns:
+            if match_pattern(value, pattern):
+                return ScopeResult(
+                    in_scope=True,
+                    original=value,
+                    normalized=value.lower(),
+                    asset_type=self._detect_type(value),
+                    classification="in-scope",
+                    matched_pattern=pattern,
+                )
+
+        # 3. No match → pending (needs deep classification)
+        return ScopeResult(
+            in_scope=False,
+            original=value,
+            normalized=value.lower(),
+            asset_type=self._detect_type(value),
+            classification="pending",
+            matched_pattern=None,
+        )
+
+    @staticmethod
+    def _detect_type(value: str) -> str:
+        from lib_webbh.wildcard import _IP_PATTERN
+        if _IP_PATTERN.match(value):
+            return "ip"
+        if "/" in value:
+            return "domain"
+        return "domain"
 
     def is_in_scope(self, item: str) -> ScopeResult:
         """Check whether *item* is in scope.
