@@ -265,7 +265,7 @@ async def test_check_scheduled_scans(db):
         # Verify push_task was called
         mock_push.assert_called_once()
         call_args = mock_push.call_args
-        assert call_args[0][0] == "recon_queue"
+        assert call_args[0][0] == "info_gathering_queue"
         payload = call_args[0][1]
         assert payload["rescan"] is True
         assert payload["scheduled"] is True
