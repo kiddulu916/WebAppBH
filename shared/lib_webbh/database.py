@@ -223,8 +223,18 @@ class Asset(TimestampMixin, Base):
     asset_value: Mapped[str] = mapped_column(String(500))
     source_tool: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     tech: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    scope_classification: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default="pending", nullable=False,
+    )
+    associated_with_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True,
+    )
+    association_method: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     target: Mapped["Target"] = relationship(back_populates="assets")
+    associated_with: Mapped[Optional["Asset"]] = relationship(
+        "Asset", remote_side="Asset.id", foreign_keys=[associated_with_id],
+    )
     locations: Mapped[list["Location"]] = relationship(back_populates="asset", cascade="all, delete-orphan")
     observations: Mapped[list["Observation"]] = relationship(back_populates="asset", cascade="all, delete-orphan")
     parameters: Mapped[list["Parameter"]] = relationship(back_populates="asset", cascade="all, delete-orphan")

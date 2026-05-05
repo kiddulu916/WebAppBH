@@ -61,6 +61,12 @@ from lib_webbh.intel_enrichment import (
     get_available_intel_sources,
 )
 
+# Wildcard matching
+from lib_webbh.wildcard import match_domain, match_ip, match_path, match_pattern
+
+# Deep scope classification
+from lib_webbh.deep_classifier import DeepClassifier, DeepResult
+
 # Batch insert
 from lib_webbh.batch_insert import BatchInserter
 
@@ -143,6 +149,12 @@ __all__ = [
     "get_tool_rankings",
     "generate_adaptive_playbook",
     "ToolRanking",
+    "match_domain",
+    "match_ip",
+    "match_path",
+    "match_pattern",
+    "DeepClassifier",
+    "DeepResult",
     "rate_limit_acquire",
     "wait_and_acquire",
     "get_current_rate",
