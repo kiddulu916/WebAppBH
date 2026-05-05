@@ -21,6 +21,7 @@ def test_tool_weights_contains_all_tools():
         "Hakrawler", "Wappalyzer", "CookieFingerprinter", "Webanalyze",
         "Naabu", "Waybackurls", "ArchitectureModeler",
         "ApplicationMapper", "AttackSurfaceAnalyzer",
+        "CacheProber", "ShodanSearcher", "CensysSearcher", "SecurityTrailsSearcher",
     }
     assert set(TOOL_WEIGHTS.keys()) == expected_tools
 

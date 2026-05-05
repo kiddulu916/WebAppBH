@@ -36,9 +36,13 @@ from .tools.waybackurls import Waybackurls
 from .tools.architecture_modeler import ArchitectureModeler
 from .tools.application_mapper import ApplicationMapper
 from .tools.attack_surface_analyzer import AttackSurfaceAnalyzer
+from .tools.cache_prober import CacheProber
+from .tools.shodan_searcher import ShodanSearcher
+from .tools.censys_searcher import CensysSearcher
+from .tools.securitytrails_searcher import SecurityTrailsSearcher
 
 STAGES = [
-    Stage(name="search_engine_recon", section_id="4.1.1", tools=[DorkEngine, ArchiveProber]),
+    Stage(name="search_engine_recon", section_id="4.1.1", tools=[DorkEngine, ArchiveProber, CacheProber, ShodanSearcher, CensysSearcher, SecurityTrailsSearcher]),
     Stage(name="web_server_fingerprint", section_id="4.1.2", tools=[Nmap, WhatWeb, Httpx]),
     Stage(name="web_server_metafiles", section_id="4.1.3", tools=[MetafileParser]),
     Stage(name="enumerate_subdomains", section_id="4.1.4", tools=[Subfinder, Assetfinder, AmassPassive, AmassActive, Massdns, VHostProber]),
