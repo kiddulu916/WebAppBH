@@ -32,6 +32,10 @@ TOOL_WEIGHTS = {
     "ArchitectureModeler": "LIGHT",
     "ApplicationMapper": "LIGHT",
     "AttackSurfaceAnalyzer": "LIGHT",
+    "CacheProber": "LIGHT",
+    "ShodanSearcher": "LIGHT",
+    "CensysSearcher": "LIGHT",
+    "SecurityTrailsSearcher": "LIGHT",
 }
 
 
