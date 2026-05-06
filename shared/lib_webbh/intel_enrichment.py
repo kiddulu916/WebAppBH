@@ -17,6 +17,8 @@ import httpx
 # ---------------------------------------------------------------------------
 SHODAN_API_KEY: str = os.environ.get("SHODAN_API_KEY", "")
 SECURITYTRAILS_API_KEY: str = os.environ.get("SECURITYTRAILS_API_KEY", "")
+CENSYS_API_ID: str = os.environ.get("CENSYS_API_ID", "")
+CENSYS_API_SECRET: str = os.environ.get("CENSYS_API_SECRET", "")
 
 SHODAN_BASE = "https://api.shodan.io"
 SECURITYTRAILS_BASE = "https://api.securitytrails.com/v1"
@@ -173,4 +175,5 @@ def get_available_intel_sources() -> dict[str, bool]:
     return {
         "shodan": bool(SHODAN_API_KEY),
         "securitytrails": bool(SECURITYTRAILS_API_KEY),
+        "censys": bool(CENSYS_API_ID) and bool(CENSYS_API_SECRET),
     }
