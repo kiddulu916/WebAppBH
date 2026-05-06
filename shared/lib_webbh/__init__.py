@@ -75,6 +75,7 @@ from lib_webbh.llm_client import LLMClient, LLMResponse
 
 # Rate limiting
 from lib_webbh.rate_limiter import acquire as rate_limit_acquire, wait_and_acquire, get_current_rate
+from lib_webbh.rate_limiter import RateLimiter, RateRule, parse_rate_rule
 
 # Pipeline checkpoint mixin
 from lib_webbh.pipeline_checkpoint import CheckpointMixin
@@ -158,5 +159,8 @@ __all__ = [
     "rate_limit_acquire",
     "wait_and_acquire",
     "get_current_rate",
+    "RateLimiter",
+    "RateRule",
+    "parse_rate_rule",
     "CheckpointMixin",
 ]

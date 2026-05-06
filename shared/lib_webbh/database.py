@@ -141,6 +141,9 @@ class Campaign(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(50), default="pending")
     scope_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     rate_limit: Mapped[int] = mapped_column(Integer, default=50)
+    rate_limits: Mapped[Optional[list]] = mapped_column(
+        JSON, default=lambda: [{"amount": 50, "unit": "req/s"}], nullable=True,
+    )
     has_credentials: Mapped[bool] = mapped_column(Boolean, default=False)
     started_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

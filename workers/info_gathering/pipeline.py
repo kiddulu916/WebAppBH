@@ -89,7 +89,7 @@ class Pipeline(CheckpointMixin):
 
     async def run(
         self, target, scope_manager: ScopeManager, headers: dict | None = None,
-        playbook: dict | None = None,
+        playbook: dict | None = None, rate_limiter=None,
     ) -> None:
         """Execute the pipeline, resuming from last completed stage."""
         completed_phase = await self._get_resume_stage()
@@ -107,7 +107,7 @@ class Pipeline(CheckpointMixin):
             self.log.info(f"Starting stage: {stage.name}")
             await self._update_phase(stage.name)
 
-            stats = await self._run_stage(stage, target, scope_manager, headers)
+            stats = await self._run_stage(stage, target, scope_manager, headers, rate_limiter)
 
             self.log.info(f"Stage complete: {stage.name}", extra={"stats": stats})
             await push_task(f"events:{self.target_id}", {
@@ -130,6 +130,7 @@ class Pipeline(CheckpointMixin):
         target,
         scope_manager: ScopeManager,
         headers: dict | None = None,
+        rate_limiter=None,
     ) -> dict:
         """Run all tools in a stage concurrently, return aggregated stats."""
         tools = [cls() for cls in stage.tools]
@@ -140,6 +141,7 @@ class Pipeline(CheckpointMixin):
                 scope_manager=scope_manager,
                 headers=headers,
                 container_name=self.container_name,
+                rate_limiter=rate_limiter,
             )
             for tool in tools
         ]
