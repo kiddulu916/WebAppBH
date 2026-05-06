@@ -35,7 +35,7 @@ export interface TargetProfile {
   out_scope_domains?: string[];
   in_scope_cidrs?: string[];
   in_scope_regex?: string[];
-  rate_limits?: Record<string, number>;
+  rate_limits?: Array<{ amount: number; unit: string }> | Record<string, number>;
   custom_headers?: Record<string, string>;
   [key: string]: unknown;
 }

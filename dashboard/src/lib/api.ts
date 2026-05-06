@@ -320,8 +320,35 @@ export const api = {
     return request<StatusResponse>(`/api/v1/status${qs}`);
   },
 
-  getAssets(targetId: number) {
-    return request<AssetsResponse>(`/api/v1/assets?target_id=${targetId}`);
+  getAssets(targetId: number, classification?: string) {
+    let qs = `?target_id=${targetId}`;
+    if (classification) qs += `&classification=${classification}`;
+    return request<AssetsResponse>(`/api/v1/assets${qs}`);
+  },
+
+  updateAssetClassification(assetId: number, classification: string) {
+    return request<{ id: number; scope_classification: string }>(
+      `/api/v1/assets/${assetId}/classification`,
+      { method: "PUT", body: JSON.stringify({ classification }) },
+    );
+  },
+
+  bulkUpdateClassification(assetIds: number[], classification: string) {
+    return request<{ updated: number; classification: string }>(
+      "/api/v1/assets/bulk-classification",
+      { method: "PUT", body: JSON.stringify({ asset_ids: assetIds, classification }) },
+    );
+  },
+
+  getAssetChain(assetId: number) {
+    return request<{
+      chain: Array<{
+        id: number;
+        asset_value: string;
+        asset_type: string;
+        association_method: string | null;
+      }>;
+    }>(`/api/v1/assets/${assetId}/chain`);
   },
 
   getVulnerabilities(targetId: number, severity?: string) {
@@ -358,7 +385,7 @@ export const api = {
     });
   },
 
-  updateTargetProfile(targetId: number, profile: { custom_headers?: Record<string, string>; rate_limits?: Record<string, number> }) {
+  updateTargetProfile(targetId: number, profile: { custom_headers?: Record<string, string>; rate_limits?: Array<{ amount: number; unit: string }> | Record<string, number> }) {
     return request<{ target_id: number; target_profile: import("@/types/schema").TargetProfile }>(`/api/v1/targets/${targetId}`, {
       method: "PATCH",
       body: JSON.stringify(profile),
@@ -537,6 +564,8 @@ export const api = {
   updateApiKeys(data: {
     shodan_api_key?: string;
     securitytrails_api_key?: string;
+    censys_api_id?: string;
+    censys_api_secret?: string;
   }) {
     return request<{ keys: Record<string, boolean> }>(
       "/api/v1/config/api_keys",

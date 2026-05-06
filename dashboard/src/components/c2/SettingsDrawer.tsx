@@ -20,7 +20,15 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
 
   const initialHeaders = Object.entries(currentProfile?.custom_headers ?? {}).map(([k, v]) => ({ key: k, value: v }));
   const [headers, setHeaders] = useState(initialHeaders.length > 0 ? initialHeaders : [{ key: "", value: "" }]);
-  const [pps, setPps] = useState(String(currentProfile?.rate_limits?.pps ?? ""));
+  const [pps, setPps] = useState(() => {
+    const rl = currentProfile?.rate_limits;
+    if (!rl) return "";
+    if (Array.isArray(rl)) {
+      const reqRule = rl.find((r) => r.unit === "req/s");
+      return reqRule ? String(reqRule.amount) : "";
+    }
+    return String((rl as Record<string, number>).pps ?? "");
+  });
   const [saving, setSaving] = useState(false);
   const [cleanSlateConfirm, setCleanSlateConfirm] = useState(false);
   const [cleaning, setCleaning] = useState(false);
