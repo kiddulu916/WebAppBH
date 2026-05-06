@@ -125,9 +125,13 @@ function ApiKeysSection() {
   const [editing, setEditing] = useState(false);
   const [shodanKey, setShodanKey] = useState("");
   const [securityTrailsKey, setSecurityTrailsKey] = useState("");
+  const [censysId, setCensysId] = useState("");
+  const [censysSecret, setCensysSecret] = useState("");
   const [saving, setSaving] = useState(false);
   const [showShodan, setShowShodan] = useState(false);
   const [showST, setShowST] = useState(false);
+  const [showCensysId, setShowCensysId] = useState(false);
+  const [showCensysSecret, setShowCensysSecret] = useState(false);
 
   useEffect(() => {
     api
@@ -143,11 +147,15 @@ function ApiKeysSection() {
       if (shodanKey.trim()) payload.shodan_api_key = shodanKey.trim();
       if (securityTrailsKey.trim())
         payload.securitytrails_api_key = securityTrailsKey.trim();
+      if (censysId.trim()) payload.censys_api_id = censysId.trim();
+      if (censysSecret.trim()) payload.censys_api_secret = censysSecret.trim();
       const res = await api.updateApiKeys(payload);
       setKeys(res.keys ?? {});
       setEditing(false);
       setShodanKey("");
       setSecurityTrailsKey("");
+      setCensysId("");
+      setCensysSecret("");
     } catch {
       // toast shown by api.request()
     } finally {
@@ -169,7 +177,7 @@ function ApiKeysSection() {
         )}
       </div>
       <p className="mt-1 text-xs text-text-muted">
-        Third-party keys for intel enrichment (Shodan, SecurityTrails)
+        Third-party keys for intel enrichment (Shodan, SecurityTrails, Censys)
       </p>
 
       {/* Current status */}
@@ -252,12 +260,64 @@ function ApiKeysSection() {
               </button>
             </div>
           </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-text-secondary">
+              Censys API ID
+            </label>
+            <div className="relative">
+              <input
+                type={showCensysId ? "text" : "password"}
+                value={censysId}
+                onChange={(e) => setCensysId(e.target.value)}
+                placeholder="Leave blank to keep current"
+                className="w-full rounded border border-border bg-bg-tertiary px-2 py-1.5 pr-8 text-xs font-mono text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowCensysId(!showCensysId)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+              >
+                {showCensysId ? (
+                  <EyeOff className="h-3.5 w-3.5" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-text-secondary">
+              Censys API Secret
+            </label>
+            <div className="relative">
+              <input
+                type={showCensysSecret ? "text" : "password"}
+                value={censysSecret}
+                onChange={(e) => setCensysSecret(e.target.value)}
+                placeholder="Leave blank to keep current"
+                className="w-full rounded border border-border bg-bg-tertiary px-2 py-1.5 pr-8 text-xs font-mono text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowCensysSecret(!showCensysSecret)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+              >
+                {showCensysSecret ? (
+                  <EyeOff className="h-3.5 w-3.5" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </div>
+          </div>
           <div className="flex justify-end gap-2">
             <button
               onClick={() => {
                 setEditing(false);
                 setShodanKey("");
                 setSecurityTrailsKey("");
+                setCensysId("");
+                setCensysSecret("");
               }}
               className="rounded px-3 py-1.5 text-xs text-text-muted hover:bg-bg-surface"
             >

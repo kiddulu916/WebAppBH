@@ -21,6 +21,7 @@ import WorkflowBuilder, {
   DEFAULT_PHASES,
   type WorkflowState,
 } from "@/components/campaign/WorkflowBuilder";
+import RateLimitBuilder from "@/components/common/RateLimitBuilder";
 
 /* ------------------------------------------------------------------ */
 /* Step definitions                                                    */
@@ -74,9 +75,12 @@ export default function ScopeBuilder() {
   /* ---- Intel API Keys ---- */
   const [shodanKey, setShodanKey] = useState("");
   const [secTrailsKey, setSecTrailsKey] = useState("");
+  const [censysId, setCensysId] = useState("");
+  const [censysSecret, setCensysSecret] = useState("");
   const [apiKeyStatus, setApiKeyStatus] = useState<Record<string, boolean>>({
     shodan: false,
     securitytrails: false,
+    censys: false,
   });
 
   useEffect(() => {
@@ -96,8 +100,10 @@ export default function ScopeBuilder() {
   /* ---- Step 3: Workflow Builder ---- */
   const [workflow, setWorkflow] = useState<WorkflowState>(initWorkflowState);
 
-  /* ---- Step 4: Review ---- */
-  const [rateLimit] = useState(50);
+  /* ---- Step 4: Review / Rate Limits ---- */
+  const [rateLimitRules, setRateLimitRules] = useState<
+    Array<{ amount: number; unit: string }>
+  >([{ amount: 50, unit: "req/s" }]);
 
   /* ---- Validation ---- */
   const canNext = useMemo(() => {
@@ -151,16 +157,18 @@ export default function ScopeBuilder() {
         out_scope_domains: lines(outScopeDomains),
         in_scope_cidrs: lines(inScopeCidrs),
         in_scope_regex: lines(inScopeRegex),
-        rate_limits: { pps: rateLimit },
+        rate_limits: rateLimitRules,
       },
     };
 
     try {
       // Save API keys if entered
-      if (shodanKey || secTrailsKey) {
+      if (shodanKey || secTrailsKey || censysId || censysSecret) {
         await api.updateApiKeys({
           ...(shodanKey ? { shodan_api_key: shodanKey } : {}),
           ...(secTrailsKey ? { securitytrails_api_key: secTrailsKey } : {}),
+          ...(censysId ? { censys_api_id: censysId } : {}),
+          ...(censysSecret ? { censys_api_secret: censysSecret } : {}),
         });
       }
 
@@ -368,6 +376,36 @@ export default function ScopeBuilder() {
                   className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
                 />
               </div>
+
+              <div>
+                <label className="section-label mb-1.5 block">Censys API ID</label>
+                <input
+                  type="password"
+                  value={censysId}
+                  onChange={(e) => setCensysId(e.target.value)}
+                  placeholder={
+                    apiKeyStatus.censys ? "••••••••••••" : "Enter Censys API ID"
+                  }
+                  className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
+                />
+              </div>
+
+              <div>
+                <label className="section-label mb-1.5 block">
+                  Censys API Secret
+                </label>
+                <input
+                  type="password"
+                  value={censysSecret}
+                  onChange={(e) => setCensysSecret(e.target.value)}
+                  placeholder={
+                    apiKeyStatus.censys
+                      ? "••••••••••••"
+                      : "Enter Censys API secret"
+                  }
+                  className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
+                />
+              </div>
             </div>
           </div>
         )}
@@ -455,6 +493,14 @@ export default function ScopeBuilder() {
                 />
               </div>
             )}
+
+            <div className="border-t border-border pt-4">
+              <RateLimitBuilder
+                rules={rateLimitRules}
+                onChange={setRateLimitRules}
+                label="Campaign Rate Limits"
+              />
+            </div>
           </div>
         )}
 
@@ -574,8 +620,10 @@ export default function ScopeBuilder() {
                 <span className="section-label">Execution</span>
                 <div className="mt-1.5 space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-text-muted">Rate limit</span>
-                    <span className="font-mono text-xs text-text-secondary">{rateLimit} pps</span>
+                    <span className="text-xs text-text-muted">Rate limits</span>
+                    <span className="font-mono text-xs text-text-secondary">
+                      {rateLimitRules.map((r) => `${r.amount} ${r.unit}`).join(", ")}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-text-muted">Estimated time</span>
