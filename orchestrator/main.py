@@ -204,6 +204,7 @@ class CampaignCreate(BaseModel):
     description: Optional[str] = None
     scope_config: Optional[dict] = None
     rate_limit: int = Field(default=50, ge=1)
+    rate_limits: Optional[list] = None
     has_credentials: bool = False
 
 
@@ -213,6 +214,7 @@ class CampaignUpdate(BaseModel):
     status: Optional[str] = Field(default=None, max_length=50)
     scope_config: Optional[dict] = None
     rate_limit: Optional[int] = Field(default=None, ge=1)
+    rate_limits: Optional[list] = None
     has_credentials: Optional[bool] = None
 
 
@@ -444,6 +446,7 @@ async def create_campaign(body: CampaignCreate):
             description=body.description,
             scope_config=body.scope_config,
             rate_limit=body.rate_limit,
+            rate_limits=body.rate_limits,
             has_credentials=body.has_credentials,
         )
         session.add(campaign)
@@ -456,6 +459,7 @@ async def create_campaign(body: CampaignCreate):
             "status": campaign.status,
             "scope_config": campaign.scope_config,
             "rate_limit": campaign.rate_limit,
+            "rate_limits": campaign.rate_limits,
             "has_credentials": campaign.has_credentials,
             "started_at": campaign.started_at,
             "completed_at": campaign.completed_at,
@@ -483,6 +487,7 @@ async def list_campaigns():
                 "status": c.status,
                 "scope_config": c.scope_config,
                 "rate_limit": c.rate_limit,
+                "rate_limits": c.rate_limits,
                 "has_credentials": c.has_credentials,
                 "started_at": c.started_at,
                 "completed_at": c.completed_at,
@@ -514,6 +519,7 @@ async def get_campaign(campaign_id: int):
             "status": campaign.status,
             "scope_config": campaign.scope_config,
             "rate_limit": campaign.rate_limit,
+            "rate_limits": campaign.rate_limits,
             "has_credentials": campaign.has_credentials,
             "started_at": campaign.started_at,
             "completed_at": campaign.completed_at,
@@ -542,6 +548,8 @@ async def update_campaign(campaign_id: int, body: CampaignUpdate):
             setattr(campaign, key, value)
         if "scope_config" in updates:
             attributes.flag_modified(campaign, "scope_config")
+        if "rate_limits" in updates:
+            attributes.flag_modified(campaign, "rate_limits")
         await session.commit()
         await session.refresh(campaign)
         return {
@@ -551,6 +559,7 @@ async def update_campaign(campaign_id: int, body: CampaignUpdate):
             "status": campaign.status,
             "scope_config": campaign.scope_config,
             "rate_limit": campaign.rate_limit,
+            "rate_limits": campaign.rate_limits,
             "has_credentials": campaign.has_credentials,
             "started_at": campaign.started_at,
             "completed_at": campaign.completed_at,

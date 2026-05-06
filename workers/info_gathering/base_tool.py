@@ -36,8 +36,21 @@ class InfoGatheringTool(ABC):
         """Run this tool against the target. Must be implemented by subclasses."""
         ...
 
-    async def run_subprocess(self, cmd: list[str], timeout: int = TOOL_TIMEOUT) -> str:
-        """Run a command and return stdout."""
+    async def acquire_rate_limit(self, rate_limiter=None) -> None:
+        """Acquire a rate-limit slot before making a target-facing request.
+
+        No-op if rate_limiter is None (no campaign limits configured).
+        """
+        if rate_limiter is not None:
+            await rate_limiter.acquire()
+
+    async def run_subprocess(self, cmd: list[str], timeout: int = TOOL_TIMEOUT,
+                             rate_limiter=None) -> str:
+        """Run a command and return stdout.
+
+        If rate_limiter is provided, acquires a slot before running.
+        """
+        await self.acquire_rate_limit(rate_limiter)
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,

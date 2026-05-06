@@ -1,15 +1,15 @@
 # workers/info_gathering/main.py
 import asyncio
-import os
 import socket
 from datetime import datetime, timezone
 
 from sqlalchemy import select, update
 
 from lib_webbh import get_session, push_task, setup_logger
-from lib_webbh.database import Asset, AssetSnapshot, Target, JobState
+from lib_webbh.database import Asset, AssetSnapshot, Campaign, Target, JobState
 from lib_webbh.diffing import compute_diff
 from lib_webbh.messaging import listen_priority_queues, get_redis
+from lib_webbh.rate_limiter import RateLimiter, parse_rate_rule
 from lib_webbh.scope import ScopeManager
 
 from .pipeline import STAGES
@@ -34,7 +34,19 @@ async def run_pipeline(target_id: int):
         profile = target.target_profile or {"in_scope_domains": [f"*.{target.base_domain}"]}
         scope_manager = ScopeManager(profile)
 
-    for stage_idx, stage in enumerate(STAGES):
+        # Load campaign rate limits if campaign is set
+        rate_limiter = None
+        if target.campaign_id:
+            campaign = await session.get(Campaign, target.campaign_id)
+            if campaign and campaign.rate_limits:
+                try:
+                    rules = [parse_rate_rule(r) for r in campaign.rate_limits]
+                    redis_client = get_redis()
+                    rate_limiter = RateLimiter(redis_client, campaign.id, rules)
+                except (ValueError, KeyError) as e:
+                    logger.warning(f"Failed to parse rate limits: {e}")
+
+    for _, stage in enumerate(STAGES):
         logger.info("Stage started", extra={"stage": stage.name, "section_id": stage.section_id})
 
         # Update job state
@@ -58,7 +70,11 @@ async def run_pipeline(target_id: int):
             async with sem:
                 try:
                     tool = tool_cls()
-                    await tool.execute(target_id, target=target, scope_manager=scope_manager)
+                    await tool.execute(
+                        target_id, target=target,
+                        scope_manager=scope_manager,
+                        rate_limiter=rate_limiter,
+                    )
                 except Exception as tool_err:
                     logger.warning(f"Tool {tool_cls.__name__} failed", extra={"error": str(tool_err)})
 
