@@ -71,6 +71,8 @@ services:
       ENABLE_TEST_SEED: ${ENABLE_TEST_SEED:-true}
       SHODAN_API_KEY: ${SHODAN_API_KEY:-}
       SECURITYTRAILS_API_KEY: ${SECURITYTRAILS_API_KEY:-}
+      CENSYS_API_ID: ${CENSYS_API_ID:-}
+      CENSYS_API_SECRET: ${CENSYS_API_SECRET:-}
     ports:
       - "8001:8001"
     volumes:
@@ -124,6 +126,10 @@ services:
       DB_PASS: ${DB_PASS:-changeme}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      SHODAN_API_KEY: ${SHODAN_API_KEY:-}
+      SECURITYTRAILS_API_KEY: ${SECURITYTRAILS_API_KEY:-}
+      CENSYS_API_ID: ${CENSYS_API_ID:-}
+      CENSYS_API_SECRET: ${CENSYS_API_SECRET:-}
     volumes:
       - ./shared:/app/shared
     deploy:

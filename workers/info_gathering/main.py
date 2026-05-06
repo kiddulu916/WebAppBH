@@ -18,6 +18,8 @@ from .concurrency import get_semaphores, TOOL_WEIGHTS
 logger = setup_logger("info_gathering")
 
 WORKER_TYPE = "info_gathering"
+MAX_EXPANSION_ROUNDS = 5
+MAX_ASSETS_PER_ROUND = 500
 
 
 async def run_pipeline(target_id: int):
@@ -84,6 +86,90 @@ async def run_pipeline(target_id: int):
         logger.info("Stage complete", extra={"stage": stage.name})
 
 
+async def _get_expansion_targets(target_id: int, scanned_values: set[str]) -> list[Asset]:
+    """Find new in-scope or associated assets not yet scanned."""
+    async with get_session() as session:
+        stmt = select(Asset).where(
+            Asset.target_id == target_id,
+            Asset.scope_classification.in_(["in-scope", "associated"]),
+            Asset.asset_type.in_(["domain", "ip"]),
+        )
+        if scanned_values:
+            stmt = stmt.where(Asset.asset_value.notin_(scanned_values))
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+
+async def _run_expansion(target_id: int) -> None:
+    """Iteratively expand scope by scanning newly discovered in-scope/associated assets.
+
+    After each round, queries for new scannable assets. Stops when:
+    - No new assets found (convergence)
+    - MAX_EXPANSION_ROUNDS reached
+    - MAX_ASSETS_PER_ROUND exceeded in a single round
+    """
+    scanned: set[str] = set()
+
+    # Seed with originally-targeted domain
+    async with get_session() as session:
+        target = await session.get(Target, target_id)
+        if target and target.base_domain:
+            scanned.add(target.base_domain)
+
+    for round_num in range(1, MAX_EXPANSION_ROUNDS + 1):
+        new_assets = await _get_expansion_targets(target_id, scanned)
+
+        if not new_assets:
+            logger.info("Expansion converged — no new assets to scan",
+                        extra={"target_id": target_id, "round": round_num})
+            await push_task(f"events:{target_id}", {
+                "event": "CAMPAIGN_COMPLETE",
+                "target_id": target_id,
+                "rounds_completed": round_num - 1,
+                "reason": "converged",
+            })
+            return
+
+        if len(new_assets) > MAX_ASSETS_PER_ROUND:
+            logger.warning("Expansion paused — too many new assets",
+                           extra={"target_id": target_id, "count": len(new_assets)})
+            await push_task(f"events:{target_id}", {
+                "event": "EXPANSION_PAUSED",
+                "target_id": target_id,
+                "round": round_num,
+                "queued_count": len(new_assets),
+                "reason": "max_assets_exceeded",
+            })
+            return
+
+        # Queue each new asset for scanning
+        for asset in new_assets:
+            scanned.add(asset.asset_value)
+            await push_task(f"{WORKER_TYPE}_queue", {
+                "target_id": target_id,
+                "domain": asset.asset_value if asset.asset_type == "domain" else None,
+                "expansion_round": round_num,
+            })
+
+        logger.info(f"Expansion round {round_num} queued {len(new_assets)} assets",
+                    extra={"target_id": target_id, "round": round_num, "count": len(new_assets)})
+        await push_task(f"events:{target_id}", {
+            "event": "ROUND_COMPLETE",
+            "target_id": target_id,
+            "round": round_num,
+            "new_assets": len(new_assets),
+        })
+
+    logger.info("Expansion stopped — max rounds reached",
+                extra={"target_id": target_id, "max_rounds": MAX_EXPANSION_ROUNDS})
+    await push_task(f"events:{target_id}", {
+        "event": "CAMPAIGN_COMPLETE",
+        "target_id": target_id,
+        "rounds_completed": MAX_EXPANSION_ROUNDS,
+        "reason": "max_rounds",
+    })
+
+
 async def _compute_and_emit_diff(target_id: int, scan_number: int) -> None:
     """Compare current assets against the pre-rescan snapshot and emit diff event."""
     async with get_session() as session:
@@ -137,6 +223,7 @@ async def main():
         target_id = message["payload"]["target_id"]
         rescan = message["payload"].get("rescan", False)
         snapshot_scan_number = message["payload"].get("snapshot_scan_number")
+        expansion_round = message["payload"].get("expansion_round")
         logger.info("Job received", extra={"target_id": target_id})
 
         try:
@@ -156,6 +243,13 @@ async def main():
             # Compute rescan diff if this was a rescan with a snapshot
             if rescan and snapshot_scan_number is not None:
                 await _compute_and_emit_diff(target_id, snapshot_scan_number)
+
+            # Run expansion on initial pipeline run (not on expansion sub-jobs)
+            if not expansion_round:
+                async with get_session() as session:
+                    target = await session.get(Target, target_id)
+                    if target and target.campaign_id:
+                        await _run_expansion(target_id)
 
             # Mark complete
             async with get_session() as session:

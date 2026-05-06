@@ -60,7 +60,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
-from sqlalchemy import func, inspect, or_, select, text
+from sqlalchemy import func, inspect, or_, select, text, update
 from sqlalchemy.orm import attributes, selectinload
 
 from lib_webbh import (
@@ -205,6 +205,8 @@ class ScheduleUpdate(BaseModel):
 class ApiKeyUpdate(BaseModel):
     shodan_api_key: Optional[str] = None
     securitytrails_api_key: Optional[str] = None
+    censys_api_id: Optional[str] = None
+    censys_api_secret: Optional[str] = None
 
 
 class PlaybookCreate(BaseModel):
@@ -307,7 +309,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             if line and not line.startswith("#") and "=" in line:
                 key, _, value = line.partition("=")
                 key, value = key.strip(), value.strip()
-                if value and key in ("SHODAN_API_KEY", "SECURITYTRAILS_API_KEY"):
+                if value and key in ("SHODAN_API_KEY", "SECURITYTRAILS_API_KEY", "CENSYS_API_ID", "CENSYS_API_SECRET"):
                     os.environ.setdefault(key, value)
         logger.info("Loaded intel API keys from .env.intel")
 
@@ -1204,6 +1206,7 @@ async def list_targets():
 async def list_assets(
     target_id: int = Query(..., description="Target ID to filter assets"),
     asset_type: Optional[str] = Query(None, description="Filter by asset type"),
+    classification: Optional[str] = Query(None, description="Filter by scope classification"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(100, ge=1, le=500, description="Items per page"),
 ):
@@ -1211,6 +1214,8 @@ async def list_assets(
         base = select(Asset).where(Asset.target_id == target_id)
         if asset_type:
             base = base.where(Asset.asset_type == asset_type)
+        if classification:
+            base = base.where(Asset.scope_classification == classification)
 
         # Total count
         count_result = await session.execute(
@@ -1241,6 +1246,9 @@ async def list_assets(
                 "asset_value": a.asset_value,
                 "source_tool": a.source_tool,
                 "tech": a.tech,
+                "scope_classification": a.scope_classification,
+                "associated_with_id": a.associated_with_id,
+                "association_method": a.association_method,
                 "created_at": a.created_at.isoformat() if a.created_at else None,
                 "updated_at": a.updated_at.isoformat() if a.updated_at else None,
                 "locations": [
@@ -1257,6 +1265,68 @@ async def list_assets(
             for a in assets
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/v1/assets/{asset_id}/classification — update single asset classification
+# ---------------------------------------------------------------------------
+class ClassificationUpdate(BaseModel):
+    classification: str = Field(..., pattern="^(in-scope|out-of-scope|associated|undetermined|pending)$")
+
+
+@app.put("/api/v1/assets/{asset_id}/classification")
+async def update_asset_classification(asset_id: int, body: ClassificationUpdate):
+    async with get_session() as session:
+        asset = await session.get(Asset, asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        asset.scope_classification = body.classification
+        await session.commit()
+    return {"id": asset_id, "scope_classification": body.classification}
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/v1/assets/bulk-classification — update multiple assets at once
+# ---------------------------------------------------------------------------
+class BulkClassificationUpdate(BaseModel):
+    asset_ids: list[int] = Field(..., min_length=1, max_length=500)
+    classification: str = Field(..., pattern="^(in-scope|out-of-scope|associated|undetermined|pending)$")
+
+
+@app.put("/api/v1/assets/bulk-classification")
+async def bulk_update_classification(body: BulkClassificationUpdate):
+    async with get_session() as session:
+        await session.execute(
+            update(Asset)
+            .where(Asset.id.in_(body.asset_ids))
+            .values(scope_classification=body.classification)
+        )
+        await session.commit()
+    return {"updated": len(body.asset_ids), "classification": body.classification}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/assets/{asset_id}/chain — walk association chain to root
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/assets/{asset_id}/chain")
+async def get_asset_chain(asset_id: int):
+    chain: list[dict] = []
+    async with get_session() as session:
+        current_id: int | None = asset_id
+        visited: set[int] = set()
+        while current_id is not None and current_id not in visited:
+            visited.add(current_id)
+            asset = await session.get(Asset, current_id)
+            if asset is None:
+                break
+            chain.append({
+                "id": asset.id,
+                "asset_value": asset.asset_value,
+                "asset_type": asset.asset_type,
+                "association_method": asset.association_method,
+            })
+            current_id = asset.associated_with_id
+    return {"chain": chain}
 
 
 # ---------------------------------------------------------------------------
@@ -2174,15 +2244,25 @@ async def get_api_key_status():
 async def update_api_keys(body: ApiKeyUpdate):
     env_lines: list[str] = []
 
-    if body.shodan_api_key is not None:
+    if body.shodan_api_key:
         os.environ["SHODAN_API_KEY"] = body.shodan_api_key
         _intel_mod.SHODAN_API_KEY = body.shodan_api_key
         env_lines.append(f"SHODAN_API_KEY={body.shodan_api_key}")
 
-    if body.securitytrails_api_key is not None:
+    if body.securitytrails_api_key:
         os.environ["SECURITYTRAILS_API_KEY"] = body.securitytrails_api_key
         _intel_mod.SECURITYTRAILS_API_KEY = body.securitytrails_api_key
         env_lines.append(f"SECURITYTRAILS_API_KEY={body.securitytrails_api_key}")
+
+    if body.censys_api_id:
+        os.environ["CENSYS_API_ID"] = body.censys_api_id
+        _intel_mod.CENSYS_API_ID = body.censys_api_id
+        env_lines.append(f"CENSYS_API_ID={body.censys_api_id}")
+
+    if body.censys_api_secret:
+        os.environ["CENSYS_API_SECRET"] = body.censys_api_secret
+        _intel_mod.CENSYS_API_SECRET = body.censys_api_secret
+        env_lines.append(f"CENSYS_API_SECRET={body.censys_api_secret}")
 
     # Persist to .env.intel file (best-effort — keys are already set in memory)
     if env_lines:
