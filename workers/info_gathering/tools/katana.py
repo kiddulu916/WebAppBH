@@ -4,6 +4,7 @@
 import json
 
 from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.tools.url_classifier import classify_url
 
 
 class Katana(InfoGatheringTool):
@@ -31,7 +32,9 @@ class Katana(InfoGatheringTool):
                 data = json.loads(line)
                 url = data.get("url", "")
                 if url:
-                    await self.save_asset(target_id, "url", url, "katana")
+                    asset_type = classify_url(url)
+                    await self.save_asset(target_id, asset_type, url, "katana")
             except json.JSONDecodeError:
                 if line.startswith("http"):
-                    await self.save_asset(target_id, "url", line, "katana")
+                    asset_type = classify_url(line)
+                    await self.save_asset(target_id, asset_type, line, "katana")

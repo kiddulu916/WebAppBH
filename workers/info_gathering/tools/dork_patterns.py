@@ -102,10 +102,14 @@ DORK_CATEGORIES: dict[str, list[str]] = {
 }
 
 
-def get_dorks_for_domain(domain: str) -> list[str]:
-    """Interpolate domain into all dork templates and return a flat list."""
-    dorks = []
-    for templates in DORK_CATEGORIES.values():
+def get_dorks_for_domain(domain: str) -> list[tuple[str, str]]:
+    """Interpolate domain into all dork templates.
+
+    Returns a list of ``(query, category)`` tuples so callers can map
+    the dork category to an asset type when saving results.
+    """
+    dorks: list[tuple[str, str]] = []
+    for category, templates in DORK_CATEGORIES.items():
         for template in templates:
-            dorks.append(template.format(domain=domain))
+            dorks.append((template.format(domain=domain), category))
     return dorks

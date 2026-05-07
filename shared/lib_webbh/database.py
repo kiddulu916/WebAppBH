@@ -100,6 +100,23 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 
 # ---------------------------------------------------------------------------
+# Canonical asset types
+# ---------------------------------------------------------------------------
+ASSET_TYPES = (
+    "domain",          # Base / root domains
+    "ip",              # IP addresses
+    "subdomain",       # Subdomains discovered via enumeration
+    "sensitive_file",  # Exposed files: .env, .sql, .bak, configs, backups, docs
+    "directory",       # Interesting directory paths, admin panels, index-of pages
+    "error",           # Error pages leaking stack traces, DB info, debug output
+    "form",            # Pages with form fields / submit functionality
+    "upload",          # Pages with file upload functionality
+    "deadend",         # Low-value pages not worth further exploration
+    "undetermined",    # Doesn't fit other categories; needs manual triage
+)
+
+
+# ---------------------------------------------------------------------------
 # Declarative base
 # ---------------------------------------------------------------------------
 class Base(AsyncAttrs, DeclarativeBase):

@@ -16,6 +16,11 @@ import {
   Shield,
   Cloud,
   Network,
+  CheckSquare,
+  Square,
+  MinusSquare,
+  ShieldCheck,
+  ShieldOff,
 } from "lucide-react";
 import { api, type AssetWithLocations } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
@@ -26,9 +31,17 @@ import type { Location, Vulnerability, CloudAsset } from "@/types/schema";
 const PAGE_SIZE = 25;
 
 const TYPE_BADGE: Record<string, string> = {
+  domain: "bg-accent/10 text-accent border-accent/20",
   subdomain: "bg-neon-blue-glow text-neon-blue border-neon-blue/20",
   ip: "bg-neon-orange-glow text-neon-orange border-neon-orange/20",
   cidr: "bg-neon-green-glow text-neon-green border-neon-green/20",
+  sensitive_file: "bg-danger/10 text-danger border-danger/20",
+  directory: "bg-sev-medium/10 text-sev-medium border-sev-medium/20",
+  error: "bg-danger/10 text-neon-orange border-neon-orange/20",
+  form: "bg-neon-blue-glow text-neon-blue border-neon-blue/20",
+  upload: "bg-sev-medium/10 text-sev-medium border-sev-medium/20",
+  deadend: "bg-bg-surface text-text-muted border-border",
+  undetermined: "bg-bg-surface text-text-secondary border-border",
   url: "bg-bg-surface text-text-muted border-border",
 };
 
@@ -42,8 +55,17 @@ const SEVERITY_COLORS: Record<string, string> = {
 
 type SortKey = "asset_type" | "asset_value" | "source_tool" | "created_at" | "vuln_count" | "ports";
 type SortDir = "asc" | "desc";
-type TypeFilter = "all" | "subdomain" | "ip" | "cidr";
+type TypeFilter = "all" | "domain" | "subdomain" | "ip" | "cidr" | "sensitive_file" | "directory" | "error" | "form" | "upload" | "deadend" | "undetermined";
+type ClassFilter = "all" | "in_scope" | "out_of_scope" | "pending" | "associated" | "undetermined";
 type DetailTab = "locations" | "vulns" | "cloud" | "tree";
+
+const CLASSIFICATION_BADGE: Record<string, string> = {
+  in_scope: "bg-neon-green-glow text-neon-green border-neon-green/20",
+  out_of_scope: "bg-danger/10 text-danger border-danger/20",
+  pending: "bg-sev-medium/10 text-sev-medium border-sev-medium/20",
+  associated: "bg-neon-blue-glow text-neon-blue border-neon-blue/20",
+  undetermined: "bg-bg-surface text-text-muted border-border",
+};
 
 /* ── Detail data stored per expanded row ── */
 
@@ -95,9 +117,14 @@ export default function AssetsPage() {
   /* ── Controls ── */
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [classFilter, setClassFilter] = useState<ClassFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(0);
+
+  /* ── Selection state ── */
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   /* ── Expand state ── */
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
@@ -145,6 +172,36 @@ export default function AssetsPage() {
     [sortKey],
   );
 
+  /* ── Selection helpers ── */
+  const toggleSelect = useCallback((id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleBulkClassify = useCallback(
+    async (classification: string) => {
+      if (selected.size === 0) return;
+      setBulkLoading(true);
+      try {
+        await api.bulkUpdateClassification([...selected], classification);
+        // Update local data to reflect the change
+        setData((prev) =>
+          prev.map((a) =>
+            selected.has(a.id) ? { ...a, scope_classification: classification } : a,
+          ),
+        );
+        setSelected(new Set());
+      } finally {
+        setBulkLoading(false);
+      }
+    },
+    [selected],
+  );
+
   /* ── Filtering + sorting ── */
   const filtered = useMemo(() => {
     let rows = data;
@@ -152,6 +209,11 @@ export default function AssetsPage() {
     // Type filter
     if (typeFilter !== "all") {
       rows = rows.filter((r) => r.asset_type === typeFilter);
+    }
+
+    // Classification filter
+    if (classFilter !== "all") {
+      rows = rows.filter((r) => r.scope_classification === classFilter);
     }
 
     // Text search
@@ -184,11 +246,29 @@ export default function AssetsPage() {
     });
 
     return rows;
-  }, [data, search, typeFilter, sortKey, sortDir, vulnCounts]);
+  }, [data, search, typeFilter, classFilter, sortKey, sortDir, vulnCounts]);
 
   /* ── Pagination ── */
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  /* ── Select-all state for current page ── */
+  const allPageSelected = paged.length > 0 && paged.every((r) => selected.has(r.id));
+  const somePageSelected = paged.some((r) => selected.has(r.id));
+
+  const toggleSelectAll = useCallback(() => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        // Deselect all on this page
+        for (const r of paged) next.delete(r.id);
+      } else {
+        // Select all on this page
+        for (const r of paged) next.add(r.id);
+      }
+      return next;
+    });
+  }, [allPageSelected, paged]);
 
   /* ── Expand handler ── */
   const handleExpand = useCallback(
@@ -316,35 +396,100 @@ export default function AssetsPage() {
     <div className="space-y-5 animate-fade-in">
       <PageHeader count={filtered.length} />
 
-      {/* Controls: Search + Type Filter */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-          <input
-            data-testid="assets-search"
-            value={search}
+      {/* Controls: Search + Filters + Bulk Actions */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <input
+              data-testid="assets-search"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(0);
+              }}
+              placeholder="Search by hostname or IP..."
+              className="w-full rounded-md border border-border bg-bg-tertiary py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted input-focus"
+            />
+          </div>
+          <select
+            data-testid="assets-type-filter"
+            value={typeFilter}
             onChange={(e) => {
-              setSearch(e.target.value);
+              setTypeFilter(e.target.value as TypeFilter);
               setPage(0);
             }}
-            placeholder="Search by hostname or IP..."
-            className="w-full rounded-md border border-border bg-bg-tertiary py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted input-focus"
-          />
+            className="rounded-md border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary input-focus"
+          >
+            <option value="all">All Types</option>
+            <option value="domain">Domain</option>
+            <option value="subdomain">Subdomain</option>
+            <option value="ip">IP</option>
+            <option value="cidr">CIDR</option>
+            <option value="sensitive_file">Sensitive File</option>
+            <option value="directory">Directory</option>
+            <option value="error">Error Page</option>
+            <option value="form">Form</option>
+            <option value="upload">Upload</option>
+            <option value="deadend">Dead End</option>
+            <option value="undetermined">Undetermined</option>
+          </select>
+          <select
+            data-testid="assets-class-filter"
+            value={classFilter}
+            onChange={(e) => {
+              setClassFilter(e.target.value as ClassFilter);
+              setPage(0);
+            }}
+            className="rounded-md border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary input-focus"
+          >
+            <option value="all">All Scope</option>
+            <option value="in_scope">In Scope</option>
+            <option value="out_of_scope">Out of Scope</option>
+            <option value="pending">Pending</option>
+            <option value="associated">Associated</option>
+            <option value="undetermined">Undetermined</option>
+          </select>
         </div>
-        <select
-          data-testid="assets-type-filter"
-          value={typeFilter}
-          onChange={(e) => {
-            setTypeFilter(e.target.value as TypeFilter);
-            setPage(0);
-          }}
-          className="rounded-md border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary input-focus"
-        >
-          <option value="all">All Types</option>
-          <option value="subdomain">Subdomain</option>
-          <option value="ip">IP</option>
-          <option value="cidr">CIDR</option>
-        </select>
+
+        {/* Bulk action bar — visible when items selected */}
+        {selected.size > 0 && (
+          <div
+            data-testid="assets-bulk-bar"
+            className="flex items-center gap-3 rounded-md border border-neon-blue/30 bg-neon-blue-glow px-4 py-2"
+          >
+            <span className="text-sm font-medium text-neon-blue">
+              {selected.size} selected
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                data-testid="bulk-set-in-scope"
+                disabled={bulkLoading}
+                onClick={() => handleBulkClassify("in_scope")}
+                className="flex items-center gap-1.5 rounded-md border border-neon-green/30 bg-neon-green-glow px-3 py-1.5 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20 disabled:opacity-50"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Set In-scope
+              </button>
+              <button
+                data-testid="bulk-set-out-scope"
+                disabled={bulkLoading}
+                onClick={() => handleBulkClassify("out_of_scope")}
+                className="flex items-center gap-1.5 rounded-md border border-danger/30 bg-danger/5 px-3 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger/20 disabled:opacity-50"
+              >
+                <ShieldOff className="h-3.5 w-3.5" />
+                Set Out-of-scope
+              </button>
+              <button
+                data-testid="bulk-clear-selection"
+                onClick={() => setSelected(new Set())}
+                className="rounded-md border border-border bg-bg-surface px-3 py-1.5 text-xs text-text-muted transition-colors hover:bg-bg-tertiary"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -352,9 +497,27 @@ export default function AssetsPage() {
         <table className="w-full text-left text-sm">
           <thead className="bg-bg-surface text-xs text-text-secondary">
             <tr>
+              {/* Select-all checkbox */}
+              <th className="w-10 px-2 py-3">
+                <button
+                  data-testid="select-all-checkbox"
+                  onClick={toggleSelectAll}
+                  className="rounded p-0.5 hover:bg-bg-tertiary transition-colors"
+                  aria-label={allPageSelected ? "Deselect all" : "Select all"}
+                >
+                  {allPageSelected ? (
+                    <CheckSquare className="h-4 w-4 text-neon-blue" />
+                  ) : somePageSelected ? (
+                    <MinusSquare className="h-4 w-4 text-neon-blue" />
+                  ) : (
+                    <Square className="h-4 w-4 text-text-muted" />
+                  )}
+                </button>
+              </th>
               <th className="w-10 px-2 py-3" />
               <SortHeader label="Type" field="asset_type" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Hostname / IP" field="asset_value" current={sortKey} dir={sortDir} onSort={toggleSort} />
+              <th className="px-4 py-3 font-medium text-xs">Scope</th>
               <SortHeader label="Ports" field="ports" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Vulns" field="vuln_count" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Source Tool" field="source_tool" current={sortKey} dir={sortDir} onSort={toggleSort} />
@@ -364,7 +527,7 @@ export default function AssetsPage() {
           <tbody className="divide-y divide-border">
             {paged.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
+                <td colSpan={9} className="px-4 py-8 text-center text-text-muted">
                   No assets match the current filters.
                 </td>
               </tr>
@@ -379,6 +542,7 @@ export default function AssetsPage() {
                     key={row.id}
                     row={row}
                     isExpanded={isExpanded}
+                    isSelected={selected.has(row.id)}
                     ports={ports}
                     vulnInfo={vc}
                     activeTab={activeTab}
@@ -386,6 +550,7 @@ export default function AssetsPage() {
                     detailData={isExpanded ? detailData : null}
                     onExpand={handleExpand}
                     onTabChange={setActiveTab}
+                    onToggleSelect={toggleSelect}
                     activeTarget={activeTarget}
                   />
                 );
@@ -433,7 +598,7 @@ function PageHeader({ count }: { count: number }) {
           Assets
         </h1>
         <p className="mt-1 text-sm text-text-secondary">
-          Discovered subdomains, IPs, and CIDRs
+          Discovered assets across all categories
         </p>
       </div>
       <span className="rounded-md border border-border bg-bg-surface px-3 py-1 font-mono text-sm text-text-primary">
@@ -477,6 +642,7 @@ function SortHeader({
 function AssetRowGroup({
   row,
   isExpanded,
+  isSelected,
   ports,
   vulnInfo,
   activeTab,
@@ -484,10 +650,12 @@ function AssetRowGroup({
   detailData,
   onExpand,
   onTabChange,
+  onToggleSelect,
   activeTarget,
 }: {
   row: AssetWithLocations;
   isExpanded: boolean;
+  isSelected: boolean;
   ports: { display: string; total: number };
   vulnInfo: { count: number; severity: string } | undefined;
   activeTab: DetailTab;
@@ -495,10 +663,12 @@ function AssetRowGroup({
   detailData: DetailData | null;
   onExpand: (id: number) => void;
   onTabChange: (tab: DetailTab) => void;
+  onToggleSelect: (id: number) => void;
   activeTarget: { id: number; base_domain: string; company_name: string };
 }) {
   const vulnCount = vulnInfo?.count ?? 0;
   const highSev = vulnInfo?.severity ?? "info";
+  const scopeClass = row.scope_classification ?? "pending";
 
   return (
     <>
@@ -506,8 +676,24 @@ function AssetRowGroup({
         data-testid={`asset-row-${row.id}`}
         className={`bg-bg-secondary transition-colors hover:bg-bg-tertiary ${
           isExpanded ? "bg-bg-tertiary" : ""
-        }`}
+        } ${isSelected ? "ring-1 ring-inset ring-neon-blue/30" : ""}`}
       >
+        {/* Checkbox */}
+        <td className="px-2 py-2.5">
+          <button
+            data-testid={`asset-checkbox-${row.id}`}
+            onClick={() => onToggleSelect(row.id)}
+            className="rounded p-0.5 hover:bg-bg-surface transition-colors"
+            aria-label={isSelected ? "Deselect" : "Select"}
+          >
+            {isSelected ? (
+              <CheckSquare className="h-4 w-4 text-neon-blue" />
+            ) : (
+              <Square className="h-4 w-4 text-text-muted" />
+            )}
+          </button>
+        </td>
+
         {/* Expand button */}
         <td className="px-2 py-2.5">
           <button
@@ -538,6 +724,18 @@ function AssetRowGroup({
         {/* Hostname / IP */}
         <td className="px-4 py-2.5 font-mono text-text-primary">{row.asset_value}</td>
 
+        {/* Scope classification badge */}
+        <td className="px-4 py-2.5">
+          <span
+            data-testid={`asset-scope-badge-${row.id}`}
+            className={`inline-block rounded border px-2 py-0.5 text-xs font-medium ${
+              CLASSIFICATION_BADGE[scopeClass] ?? CLASSIFICATION_BADGE.undetermined
+            }`}
+          >
+            {scopeClass.replace(/_/g, " ")}
+          </span>
+        </td>
+
         {/* Ports */}
         <td className="px-4 py-2.5 font-mono text-xs text-text-secondary">{ports.display}</td>
 
@@ -567,7 +765,7 @@ function AssetRowGroup({
       {/* ── Expandable detail panel ── */}
       {isExpanded && (
         <tr>
-          <td colSpan={7} className="p-0">
+          <td colSpan={9} className="p-0">
             <div
               data-testid={`asset-detail-panel-${row.id}`}
               className="border-t border-border bg-bg-primary px-6 py-4"
@@ -789,7 +987,14 @@ function CloudTab({ cloudAssets }: { cloudAssets: CloudAsset[] }) {
   );
 }
 
-/* ── Tree View Tab ── */
+/* ── Tree View Tab (with association chain) ── */
+
+interface ChainNode {
+  id: number;
+  asset_value: string;
+  asset_type: string;
+  association_method: string | null;
+}
 
 function TreeTab({
   asset,
@@ -800,52 +1005,122 @@ function TreeTab({
   locations: Location[];
   targetDomain: string;
 }) {
+  const [chain, setChain] = useState<ChainNode[]>([]);
+  const [chainLoading, setChainLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setChainLoading(true);
+    api
+      .getAssetChain(asset.id)
+      .then((res) => {
+        if (!cancelled) setChain(res.chain);
+      })
+      .catch(() => {
+        if (!cancelled) setChain([]);
+      })
+      .finally(() => {
+        if (!cancelled) setChainLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [asset.id]);
+
   return (
-    <div className="space-y-1 font-mono text-xs">
-      {/* Target (root) */}
-      <div className="text-text-primary">
-        <span className="text-neon-blue">\u25C6</span> {targetDomain}
-      </div>
-
-      {/* Domain / asset */}
-      <div className="ml-4 text-text-primary">
-        <span className="text-neon-orange">\u251C\u2500</span>{" "}
-        <span
-          className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-medium ${
-            TYPE_BADGE[asset.asset_type] ?? TYPE_BADGE.url
-          }`}
-        >
-          {asset.asset_type}
-        </span>{" "}
-        {asset.asset_value}
-      </div>
-
-      {/* Ports (children) */}
-      {locations.length > 0 ? (
-        locations.map((loc, i) => {
-          const isLast = i === locations.length - 1;
-          return (
-            <div key={loc.id} className="ml-8 text-text-secondary">
-              <span className="text-text-muted">{isLast ? "\u2514\u2500" : "\u251C\u2500"}</span>{" "}
-              :{loc.port}
-              {loc.service ? ` (${loc.service})` : ""}
-              {loc.state ? (
-                <span
-                  className={`ml-1 ${
-                    loc.state === "open" ? "text-neon-green" : "text-text-muted"
-                  }`}
-                >
-                  [{loc.state}]
-                </span>
-              ) : null}
-            </div>
-          );
-        })
-      ) : (
-        <div className="ml-8 text-text-muted">
-          <span className="text-text-muted">{"\u2514\u2500"}</span> (no ports discovered)
+    <div className="space-y-4">
+      {/* Association chain breadcrumb */}
+      {chainLoading ? (
+        <div className="flex items-center gap-2 text-xs text-text-muted">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading chain...
         </div>
-      )}
+      ) : chain.length > 0 ? (
+        <div>
+          <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-text-muted">
+            Discovery Chain
+          </p>
+          <div className="flex flex-wrap items-center gap-1 text-xs">
+            <span className="inline-flex items-center gap-1 rounded border border-neon-blue/20 bg-neon-blue-glow px-2 py-0.5 font-mono text-neon-blue">
+              {"\u25C6"} {targetDomain}
+            </span>
+            {chain.map((node) => {
+              const isCurrent = node.id === asset.id;
+              return (
+                <span key={node.id} className="inline-flex items-center gap-1">
+                  <span className="text-text-muted">{"\u2192"}</span>
+                  {node.association_method && (
+                    <span className="rounded bg-bg-surface px-1 py-0.5 text-[10px] text-text-muted">
+                      {node.association_method}
+                    </span>
+                  )}
+                  <span
+                    className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 font-mono ${
+                      isCurrent
+                        ? "border-neon-orange/30 bg-neon-orange-glow text-neon-orange font-medium"
+                        : "border-border bg-bg-surface text-text-secondary"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block rounded border px-1 py-0 text-[9px] ${
+                        TYPE_BADGE[node.asset_type] ?? TYPE_BADGE.url
+                      }`}
+                    >
+                      {node.asset_type}
+                    </span>
+                    {node.asset_value}
+                  </span>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Port tree */}
+      <div>
+        <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-text-muted">
+          Port Tree
+        </p>
+        <div className="space-y-1 font-mono text-xs">
+          <div className="text-text-primary">
+            <span className="text-neon-blue">{"\u25C6"}</span> {targetDomain}
+          </div>
+          <div className="ml-4 text-text-primary">
+            <span className="text-neon-orange">{"\u251C\u2500"}</span>{" "}
+            <span
+              className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-medium ${
+                TYPE_BADGE[asset.asset_type] ?? TYPE_BADGE.url
+              }`}
+            >
+              {asset.asset_type}
+            </span>{" "}
+            {asset.asset_value}
+          </div>
+          {locations.length > 0 ? (
+            locations.map((loc, i) => {
+              const isLast = i === locations.length - 1;
+              return (
+                <div key={loc.id} className="ml-8 text-text-secondary">
+                  <span className="text-text-muted">{isLast ? "\u2514\u2500" : "\u251C\u2500"}</span>{" "}
+                  :{loc.port}
+                  {loc.service ? ` (${loc.service})` : ""}
+                  {loc.state ? (
+                    <span
+                      className={`ml-1 ${
+                        loc.state === "open" ? "text-neon-green" : "text-text-muted"
+                      }`}
+                    >
+                      [{loc.state}]
+                    </span>
+                  ) : null}
+                </div>
+              );
+            })
+          ) : (
+            <div className="ml-8 text-text-muted">
+              <span className="text-text-muted">{"\u2514\u2500"}</span> (no ports discovered)
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

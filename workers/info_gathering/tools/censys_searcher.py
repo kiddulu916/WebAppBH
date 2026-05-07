@@ -1,30 +1,29 @@
 # workers/info_gathering/tools/censys_searcher.py
-"""CensysSearcher — optional Censys API integration for infrastructure and TLS discovery."""
+"""CensysSearcher — optional OSINT enrichment via Censys API (WSTG-INFO-01)."""
 
 import asyncio
-import base64
 import os
 
 import aiohttp
 
 from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
+CENSYS_HOSTS_BASE = "https://search.censys.io/api/v2"
+
 
 class CensysSearcher(InfoGatheringTool):
-    """Query Censys API for host infrastructure and TLS certificate information.
+    """Query Censys for hosts, services, and TLS certificate SANs.
 
-    Skips execution if CENSYS_API_ID or CENSYS_API_SECRET are not set.
-    Rate limited to 0.5 seconds between API calls.
+    Skips gracefully when CENSYS_API_ID / CENSYS_API_SECRET are not configured.
     """
 
-    BASE_URL = "https://search.censys.io/api"
+    async def execute(self, target_id: int, **kwargs) -> dict:
+        api_id = os.environ.get("CENSYS_API_ID", "")
+        api_secret = os.environ.get("CENSYS_API_SECRET", "")
 
-    async def execute(self, target_id: int, **kwargs) -> dict | None:
-        api_id = os.environ.get("CENSYS_API_ID")
-        api_secret = os.environ.get("CENSYS_API_SECRET")
         if not api_id or not api_secret:
-            logger.info("CENSYS_API_ID/SECRET not set, skipping Censys search")
-            return None
+            logger.info("CensysSearcher skipped — no CENSYS_API_ID/SECRET configured")
+            return {"skipped": True, "reason": "no_api_key"}
 
         domain = kwargs.get("domain")
         scope_manager = kwargs.get("scope_manager")
@@ -36,58 +35,74 @@ class CensysSearcher(InfoGatheringTool):
             if not domain:
                 return {"found": 0}
 
-        auth = base64.b64encode(f"{api_id}:{api_secret}".encode()).decode()
-        headers = {"Authorization": f"Basic {auth}", "Accept": "application/json"}
-
+        auth = aiohttp.BasicAuth(api_id, api_secret)
         saved = 0
+
         try:
             timeout = aiohttp.ClientTimeout(total=30)
-            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-                # Search for hosts associated with domain
-                search_url = f"{self.BASE_URL}/v2/hosts/search"
-                payload = {"q": domain, "per_page": 25}
+            async with aiohttp.ClientSession(auth=auth, timeout=timeout) as session:
+                # Search for hosts matching the domain
+                search_url = f"{CENSYS_HOSTS_BASE}/hosts/search"
+                params = {"q": domain, "per_page": 50}
 
-                async with session.get(search_url, params=payload) as resp:
+                async with session.get(search_url, params=params) as resp:
                     if resp.status != 200:
+                        logger.warning(f"Censys search returned {resp.status}")
                         return {"found": 0}
                     data = await resp.json()
 
                 hits = data.get("result", {}).get("hits", [])
+
                 for hit in hits:
-                    ip = hit.get("ip")
+                    ip = hit.get("ip", "")
                     if not ip:
                         continue
 
+                    # Save IP as asset
                     asset_id = await self.save_asset(
                         target_id, "ip", ip, "censys",
                         scope_manager=scope_manager,
                     )
                     if asset_id:
                         saved += 1
-                        # Save service and TLS info as observation
-                        services = hit.get("services", [])
-                        tls_names = []
-                        ports = []
-                        for svc in services:
-                            ports.append(svc.get("port"))
-                            tls = svc.get("tls", {})
-                            certs = tls.get("certificates", {})
-                            leaf = certs.get("leaf", {})
-                            names = leaf.get("names", [])
-                            tls_names.extend(names)
 
+                    # Save services as observations
+                    services = hit.get("services", [])
+                    if asset_id and services:
                         await self.save_observation(
                             asset_id,
                             tech_stack={
-                                "ports": ports,
-                                "tls_names": list(set(tls_names)),
-                                "autonomous_system": hit.get("autonomous_system", {}),
+                                "services": [
+                                    {
+                                        "port": svc.get("port"),
+                                        "service_name": svc.get("service_name"),
+                                        "transport_protocol": svc.get("transport_protocol"),
+                                    }
+                                    for svc in services
+                                ],
+                                "source": "censys",
                             },
                         )
 
+                    # Extract TLS SANs -> save as subdomains
+                    for svc in services:
+                        tls = svc.get("tls", {})
+                        cert = tls.get("certificates", {}).get("leaf", {}).get("parsed", {})
+                        names = cert.get("names", [])
+                        for name in names:
+                            name = name.lstrip("*.")
+                            if name and domain in name:
+                                san_id = await self.save_asset(
+                                    target_id, "subdomain", name, "censys",
+                                    scope_manager=scope_manager,
+                                )
+                                if san_id:
+                                    saved += 1
+
+                    # Rate limit: 0.5s between host lookups
                     await asyncio.sleep(0.5)
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            logger.warning(f"Censys API request failed: {e}")
+            logger.warning(f"Censys request failed: {e}")
 
         return {"found": saved}
