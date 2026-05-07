@@ -281,15 +281,15 @@ export const WORKER_STAGE_COUNTS: Record<string, number> = {
   authentication: 10,
   authorization: 4,
   session_mgmt: 9,
-  input_validation: 15,
+  input_validation: 19,
   error_handling: 2,
   cryptography: 4,
   business_logic: 9,
   client_side: 13,
-  mobile_worker: 8,
+  mobile_worker: 5,
   reasoning_worker: 3,
-  chain_worker: 4,
-  reporting: 1,
+  chain_worker: 5,
+  reporting: 4,
 };
 
 export const WORKER_DEPENDENCIES: Record<string, string[]> = {
