@@ -42,6 +42,17 @@ def test_build_worker_config_with_disabled_stages():
     assert {s.name for s in disabled} == {"search_engine_recon", "enumerate_subdomains"}
 
 
+def test_build_worker_config_stage_timeouts():
+    wc = build_worker_config(
+        "config_mgmt",
+        stage_timeouts={"cloud_storage": 900},
+    )
+    cloud = next(s for s in wc.stages if s.name == "cloud_storage")
+    other = next(s for s in wc.stages if s.name == "network_config")
+    assert cloud.tool_timeout == 900
+    assert other.tool_timeout == 600
+
+
 def test_build_worker_config_custom_concurrency():
     wc = build_worker_config("input_validation", concurrency=ConcurrencyConfig(heavy=3, light=6))
     assert wc.concurrency.heavy == 3

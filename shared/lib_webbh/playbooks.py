@@ -87,7 +87,7 @@ PIPELINE_STAGES: dict[str, list[str]] = {
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
-@dataclass
+@dataclass(frozen=True)
 class ConcurrencyConfig:
     heavy: int = 2
     light: int = 4
