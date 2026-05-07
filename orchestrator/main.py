@@ -186,14 +186,12 @@ class ApiKeyUpdate(BaseModel):
 class PlaybookCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(default=None, max_length=1000)
-    stages: list[dict] = Field(..., min_length=1)
-    concurrency: dict = Field(default={"heavy": 2, "light": 4})
+    workers: list[dict] = Field(..., min_length=1)
 
 
 class PlaybookUpdate(BaseModel):
     description: Optional[str] = None
-    stages: Optional[list[dict]] = None
-    concurrency: Optional[dict] = None
+    workers: Optional[list[dict]] = None
 
 
 class RerunRequest(BaseModel):
@@ -1638,7 +1636,7 @@ async def get_attack_paths(target_id: int):
 # ---------------------------------------------------------------------------
 @app.get("/api/v1/targets/{target_id}/execution")
 async def get_execution_state(target_id: int):
-    from lib_webbh.playbooks import _ALL_RECON_STAGES
+    from lib_webbh.playbooks import PIPELINE_STAGES
 
     async with get_session() as session:
         target = (await session.execute(
@@ -1652,21 +1650,48 @@ async def get_execution_state(target_id: int):
             .order_by(JobState.last_seen.desc())
         )).scalars().all()
 
-    stages = []
-    for stage_name in _ALL_RECON_STAGES:
-        matching_jobs = [j for j in jobs if j.current_phase and stage_name in j.current_phase]
-        if matching_jobs:
-            job = matching_jobs[0]
-            stages.append({
-                "name": stage_name, "status": job.status.lower(),
-                "tool": job.last_tool_executed,
-                "started_at": job.created_at.isoformat() if job.created_at else None,
-                "last_seen": job.last_seen.isoformat() if job.last_seen else None,
-            })
-        else:
-            stages.append({"name": stage_name, "status": "pending", "tool": None, "started_at": None, "last_seen": None})
+    # Group jobs by container_name (= worker type)
+    jobs_by_worker: dict[str, JobState] = {}
+    for job in jobs:
+        worker = job.container_name
+        if worker and worker not in jobs_by_worker:
+            jobs_by_worker[worker] = job
 
-    return {"target_id": target_id, "playbook": target.last_playbook or "wide_recon", "stages": stages}
+    workers = []
+    for worker_name, stage_names in PIPELINE_STAGES.items():
+        job = jobs_by_worker.get(worker_name)
+        if job:
+            worker_status = job.status.lower()
+            current_tool = job.last_tool_executed
+            error = getattr(job, "error", None)
+        else:
+            worker_status = "pending"
+            current_tool = None
+            error = None
+
+        stages = []
+        for sname in stage_names:
+            if job and job.current_phase == sname:
+                stage_status = "running" if worker_status == "running" else worker_status
+            elif job and worker_status == "completed":
+                stage_status = "completed"
+            else:
+                stage_status = "pending"
+            stages.append({
+                "name": sname,
+                "status": stage_status,
+                "tool": current_tool if stage_status == "running" else None,
+            })
+
+        workers.append({
+            "name": worker_name,
+            "status": worker_status,
+            "stages": stages,
+            "current_tool": current_tool,
+            "error": error,
+        })
+
+    return {"target_id": target_id, "playbook": target.last_playbook or "wide_recon", "workers": workers}
 
 
 # ---------------------------------------------------------------------------
@@ -2335,8 +2360,7 @@ async def create_playbook(body: PlaybookCreate):
         playbook = CustomPlaybook(
             name=body.name,
             description=body.description,
-            stages=body.stages,
-            concurrency=body.concurrency,
+            workers=body.workers,
         )
         session.add(playbook)
         await session.commit()
@@ -2346,8 +2370,7 @@ async def create_playbook(body: PlaybookCreate):
         "id": playbook.id,
         "name": playbook.name,
         "description": playbook.description,
-        "stages": playbook.stages,
-        "concurrency": playbook.concurrency,
+        "workers": playbook.workers,
         "builtin": False,
     }
 
@@ -2370,8 +2393,7 @@ async def list_playbooks():
                 "id": pb.id,
                 "name": pb.name,
                 "description": pb.description,
-                "stages": pb.stages,
-                "concurrency": pb.concurrency,
+                "workers": pb.workers,
                 "builtin": False,
             })
 
@@ -2390,10 +2412,8 @@ async def update_playbook(playbook_id: int, body: PlaybookUpdate):
 
         if body.description is not None:
             playbook.description = body.description
-        if body.stages is not None:
-            playbook.stages = body.stages
-        if body.concurrency is not None:
-            playbook.concurrency = body.concurrency
+        if body.workers is not None:
+            playbook.workers = body.workers
 
         await session.commit()
         await session.refresh(playbook)
@@ -2402,8 +2422,7 @@ async def update_playbook(playbook_id: int, body: PlaybookUpdate):
         "id": playbook.id,
         "name": playbook.name,
         "description": playbook.description,
-        "stages": playbook.stages,
-        "concurrency": playbook.concurrency,
+        "workers": playbook.workers,
         "builtin": False,
     }
 
