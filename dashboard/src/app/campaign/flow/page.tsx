@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Workflow,
   CheckCircle2,
@@ -15,220 +14,404 @@ import {
   RefreshCw,
   Clock,
   Eye,
+  SkipForward,
 } from "lucide-react";
 import { useCampaignStore } from "@/stores/campaign";
 import { api } from "@/lib/api";
 import ScanTimeline from "@/components/c2/ScanTimeline";
-import type { PlaybookRow, StageConfig } from "@/lib/api";
-import type { ExecutionState, StageExecution } from "@/types/schema";
+import type { PlaybookRow, WorkerConfig } from "@/lib/api";
+import type { ExecutionState, WorkerExecution, StageExecution } from "@/types/schema";
+import { WORKER_DEPENDENCIES, PIPELINE_WORKER_NAMES } from "@/types/schema";
+import { WORKER_STAGES } from "@/lib/worker-stages";
 
-/* ------------------------------------------------------------------ */
-/* Default recon stages (used when a playbook has no stages defined)    */
-/* ------------------------------------------------------------------ */
+function formatWorkerName(name: string): string {
+  return name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
-const DEFAULT_STAGES: StageConfig[] = [
-  { name: "passive_discovery", enabled: true, tool_timeout: 300 },
-  { name: "active_discovery", enabled: true, tool_timeout: 300 },
-  { name: "port_scanning", enabled: true, tool_timeout: 600 },
-  { name: "service_detection", enabled: true, tool_timeout: 300 },
-  { name: "web_crawling", enabled: true, tool_timeout: 300 },
-  { name: "vulnerability_scanning", enabled: true, tool_timeout: 600 },
-  { name: "exploitation", enabled: false, tool_timeout: 600 },
-];
+function getBlockedBy(workerName: string, workers: WorkerConfig[]): string | null {
+  const deps = WORKER_DEPENDENCIES[workerName] || [];
+  const disabledWorkers = new Set(workers.filter((w) => !w.enabled).map((w) => w.name));
+  for (const dep of deps) {
+    if (disabledWorkers.has(dep)) return dep;
+  }
+  return null;
+}
 
-/* ------------------------------------------------------------------ */
-/* Stage Card (Configurator)                                           */
-/* ------------------------------------------------------------------ */
+function getTransitiveDownstream(workerName: string): Set<string> {
+  const disabled = new Set<string>();
+  disabled.add(workerName);
+  for (const name of PIPELINE_WORKER_NAMES) {
+    if (disabled.has(name)) continue;
+    const deps = WORKER_DEPENDENCIES[name] || [];
+    for (const dep of deps) {
+      if (disabled.has(dep)) {
+        disabled.add(name);
+        break;
+      }
+    }
+  }
+  disabled.delete(workerName);
+  return disabled;
+}
 
-function StageCard({
+function stripWstgPrefix(sectionId: string): string {
+  return sectionId.replace(/^WSTG-/, "");
+}
+
+function StageRow({
   stage,
+  workerName,
+  disabled,
+  display,
   onToggle,
   onTimeoutChange,
 }: {
-  stage: StageConfig;
+  stage: { name: string; enabled: boolean; tool_timeout?: number };
+  workerName: string;
+  disabled: boolean;
+  display: { name: string; sectionId: string } | undefined;
   onToggle: () => void;
-  onTimeoutChange: (v: number) => void;
+  onTimeoutChange: (value: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
     <div
-      data-testid={`flow-stage-card-${stage.name}`}
-      className={`rounded-lg border border-border bg-bg-secondary p-4 transition-all ${
-        !stage.enabled ? "opacity-50" : ""
-      }`}
+      data-testid={`flow-stage-toggle-${workerName}-${stage.name}`}
+      className="rounded-md bg-bg-tertiary px-3 py-2"
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {/* Toggle switch */}
-          <button
-            type="button"
-            data-testid={`flow-stage-toggle-${stage.name}`}
-            onClick={onToggle}
-            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-              stage.enabled ? "bg-neon-green" : "bg-border-accent"
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={disabled}
+          className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${
+            stage.enabled && !disabled ? "bg-neon-green" : "bg-border-accent"
+          } ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
+          aria-label={`Toggle ${stage.name}`}
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
+              stage.enabled && !disabled ? "translate-x-3" : ""
             }`}
-            aria-label={`Toggle ${stage.name}`}
-          >
-            <span
-              className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                stage.enabled ? "translate-x-4" : ""
-              }`}
-            />
-          </button>
+          />
+        </button>
 
-          <span className="font-mono text-sm text-text-primary">
-            {stage.name}
+        <div className="flex-1 min-w-0">
+          <span className="text-xs text-text-primary">
+            {display ? display.name : stage.name}
           </span>
+          {display && (
+            <span className="ml-2 text-xs text-text-muted">
+              {stripWstgPrefix(display.sectionId)}
+            </span>
+          )}
         </div>
 
         <button
           type="button"
-          data-testid={`flow-stage-expand-${stage.name}`}
           onClick={() => setExpanded(!expanded)}
-          className="rounded p-1 text-text-muted hover:bg-bg-tertiary hover:text-text-primary"
-          aria-label={`Expand ${stage.name}`}
+          className="rounded p-0.5 text-text-muted hover:text-text-primary"
+          aria-label={`Expand ${stage.name} settings`}
         >
           {expanded ? (
-            <ChevronUp className="h-4 w-4" />
+            <ChevronUp className="h-3 w-3" />
           ) : (
-            <ChevronDown className="h-4 w-4" />
+            <ChevronDown className="h-3 w-3" />
           )}
         </button>
       </div>
 
-      {/* Expanded: tool timeout parameter */}
       {expanded && (
-        <div className="mt-3 border-t border-border pt-3">
-          <div className="flex items-center gap-3">
-            <label className="text-xs text-text-muted">Tool Timeout:</label>
-            <input
-              type="range"
-              min={60}
-              max={1200}
-              step={60}
-              value={stage.tool_timeout ?? 300}
-              onChange={(e) => onTimeoutChange(Number(e.target.value))}
-              className="flex-1 accent-neon-orange"
-            />
-            <span className="w-12 text-right font-mono text-xs text-text-secondary">
-              {stage.tool_timeout ?? 300}s
-            </span>
-          </div>
+        <div className="mt-2 flex items-center gap-3 pl-10">
+          <label className="text-xs text-text-muted">Timeout:</label>
+          <input
+            type="range"
+            min={60}
+            max={1200}
+            step={60}
+            value={stage.tool_timeout ?? 300}
+            onChange={(e) => onTimeoutChange(Number(e.target.value))}
+            className="flex-1 accent-neon-orange"
+          />
+          <span className="w-12 text-right font-mono text-xs text-text-secondary">
+            {stage.tool_timeout ?? 300}s
+          </span>
         </div>
       )}
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Monitor Stage Entry                                                 */
-/* ------------------------------------------------------------------ */
-
-function MonitorStageEntry({ stage }: { stage: StageExecution }) {
-  const statusColor =
-    stage.status === "running"
-      ? "text-neon-orange"
-      : stage.status === "completed"
-        ? "text-neon-green"
-        : stage.status === "failed"
-          ? "text-danger"
-          : "text-text-muted";
-
-  const StatusIcon =
-    stage.status === "completed"
-      ? CheckCircle2
-      : stage.status === "failed"
-        ? XCircle
-        : stage.status === "running"
-          ? Loader2
-          : Clock;
+function WorkerCard({
+  worker,
+  workers,
+  expanded,
+  onToggleExpand,
+  onToggleWorker,
+  onToggleStage,
+  onStageTimeoutChange,
+}: {
+  worker: WorkerConfig;
+  workers: WorkerConfig[];
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onToggleWorker: () => void;
+  onToggleStage: (stageIndex: number) => void;
+  onStageTimeoutChange: (stageIndex: number, value: number) => void;
+}) {
+  const blockedBy = getBlockedBy(worker.name, workers);
+  const isBlocked = blockedBy !== null;
+  const stageDisplayInfo = WORKER_STAGES[worker.name] || [];
+  const enabledCount = worker.stages.filter((s) => s.enabled).length;
+  const totalCount = worker.stages.length;
 
   return (
     <div
-      data-testid={`flow-monitor-stage-${stage.name}`}
-      className={`flex items-center gap-4 rounded-lg border border-border bg-bg-secondary p-3 transition-all ${
-        stage.status === "running" ? "animate-pulse-orange" : ""
+      data-testid={`flow-worker-card-${worker.name}`}
+      className={`rounded-lg border border-border bg-bg-secondary transition-all ${
+        !worker.enabled || isBlocked ? "opacity-50" : ""
       }`}
     >
-      {/* Timeline dot / icon */}
-      <div className={`shrink-0 ${statusColor}`}>
-        <StatusIcon
-          className={`h-5 w-5 ${stage.status === "running" ? "animate-spin" : ""}`}
-        />
-      </div>
-
-      {/* Stage info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-sm text-text-primary">
-            {stage.name}
-          </span>
+      <div className="flex items-center gap-3 p-4">
+        <button
+          type="button"
+          data-testid={`flow-worker-toggle-${worker.name}`}
+          onClick={onToggleWorker}
+          disabled={isBlocked}
+          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+            worker.enabled && !isBlocked ? "bg-neon-green" : "bg-border-accent"
+          } ${isBlocked ? "cursor-not-allowed" : "cursor-pointer"}`}
+          aria-label={`Toggle ${worker.name}`}
+        >
           <span
-            data-testid={`flow-monitor-status-${stage.name}`}
-            className={`text-xs font-semibold uppercase ${statusColor}`}
-          >
-            {stage.status}
-          </span>
+            className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+              worker.enabled && !isBlocked ? "translate-x-4" : ""
+            }`}
+          />
+        </button>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm text-text-primary">
+              {formatWorkerName(worker.name)}
+            </span>
+            {totalCount > 0 && (
+              <span className="rounded-full bg-bg-tertiary px-2 py-0.5 text-xs font-mono text-text-muted">
+                {enabledCount}/{totalCount}
+              </span>
+            )}
+          </div>
+          {isBlocked && (
+            <span className="text-xs text-text-muted">
+              blocked by: {formatWorkerName(blockedBy)}
+            </span>
+          )}
         </div>
-        {stage.tool && (
-          <span
-            data-testid={`flow-monitor-tool-${stage.name}`}
-            className="text-xs text-text-muted"
+
+        {totalCount > 0 && (
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            className="rounded p-1 text-text-muted hover:bg-bg-tertiary hover:text-text-primary"
+            aria-label={`Expand ${worker.name}`}
           >
-            Running: <span className="font-mono text-neon-orange">{stage.tool}</span>
-          </span>
-        )}
-        {!stage.tool && (
-          <span
-            data-testid={`flow-monitor-tool-${stage.name}`}
-            className="text-xs text-text-muted"
-          >
-            {stage.status === "completed"
-              ? "All tools finished"
-              : stage.status === "failed"
-                ? "Stage failed"
-                : "Waiting..."}
-          </span>
+            {expanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </button>
         )}
       </div>
 
-      {/* View logs link */}
-      <Link
-        href="/campaign/c2"
-        data-testid={`flow-monitor-logs-link-${stage.name}`}
-        className="shrink-0 text-xs text-neon-blue hover:underline"
-      >
-        View Logs
-      </Link>
+      {expanded && totalCount > 0 && (
+        <div className="border-t border-border px-4 pb-4 pt-2 space-y-1.5">
+          {worker.stages.map((stage, stageIdx) => (
+            <StageRow
+              key={stage.name}
+              stage={stage}
+              workerName={worker.name}
+              disabled={!worker.enabled || isBlocked}
+              display={stageDisplayInfo.find((d) => d.stageName === stage.name)}
+              onToggle={() => onToggleStage(stageIdx)}
+              onTimeoutChange={(val) => onStageTimeoutChange(stageIdx, val)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Main page                                                           */
-/* ------------------------------------------------------------------ */
+function MonitorWorkerCard({
+  worker,
+  expanded,
+  onToggleExpand,
+}: {
+  worker: WorkerExecution;
+  expanded: boolean;
+  onToggleExpand: () => void;
+}) {
+  const stageDisplayInfo = WORKER_STAGES[worker.name] || [];
+  const completedStages = worker.stages.filter((s) => s.status === "completed").length;
+  const totalStages = worker.stages.length;
+
+  const statusIcon = {
+    pending: <Clock className="h-4 w-4 text-text-muted" />,
+    queued: <Clock className="h-4 w-4 text-neon-blue" />,
+    running: <Loader2 className="h-4 w-4 text-neon-orange animate-spin" />,
+    completed: <CheckCircle2 className="h-4 w-4 text-neon-green" />,
+    failed: <XCircle className="h-4 w-4 text-danger" />,
+    skipped: <SkipForward className="h-4 w-4 text-text-muted" />,
+  }[worker.status];
+
+  const statusColor = {
+    pending: "text-text-muted",
+    queued: "text-neon-blue",
+    running: "text-neon-orange",
+    completed: "text-neon-green",
+    failed: "text-danger",
+    skipped: "text-text-muted",
+  }[worker.status];
+
+  return (
+    <div
+      data-testid={`flow-monitor-worker-${worker.name}`}
+      className={`rounded-lg border border-border bg-bg-secondary transition-all ${
+        worker.status === "skipped" ? "opacity-50" : ""
+      }`}
+    >
+      <div
+        className="flex items-center gap-3 p-3 cursor-pointer"
+        onClick={onToggleExpand}
+      >
+        <div className="shrink-0">{statusIcon}</div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm text-text-primary">
+              {formatWorkerName(worker.name)}
+            </span>
+            <span className={`text-xs font-semibold uppercase ${statusColor}`}>
+              {worker.status}
+            </span>
+          </div>
+
+          {worker.status === "running" && totalStages > 0 && (
+            <div className="mt-1 flex items-center gap-2">
+              <div className="flex-1 h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-neon-orange transition-all"
+                  style={{ width: `${(completedStages / totalStages) * 100}%` }}
+                />
+              </div>
+              <span className="text-xs font-mono text-text-muted">
+                {completedStages}/{totalStages}
+              </span>
+            </div>
+          )}
+
+          {worker.current_tool && worker.status === "running" && (
+            <span className="text-xs text-text-muted">
+              Running: <span className="font-mono text-neon-orange">{worker.current_tool}</span>
+            </span>
+          )}
+
+          {worker.status === "skipped" && worker.skip_reason && (
+            <span className="text-xs text-text-muted">{worker.skip_reason}</span>
+          )}
+
+          {worker.status === "failed" && worker.error && (
+            <span className="text-xs text-danger">{worker.error}</span>
+          )}
+        </div>
+
+        {totalStages > 0 && (
+          <div className="shrink-0 text-text-muted">
+            {expanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </div>
+        )}
+      </div>
+
+      {expanded && totalStages > 0 && (
+        <div className="border-t border-border px-3 pb-3 pt-2 space-y-1">
+          {worker.stages.map((stage: StageExecution) => {
+            const display = stageDisplayInfo.find((d) => d.stageName === stage.name);
+
+            const stageStatusColor = {
+              pending: "text-text-muted",
+              running: "text-neon-orange",
+              completed: "text-neon-green",
+              failed: "text-danger",
+              paused: "text-warning",
+              stopped: "text-text-muted",
+            }[stage.status];
+
+            const StageIcon = {
+              pending: Clock,
+              running: Loader2,
+              completed: CheckCircle2,
+              failed: XCircle,
+              paused: Clock,
+              stopped: Clock,
+            }[stage.status];
+
+            return (
+              <div
+                key={stage.name}
+                data-testid={`flow-monitor-stage-${stage.name}`}
+                className="flex items-center gap-2 rounded-md bg-bg-tertiary px-3 py-1.5"
+              >
+                <StageIcon
+                  className={`h-3.5 w-3.5 shrink-0 ${stageStatusColor} ${
+                    stage.status === "running" ? "animate-spin" : ""
+                  }`}
+                />
+                <span className="text-xs text-text-primary">
+                  {display ? display.name : stage.name}
+                </span>
+                {display && (
+                  <span className="text-xs text-text-muted">
+                    {stripWstgPrefix(display.sectionId)}
+                  </span>
+                )}
+                <span className={`ml-auto text-xs font-semibold uppercase ${stageStatusColor}`}>
+                  {stage.status}
+                </span>
+                {stage.tool && (
+                  <span className="text-xs text-text-muted font-mono">{stage.tool}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function FlowPage() {
   const activeTarget = useCampaignStore((s) => s.activeTarget);
   const jobs = useCampaignStore((s) => s.jobs);
 
-  /* ---- Configurator state ---- */
   const [playbooks, setPlaybooks] = useState<PlaybookRow[]>([]);
   const [playbooksLoading, setPlaybooksLoading] = useState(true);
   const [playbooksError, setPlaybooksError] = useState<string | null>(null);
   const [selectedPlaybook, setSelectedPlaybook] = useState<string>("");
-  const [stages, setStages] = useState<StageConfig[]>([]);
+  const [workers, setWorkers] = useState<WorkerConfig[]>([]);
+  const [expandedWorkers, setExpandedWorkers] = useState<Set<string>>(new Set());
 
-  /* ---- Monitor state ---- */
   const [execution, setExecution] = useState<ExecutionState | null>(null);
   const [pollError, setPollError] = useState(false);
+  const [expandedMonitorWorkers, setExpandedMonitorWorkers] = useState<Set<string>>(new Set());
 
-  /* ---- Fetch playbooks on mount ---- */
   useEffect(() => {
     let cancelled = false;
-    setPlaybooksLoading(true);
-    setPlaybooksError(null);
 
     api
       .getPlaybooks()
@@ -252,55 +435,120 @@ export default function FlowPage() {
     };
   }, []);
 
-  /* ---- Handle playbook selection ---- */
   const handlePlaybookChange = useCallback(
     (name: string) => {
       setSelectedPlaybook(name);
       if (!name) {
-        setStages([]);
+        setWorkers([]);
         return;
       }
       const pb = playbooks.find((p) => p.name === name);
-      if (pb && pb.stages && pb.stages.length > 0) {
-        setStages(pb.stages.map((s) => ({ ...s })));
+      if (pb && pb.workers && pb.workers.length > 0) {
+        setWorkers(pb.workers.map((w) => ({
+          ...w,
+          stages: w.stages.map((s) => ({ ...s })),
+        })));
       } else {
-        setStages(DEFAULT_STAGES.map((s) => ({ ...s })));
+        setWorkers([]);
       }
+      setExpandedWorkers(new Set());
     },
     [playbooks],
   );
 
-  /* ---- Stage toggle ---- */
-  const toggleStage = useCallback((index: number) => {
-    setStages((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, enabled: !s.enabled } : s)),
+  const toggleWorker = useCallback((workerName: string) => {
+    setWorkers((prev) => {
+      const target = prev.find((w) => w.name === workerName);
+      if (!target) return prev;
+
+      const newEnabled = !target.enabled;
+      let updated = prev.map((w) =>
+        w.name === workerName ? { ...w, enabled: newEnabled } : w,
+      );
+
+      if (!newEnabled) {
+        const downstream = getTransitiveDownstream(workerName);
+        updated = updated.map((w) =>
+          downstream.has(w.name) ? { ...w, enabled: false } : w,
+        );
+      }
+
+      return updated;
+    });
+  }, []);
+
+  const toggleStage = useCallback((workerName: string, stageIndex: number) => {
+    setWorkers((prev) =>
+      prev.map((w) =>
+        w.name === workerName
+          ? {
+              ...w,
+              stages: w.stages.map((s, i) =>
+                i === stageIndex ? { ...s, enabled: !s.enabled } : s,
+              ),
+            }
+          : w,
+      ),
     );
   }, []);
 
-  /* ---- Stage timeout change ---- */
-  const updateTimeout = useCallback((index: number, value: number) => {
-    setStages((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, tool_timeout: value } : s)),
-    );
+  const updateStageTimeout = useCallback(
+    (workerName: string, stageIndex: number, value: number) => {
+      setWorkers((prev) =>
+        prev.map((w) =>
+          w.name === workerName
+            ? {
+                ...w,
+                stages: w.stages.map((s, i) =>
+                  i === stageIndex ? { ...s, tool_timeout: value } : s,
+                ),
+              }
+            : w,
+        ),
+      );
+    },
+    [],
+  );
+
+  const toggleExpandWorker = useCallback((workerName: string) => {
+    setExpandedWorkers((prev) => {
+      const next = new Set(prev);
+      if (next.has(workerName)) {
+        next.delete(workerName);
+      } else {
+        next.add(workerName);
+      }
+      return next;
+    });
   }, []);
 
-  /* ---- Save as custom playbook ---- */
+  const toggleExpandMonitorWorker = useCallback((workerName: string) => {
+    setExpandedMonitorWorkers((prev) => {
+      const next = new Set(prev);
+      if (next.has(workerName)) {
+        next.delete(workerName);
+      } else {
+        next.add(workerName);
+      }
+      return next;
+    });
+  }, []);
+
   const handleSavePlaybook = useCallback(async () => {
     const name = `custom_${Date.now()}`;
     try {
       const result = await api.createPlaybook({
         name,
         description: `Custom playbook based on ${selectedPlaybook}`,
-        stages,
+        workers,
       });
       setPlaybooks((prev) => [...prev, result]);
       setSelectedPlaybook(result.name);
     } catch {
       // toast shown by api.request()
     }
-  }, [selectedPlaybook, stages]);
+  }, [selectedPlaybook, workers]);
 
-  /* ---- Apply playbook to target ---- */
   const handleApply = useCallback(async () => {
     if (!activeTarget || !selectedPlaybook) return;
     try {
@@ -310,7 +558,6 @@ export default function FlowPage() {
     }
   }, [activeTarget, selectedPlaybook]);
 
-  /* ---- Poll execution state ---- */
   useEffect(() => {
     if (!activeTarget) return;
     let cancelled = false;
@@ -322,6 +569,18 @@ export default function FlowPage() {
           if (!cancelled) {
             setExecution(res);
             setPollError(false);
+
+            if (res?.workers) {
+              setExpandedMonitorWorkers((prev) => {
+                const next = new Set(prev);
+                for (const w of res.workers) {
+                  if (w.status === "failed") next.add(w.name);
+                  if (w.status === "completed") next.delete(w.name);
+                  if (w.status === "running" && !prev.has(w.name)) next.add(w.name);
+                }
+                return next;
+              });
+            }
           }
         })
         .catch(() => {
@@ -332,7 +591,6 @@ export default function FlowPage() {
     };
 
     fetchExecution();
-
     const interval = setInterval(fetchExecution, 10_000);
 
     return () => {
@@ -341,13 +599,23 @@ export default function FlowPage() {
     };
   }, [activeTarget]);
 
-  /* ---------------------------------------------------------------- */
-  /* Render                                                            */
-  /* ---------------------------------------------------------------- */
+  const orderedConfigWorkers = useMemo(() => {
+    const workerMap = new Map(workers.map((w) => [w.name, w]));
+    return PIPELINE_WORKER_NAMES.map((name) => workerMap.get(name)).filter(
+      (w): w is WorkerConfig => w !== undefined,
+    );
+  }, [workers]);
+
+  const orderedExecWorkers = useMemo(() => {
+    if (!execution?.workers) return [];
+    const workerMap = new Map(execution.workers.map((w) => [w.name, w]));
+    return PIPELINE_WORKER_NAMES.map((name) => workerMap.get(name)).filter(
+      (w): w is WorkerExecution => w !== undefined,
+    );
+  }, [execution]);
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-text-primary">
@@ -365,17 +633,12 @@ export default function FlowPage() {
         )}
       </div>
 
-      {/* Two-panel split */}
       <div className="grid grid-cols-2 gap-6 animate-fade-in">
-        {/* ============================================================ */}
-        {/* Left: Playbook Configurator                                   */}
-        {/* ============================================================ */}
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-text-primary">
             Playbook Configurator
           </h2>
 
-          {/* Playbook select dropdown */}
           {playbooksError ? (
             <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
               <AlertTriangle className="mb-1 inline h-4 w-4" /> Failed to load
@@ -403,7 +666,6 @@ export default function FlowPage() {
             </select>
           )}
 
-          {/* Empty state: no playbook selected */}
           {!selectedPlaybook && !playbooksError && (
             <div
               data-testid="flow-empty-config"
@@ -416,21 +678,25 @@ export default function FlowPage() {
             </div>
           )}
 
-          {/* Stage cards */}
-          {selectedPlaybook && stages.length > 0 && (
+          {selectedPlaybook && orderedConfigWorkers.length > 0 && (
             <div className="space-y-2">
-              {stages.map((stage, i) => (
-                <StageCard
-                  key={stage.name}
-                  stage={stage}
-                  onToggle={() => toggleStage(i)}
-                  onTimeoutChange={(v) => updateTimeout(i, v)}
+              {orderedConfigWorkers.map((worker) => (
+                <WorkerCard
+                  key={worker.name}
+                  worker={worker}
+                  workers={workers}
+                  expanded={expandedWorkers.has(worker.name)}
+                  onToggleExpand={() => toggleExpandWorker(worker.name)}
+                  onToggleWorker={() => toggleWorker(worker.name)}
+                  onToggleStage={(idx) => toggleStage(worker.name, idx)}
+                  onStageTimeoutChange={(idx, val) =>
+                    updateStageTimeout(worker.name, idx, val)
+                  }
                 />
               ))}
             </div>
           )}
 
-          {/* Action buttons */}
           {selectedPlaybook && (
             <div className="flex items-center gap-3 border-t border-border pt-4">
               <button
@@ -442,7 +708,6 @@ export default function FlowPage() {
                 Save as Custom Playbook
               </button>
 
-              {/* Target selector for apply */}
               <div
                 data-testid="flow-apply-target-select"
                 className="flex items-center gap-2 text-xs text-text-muted"
@@ -468,9 +733,6 @@ export default function FlowPage() {
           )}
         </div>
 
-        {/* ============================================================ */}
-        {/* Right: Live Execution Monitor                                 */}
-        {/* ============================================================ */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-text-primary">
@@ -493,7 +755,6 @@ export default function FlowPage() {
             </div>
           </div>
 
-          {/* Connection lost banner */}
           {pollError && (
             <div
               data-testid="flow-connection-lost"
@@ -505,7 +766,6 @@ export default function FlowPage() {
             </div>
           )}
 
-          {/* Empty monitor state */}
           {!activeTarget && (
             <div
               data-testid="flow-empty-monitor"
@@ -530,10 +790,8 @@ export default function FlowPage() {
             </div>
           )}
 
-          {/* Execution stage timeline */}
-          {execution && execution.stages && execution.stages.length > 0 && (
+          {execution && orderedExecWorkers.length > 0 && (
             <div className="space-y-2">
-              {/* Playbook label */}
               <div className="flex items-center gap-2 rounded-md bg-bg-tertiary px-3 py-2 text-xs">
                 <Workflow className="h-3.5 w-3.5 text-neon-orange" />
                 <span className="text-text-muted">Playbook:</span>
@@ -542,16 +800,19 @@ export default function FlowPage() {
                 </span>
               </div>
 
-              {/* Stage entries */}
-              {execution.stages.map((stage) => (
-                <MonitorStageEntry key={stage.name} stage={stage} />
+              {orderedExecWorkers.map((worker) => (
+                <MonitorWorkerCard
+                  key={worker.name}
+                  worker={worker}
+                  expanded={expandedMonitorWorkers.has(worker.name)}
+                  onToggleExpand={() => toggleExpandMonitorWorker(worker.name)}
+                />
               ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* Gantt-style timeline */}
       {activeTarget && (
         <div className="rounded-lg border border-border bg-bg-secondary p-4">
           <ScanTimeline jobs={jobs} />
