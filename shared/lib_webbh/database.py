@@ -568,8 +568,7 @@ class CustomPlaybook(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    stages: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    concurrency: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    workers: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 
 class EscalationContext(TimestampMixin, Base):
