@@ -72,11 +72,7 @@ export default function ScopeBuilder() {
   const [platform, setPlatform] = useState<string>("HackerOne");
   const [notes, setNotes] = useState("");
 
-  /* ---- Intel API Keys ---- */
-  const [shodanKey, setShodanKey] = useState("");
-  const [secTrailsKey, setSecTrailsKey] = useState("");
-  const [censysId, setCensysId] = useState("");
-  const [censysSecret, setCensysSecret] = useState("");
+  /* ---- Intel API Key status (read-only; keys are managed in Settings) ---- */
   const [apiKeyStatus, setApiKeyStatus] = useState<Record<string, boolean>>({
     shodan: false,
     securitytrails: false,
@@ -162,16 +158,6 @@ export default function ScopeBuilder() {
     };
 
     try {
-      // Save API keys if entered
-      if (shodanKey || secTrailsKey || censysId || censysSecret) {
-        await api.updateApiKeys({
-          ...(shodanKey ? { shodan_api_key: shodanKey } : {}),
-          ...(secTrailsKey ? { securitytrails_api_key: secTrailsKey } : {}),
-          ...(censysId ? { censys_api_id: censysId } : {}),
-          ...(censysSecret ? { censys_api_secret: censysSecret } : {}),
-        });
-      }
-
       const res = await api.createTarget(payload);
       setActiveTarget({
         id: res.target_id,
@@ -324,15 +310,18 @@ export default function ScopeBuilder() {
               />
             </div>
 
-            {/* ---- API Keys for Intel Enrichment ---- */}
+            {/* ---- Intel Enrichment Status (keys managed in Settings) ---- */}
             <div className="rounded-md border border-border bg-bg-tertiary p-3 space-y-3">
-              <span className="section-label">Intel Enrichment API Keys</span>
+              <span className="section-label">Intel Enrichment</span>
               <p className="text-xs text-text-muted">
-                Optional. Enable passive OSINT enrichment before recon starts.
+                Passive OSINT enrichment. Manage API keys in{" "}
+                <a href="/settings" className="text-accent hover:underline">
+                  Settings
+                </a>
+                .
               </p>
 
-              {/* Status badges */}
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {Object.entries(apiKeyStatus).map(([key, configured]) => (
                   <span
                     key={key}
@@ -345,66 +334,6 @@ export default function ScopeBuilder() {
                     {key}: {configured ? "configured" : "not set"}
                   </span>
                 ))}
-              </div>
-
-              <div>
-                <label className="section-label mb-1.5 block">Shodan API Key</label>
-                <input
-                  type="password"
-                  value={shodanKey}
-                  onChange={(e) => setShodanKey(e.target.value)}
-                  placeholder={
-                    apiKeyStatus.shodan ? "••••••••••••" : "Enter Shodan API key"
-                  }
-                  className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
-                />
-              </div>
-
-              <div>
-                <label className="section-label mb-1.5 block">
-                  SecurityTrails API Key
-                </label>
-                <input
-                  type="password"
-                  value={secTrailsKey}
-                  onChange={(e) => setSecTrailsKey(e.target.value)}
-                  placeholder={
-                    apiKeyStatus.securitytrails
-                      ? "••••••••••••"
-                      : "Enter SecurityTrails API key"
-                  }
-                  className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
-                />
-              </div>
-
-              <div>
-                <label className="section-label mb-1.5 block">Censys API ID</label>
-                <input
-                  type="password"
-                  value={censysId}
-                  onChange={(e) => setCensysId(e.target.value)}
-                  placeholder={
-                    apiKeyStatus.censys ? "••••••••••••" : "Enter Censys API ID"
-                  }
-                  className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
-                />
-              </div>
-
-              <div>
-                <label className="section-label mb-1.5 block">
-                  Censys API Secret
-                </label>
-                <input
-                  type="password"
-                  value={censysSecret}
-                  onChange={(e) => setCensysSecret(e.target.value)}
-                  placeholder={
-                    apiKeyStatus.censys
-                      ? "••••••••••••"
-                      : "Enter Censys API secret"
-                  }
-                  className="w-full rounded-md border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted input-focus"
-                />
               </div>
             </div>
           </div>

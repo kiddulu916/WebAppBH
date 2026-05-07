@@ -92,7 +92,7 @@ async def _get_expansion_targets(target_id: int, scanned_values: set[str]) -> li
         stmt = select(Asset).where(
             Asset.target_id == target_id,
             Asset.scope_classification.in_(["in-scope", "associated"]),
-            Asset.asset_type.in_(["domain", "ip"]),
+            Asset.asset_type.in_(["domain", "ip", "subdomain"]),
         )
         if scanned_values:
             stmt = stmt.where(Asset.asset_value.notin_(scanned_values))

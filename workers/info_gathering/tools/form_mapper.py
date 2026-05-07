@@ -36,11 +36,16 @@ class FormMapper(InfoGatheringTool):
             try:
                 forms = await self._extract_forms(url)
                 if forms:
-                    await self.save_observation(
-                        target_id, "forms",
-                        {"url": url, "forms": forms},
-                        "form_mapper"
+                    # Save the page as a form asset
+                    asset_id = await self.save_asset(
+                        target_id, "form", url, "form_mapper",
                     )
+                    if asset_id:
+                        await self.save_observation(
+                            asset_id,
+                            tech_stack={"forms": forms},
+                            page_title=f"Form page: {url}",
+                        )
             except Exception:
                 continue
 

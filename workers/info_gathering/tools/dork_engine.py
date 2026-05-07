@@ -9,6 +9,7 @@ import aiohttp
 
 from workers.info_gathering.base_tool import InfoGatheringTool, logger
 from workers.info_gathering.tools.dork_patterns import get_dorks_for_domain
+from workers.info_gathering.tools.url_classifier import DORK_CATEGORY_MAP
 
 # Rotate real User-Agent strings to avoid detection
 _USER_AGENTS = [
@@ -49,27 +50,30 @@ class DorkEngine(InfoGatheringTool):
         dorks = get_dorks_for_domain(domain)
         all_results: list[dict] = []
 
-        # Round-robin assign dorks to engines
-        engine_assignments = {e: [] for e in _ENGINES}
-        for i, dork in enumerate(dorks):
+        # Round-robin assign dorks (now tuples of (query, category)) to engines
+        engine_assignments: dict[str, list[tuple[str, str]]] = {e: [] for e in _ENGINES}
+        for i, (query, category) in enumerate(dorks):
             engine = _ENGINES[i % len(_ENGINES)]
-            engine_assignments[engine].append(dork)
+            engine_assignments[engine].append((query, category))
 
         # Scrape each engine's batch sequentially (with delays between queries)
         for engine_name, engine_dorks in engine_assignments.items():
-            for dork in engine_dorks:
+            for query, category in engine_dorks:
                 try:
-                    results = await self._scrape_engine(engine_name, dork)
+                    results = await self._scrape_engine(engine_name, query)
+                    # Tag each result with the dork category
+                    for r in results:
+                        r["category"] = category
                     all_results.extend(results)
                 except Exception as e:
                     logger.warning(
                         f"Dork query failed on {engine_name}",
-                        extra={"dork": dork, "error": str(e)},
+                        extra={"dork": query, "error": str(e)},
                     )
                 # Rate limit: 3-7 seconds between queries
                 await asyncio.sleep(random.uniform(3, 7))
 
-        # Deduplicate by URL
+        # Deduplicate by URL (keep first category encountered)
         seen_urls: set[str] = set()
         unique_results: list[dict] = []
         for r in all_results:
@@ -78,14 +82,16 @@ class DorkEngine(InfoGatheringTool):
                 seen_urls.add(url)
                 unique_results.append(r)
 
-        # Save assets
+        # Save assets with category-based asset types
         saved = 0
         for r in unique_results:
             url = r.get("url", "")
             if not url:
                 continue
+            category = r.get("category", "")
+            asset_type = DORK_CATEGORY_MAP.get(category, "undetermined")
             asset_id = await self.save_asset(
-                target_id, "url", url, "dork_engine",
+                target_id, asset_type, url, "dork_engine",
                 scope_manager=scope_manager,
             )
             if asset_id:

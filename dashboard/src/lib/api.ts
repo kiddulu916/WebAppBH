@@ -89,6 +89,9 @@ export interface AssetWithLocations {
   created_at: string | null;
   updated_at: string | null;
   tech: Record<string, unknown> | null;
+  scope_classification: string;
+  associated_with_id: number | null;
+  association_method: string | null;
   locations: {
     id: number;
     port: number;

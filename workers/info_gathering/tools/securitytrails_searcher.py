@@ -1,5 +1,5 @@
 # workers/info_gathering/tools/securitytrails_searcher.py
-"""SecurityTrailsSearcher — optional SecurityTrails API for DNS history and associations."""
+"""SecurityTrailsSearcher — optional OSINT enrichment via SecurityTrails API (WSTG-INFO-01)."""
 
 import asyncio
 import os
@@ -8,21 +8,20 @@ import aiohttp
 
 from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
+SECURITYTRAILS_BASE = "https://api.securitytrails.com/v1"
+
 
 class SecurityTrailsSearcher(InfoGatheringTool):
-    """Query SecurityTrails API for DNS records, subdomains, and domain associations.
+    """Query SecurityTrails for subdomains, DNS records, history, and associated domains.
 
-    Skips execution if SECURITYTRAILS_API_KEY is not set.
-    Rate limited to 2 seconds between API calls.
+    Skips gracefully when SECURITYTRAILS_API_KEY is not configured.
     """
 
-    BASE_URL = "https://api.securitytrails.com/v1"
-
-    async def execute(self, target_id: int, **kwargs) -> dict | None:
-        api_key = os.environ.get("SECURITYTRAILS_API_KEY")
+    async def execute(self, target_id: int, **kwargs) -> dict:
+        api_key = os.environ.get("SECURITYTRAILS_API_KEY", "")
         if not api_key:
-            logger.info("SECURITYTRAILS_API_KEY not set, skipping SecurityTrails search")
-            return None
+            logger.info("SecurityTrailsSearcher skipped — no SECURITYTRAILS_API_KEY configured")
+            return {"skipped": True, "reason": "no_api_key"}
 
         domain = kwargs.get("domain")
         scope_manager = kwargs.get("scope_manager")
@@ -39,75 +38,77 @@ class SecurityTrailsSearcher(InfoGatheringTool):
 
         try:
             timeout = aiohttp.ClientTimeout(total=30)
-            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-                # 1. Get domain DNS records
-                dns_url = f"{self.BASE_URL}/domain/{domain}"
-                async with session.get(dns_url) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        # Extract A records (IPs)
-                        for record in data.get("current_dns", {}).get("a", {}).get("values", []):
-                            ip = record.get("ip")
-                            if ip:
-                                aid = await self.save_asset(
-                                    target_id, "ip", ip, "securitytrails",
-                                    scope_manager=scope_manager,
-                                )
-                                if aid:
-                                    saved += 1
+            async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
 
-                await asyncio.sleep(2)
-
-                # 2. Get subdomains
-                sub_url = f"{self.BASE_URL}/domain/{domain}/subdomains"
-                async with session.get(sub_url) as resp:
+                # 1. Subdomains
+                async with session.get(f"{SECURITYTRAILS_BASE}/domain/{domain}/subdomains") as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         for sub in data.get("subdomains", []):
                             fqdn = f"{sub}.{domain}"
-                            aid = await self.save_asset(
+                            asset_id = await self.save_asset(
                                 target_id, "subdomain", fqdn, "securitytrails",
                                 scope_manager=scope_manager,
                             )
-                            if aid:
+                            if asset_id:
                                 saved += 1
 
                 await asyncio.sleep(2)
 
-                # 3. Historical DNS (A records)
-                hist_url = f"{self.BASE_URL}/history/{domain}/dns/a"
-                async with session.get(hist_url) as resp:
+                # 2. DNS records (A records -> IPs)
+                async with session.get(f"{SECURITYTRAILS_BASE}/domain/{domain}") as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        a_records = (
+                            data
+                            .get("current_dns", {})
+                            .get("a", {})
+                            .get("values", [])
+                        )
+                        for rec in a_records:
+                            ip = rec.get("ip", "")
+                            if ip:
+                                asset_id = await self.save_asset(
+                                    target_id, "ip", ip, "securitytrails",
+                                    scope_manager=scope_manager,
+                                )
+                                if asset_id:
+                                    saved += 1
+
+                await asyncio.sleep(2)
+
+                # 3. Historical DNS (A records) -- discover past IPs
+                async with session.get(f"{SECURITYTRAILS_BASE}/history/{domain}/dns/a") as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         for record in data.get("records", []):
-                            for value in record.get("values", []):
-                                ip = value.get("ip")
+                            for val in record.get("values", []):
+                                ip = val.get("ip", "")
                                 if ip:
-                                    aid = await self.save_asset(
-                                        target_id, "ip", ip, "securitytrails_history",
+                                    asset_id = await self.save_asset(
+                                        target_id, "ip", ip, "securitytrails",
                                         scope_manager=scope_manager,
                                     )
-                                    if aid:
+                                    if asset_id:
                                         saved += 1
 
                 await asyncio.sleep(2)
 
                 # 4. Associated domains
-                assoc_url = f"{self.BASE_URL}/domain/{domain}/associated"
-                async with session.get(assoc_url) as resp:
+                async with session.get(f"{SECURITYTRAILS_BASE}/domain/{domain}/associated") as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         for record in data.get("records", []):
-                            hostname = record.get("hostname")
-                            if hostname and hostname != domain:
-                                aid = await self.save_asset(
-                                    target_id, "domain", hostname, "securitytrails_associated",
+                            assoc_domain = record.get("hostname", "")
+                            if assoc_domain and assoc_domain != domain:
+                                asset_id = await self.save_asset(
+                                    target_id, "domain", assoc_domain, "securitytrails",
                                     scope_manager=scope_manager,
                                 )
-                                if aid:
+                                if asset_id:
                                     saved += 1
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            logger.warning(f"SecurityTrails API request failed: {e}")
+            logger.warning(f"SecurityTrails request failed: {e}")
 
         return {"found": saved}

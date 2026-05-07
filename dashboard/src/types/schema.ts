@@ -15,7 +15,20 @@ export type VulnSeverity = "info" | "low" | "medium" | "high" | "critical";
 
 export type JobStatus = "QUEUED" | "RUNNING" | "PAUSED" | "STOPPED" | "COMPLETED" | "FAILED" | "KILLED";
 
-export type AssetType = "subdomain" | "ip" | "cidr" | "url" | string;
+export type AssetType =
+  | "domain"
+  | "ip"
+  | "subdomain"
+  | "sensitive_file"
+  | "directory"
+  | "error"
+  | "form"
+  | "upload"
+  | "deadend"
+  | "undetermined"
+  | "cidr"
+  | "url"
+  | string;
 
 // ---------------------------------------------------------------------------
 // Shared timestamp fields (present on every row)

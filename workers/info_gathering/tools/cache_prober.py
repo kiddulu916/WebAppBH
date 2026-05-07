@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 import aiohttp
 
 from workers.info_gathering.base_tool import InfoGatheringTool, logger
-from workers.info_gathering.tools.archive_prober import SENSITIVE_EXTENSIONS
+from workers.info_gathering.tools.url_classifier import classify_url
 
 
 class CacheProber(InfoGatheringTool):
@@ -43,11 +43,12 @@ class CacheProber(InfoGatheringTool):
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             logger.warning(f"archive.ph request failed: {e}")
 
-        # Save discovered URLs as assets
+        # Save discovered URLs as assets with classified types
         saved = 0
         for url in set(discovered_urls):
+            asset_type = classify_url(url)
             asset_id = await self.save_asset(
-                target_id, "url", url, "cache_prober",
+                target_id, asset_type, url, "cache_prober",
                 scope_manager=scope_manager,
             )
             if asset_id:

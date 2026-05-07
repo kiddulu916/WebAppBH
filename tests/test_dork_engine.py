@@ -12,13 +12,19 @@ class TestDorkPatterns:
 
     def test_get_dorks_interpolates_domain(self):
         dorks = get_dorks_for_domain("example.com")
-        assert any("site:example.com" in d for d in dorks)
+        assert any("site:example.com" in query for query, _cat in dorks)
         assert len(dorks) >= 60
 
     def test_all_dorks_contain_domain_reference(self):
         dorks = get_dorks_for_domain("example.com")
-        domain_dorks = [d for d in dorks if "example.com" in d]
+        domain_dorks = [(q, c) for q, c in dorks if "example.com" in q]
         assert len(domain_dorks) >= len(dorks) * 0.8
+
+    def test_dorks_include_category(self):
+        dorks = get_dorks_for_domain("example.com")
+        for query, category in dorks:
+            assert category in DORK_CATEGORIES, f"Unknown category: {category}"
+            assert isinstance(query, str)
 
     def test_categories_are_named(self):
         expected = {

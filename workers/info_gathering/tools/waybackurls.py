@@ -2,6 +2,7 @@
 """Waybackurls wrapper — URL discovery from web archives (extended with CommonCrawl, VirusTotal, OTX)."""
 
 from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.tools.url_classifier import classify_url
 
 
 class Waybackurls(InfoGatheringTool):
@@ -19,7 +20,8 @@ class Waybackurls(InfoGatheringTool):
             for line in stdout.strip().splitlines():
                 url = line.strip()
                 if url and url.startswith("http"):
-                    await self.save_asset(target_id, "url", url, "waybackurls")
+                    asset_type = classify_url(url)
+                    await self.save_asset(target_id, asset_type, url, "waybackurls")
         except Exception:
             pass
 
@@ -41,7 +43,8 @@ class Waybackurls(InfoGatheringTool):
                                 data = json.loads(line)
                                 found_url = data.get("url", "")
                                 if found_url:
-                                    await self.save_asset(target_id, "url", found_url, "commoncrawl")
+                                    asset_type = classify_url(found_url)
+                                    await self.save_asset(target_id, asset_type, found_url, "commoncrawl")
                             except json.JSONDecodeError:
                                 continue
         except Exception:

@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import aiohttp
 
 from workers.info_gathering.base_tool import InfoGatheringTool, logger
+from workers.info_gathering.tools.url_classifier import classify_url
 
 # Extensions that may contain sensitive data worth fetching from the archive
 SENSITIVE_EXTENSIONS = {".env", ".sql", ".bak", ".conf", ".key", ".pem", ".log",
@@ -65,11 +66,12 @@ class ArchiveProber(InfoGatheringTool):
         except Exception as e:
             logger.error(f"Unexpected error querying CDX: {e}")
 
-        # Save all discovered URLs as assets
+        # Save all discovered URLs as assets with classified types
         saved = 0
         for url in discovered_urls:
+            asset_type = classify_url(url)
             asset_id = await self.save_asset(
-                target_id, "url", url, "archive_prober",
+                target_id, asset_type, url, "archive_prober",
                 scope_manager=scope_manager,
             )
             if asset_id:
@@ -85,7 +87,7 @@ class ArchiveProber(InfoGatheringTool):
                 snippet = content[:2048]
                 # Need an asset to attach observation to — find or create one
                 asset_id = await self.save_asset(
-                    target_id, "url", url, "archive_prober",
+                    target_id, "sensitive_file", url, "archive_prober",
                     scope_manager=scope_manager,
                 )
                 if asset_id:
