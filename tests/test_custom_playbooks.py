@@ -46,11 +46,17 @@ def client():
 SAMPLE_PLAYBOOK = {
     "name": "custom_stealth",
     "description": "Low-noise stealth recon",
-    "stages": [
-        {"name": "passive_discovery", "enabled": True, "tool_timeout": 300},
-        {"name": "liveness_dns", "enabled": True, "tool_timeout": 120},
+    "workers": [
+        {
+            "name": "info_gathering",
+            "enabled": True,
+            "stages": [
+                {"name": "search_engine_recon", "enabled": False, "tool_timeout": 300},
+                {"name": "web_server_fingerprint", "enabled": True, "tool_timeout": 120},
+            ],
+            "concurrency": {"heavy": 1, "light": 2},
+        },
     ],
-    "concurrency": {"heavy": 1, "light": 2},
 }
 
 
@@ -61,8 +67,7 @@ async def test_create_playbook(client, db):
     body = resp.json()
     assert body["name"] == "custom_stealth"
     assert body["description"] == "Low-noise stealth recon"
-    assert body["stages"] == SAMPLE_PLAYBOOK["stages"]
-    assert body["concurrency"] == {"heavy": 1, "light": 2}
+    assert body["workers"] == SAMPLE_PLAYBOOK["workers"]
     assert body["builtin"] is False
     assert "id" in body
 
@@ -109,17 +114,22 @@ async def test_update_playbook(client, db):
 
     patch_resp = await client.patch(f"/api/v1/playbooks/{playbook_id}", json={
         "description": "Updated stealth recon",
-        "stages": [
-            {"name": "passive_discovery", "enabled": True, "tool_timeout": 600},
+        "workers": [
+            {
+                "name": "info_gathering",
+                "enabled": True,
+                "stages": [
+                    {"name": "web_server_fingerprint", "enabled": True, "tool_timeout": 600},
+                ],
+                "concurrency": {"heavy": 1, "light": 2},
+            },
         ],
     })
     assert patch_resp.status_code == 200
     body = patch_resp.json()
     assert body["description"] == "Updated stealth recon"
-    assert len(body["stages"]) == 1
-    assert body["stages"][0]["tool_timeout"] == 600
-    # Concurrency should remain unchanged
-    assert body["concurrency"] == {"heavy": 1, "light": 2}
+    assert len(body["workers"]) == 1
+    assert body["workers"][0]["stages"][0]["tool_timeout"] == 600
 
 
 @pytest.mark.anyio

@@ -61,6 +61,7 @@ async def test_create_target_with_playbook(db, client, tmp_path):
     assert playbook_path.exists()
     playbook_data = json.loads(playbook_path.read_text())
     assert playbook_data["name"] == "deep_webapp"
+    assert "workers" in playbook_data
 
 
 @pytest.mark.asyncio
@@ -82,6 +83,7 @@ async def test_create_target_default_playbook(db, client, tmp_path):
     assert playbook_path.exists()
     playbook_data = json.loads(playbook_path.read_text())
     assert playbook_data["name"] == "wide_recon"
+    assert "workers" in playbook_data
 
 
 @pytest.mark.asyncio
