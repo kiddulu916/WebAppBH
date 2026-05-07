@@ -52,10 +52,14 @@ class Pipeline(CheckpointMixin):
 
     def _filter_stages(self, playbook: dict | None) -> list[Stage]:
         """Return only the stages enabled by the playbook config."""
-        if not playbook or "stages" not in playbook:
+        from lib_webbh.playbooks import get_worker_stages
+        worker_stages = get_worker_stages(playbook, "business_logic")
+        if worker_stages is None:
             return list(STAGES)
+        if not worker_stages:
+            return []
         enabled_names = {
-            s["name"] for s in playbook["stages"] if s.get("enabled", True)
+            s["name"] for s in worker_stages if s.get("enabled", True)
         }
         return [stage for stage in STAGES if stage.name in enabled_names]
 
