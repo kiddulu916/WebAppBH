@@ -169,14 +169,23 @@ export interface StageExecution {
   name: string;
   status: "pending" | "running" | "completed" | "failed" | "paused" | "stopped";
   tool: string | null;
-  started_at: string | null;
-  last_seen: string | null;
+  started_at?: string | null;
+  last_seen?: string | null;
+}
+
+export interface WorkerExecution {
+  name: string;
+  status: "pending" | "queued" | "running" | "completed" | "failed" | "skipped";
+  stages: StageExecution[];
+  current_tool?: string;
+  error?: string;
+  skip_reason?: string;
 }
 
 export interface ExecutionState {
   target_id: number;
   playbook: string;
-  stages: StageExecution[];
+  workers: WorkerExecution[];
 }
 
 export interface GraphNode {

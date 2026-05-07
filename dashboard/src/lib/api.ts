@@ -216,12 +216,18 @@ export interface StageConfig {
   tool_timeout?: number;
 }
 
+export interface WorkerConfig {
+  name: string;
+  enabled: boolean;
+  stages: StageConfig[];
+  concurrency: { heavy: number; light: number };
+}
+
 export interface PlaybookRow {
   id?: number;
   name: string;
   description: string | null;
-  stages: StageConfig[];
-  concurrency: { heavy: number; light: number } | null;
+  workers: WorkerConfig[];
   builtin: boolean;
 }
 
@@ -567,8 +573,7 @@ export const api = {
   createPlaybook(data: {
     name: string;
     description?: string;
-    stages: StageConfig[];
-    concurrency?: { heavy: number; light: number };
+    workers: WorkerConfig[];
   }) {
     return request<PlaybookRow>("/api/v1/playbooks", {
       method: "POST",
@@ -581,8 +586,7 @@ export const api = {
     data: {
       name?: string;
       description?: string;
-      stages?: StageConfig[];
-      concurrency?: { heavy: number; light: number };
+      workers?: WorkerConfig[];
     },
   ) {
     return request<PlaybookRow>(`/api/v1/playbooks/${id}`, {
