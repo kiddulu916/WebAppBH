@@ -28,7 +28,7 @@ test.describe("Worker Control", () => {
     const cards = page.locator("[data-testid^='worker-card-']");
     await expect(cards.first()).toBeVisible({ timeout: 15_000 });
 
-    const runningCard = page.getByTestId(`worker-card-webbh-recon-t${targetId}`);
+    const runningCard = page.getByTestId("worker-card-info_gathering");
     await expect(runningCard).toBeVisible();
 
     // Pause
@@ -69,17 +69,17 @@ test.describe("Worker Control", () => {
     expect(count).toBe(2);
 
     // Verify the RUNNING worker card shows correct status and has action buttons
-    const runningCard = page.getByTestId(`worker-card-webbh-recon-t${targetId}`);
+    const runningCard = page.getByTestId("worker-card-info_gathering");
     await expect(runningCard).toBeVisible();
     await expect(runningCard).toContainText("RUNNING");
-    await expect(runningCard).toContainText("passive_discovery");
+    await expect(runningCard).toContainText("enumerate_subdomains");
 
     // Pause and Stop buttons should be present on the RUNNING card
     await expect(runningCard.getByTestId("worker-pause-btn")).toBeVisible();
     await expect(runningCard.getByTestId("worker-stop-btn")).toBeVisible();
 
     // Verify the COMPLETED worker card
-    const completedCard = page.getByTestId(`worker-card-webbh-recon-t${targetId}-2`);
+    const completedCard = page.getByTestId("worker-card-input_validation");
     await expect(completedCard).toBeVisible();
     await expect(completedCard).toContainText("COMPLETED");
   });

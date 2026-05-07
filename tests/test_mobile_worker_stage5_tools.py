@@ -92,8 +92,8 @@ async def test_endpoint_extractor_scope_filtering():
 
 
 @pytest.mark.anyio
-async def test_endpoint_extractor_pushes_to_recon_queue():
-    """Verify the tool calls push_task for in-scope endpoints."""
+async def test_endpoint_extractor_pushes_to_info_gathering_queue():
+    """Verify the tool calls push_priority_task for in-scope endpoints."""
     await _create_tables()
     from lib_webbh import Target, get_session
     from workers.mobile_worker.tools.endpoint_extractor import EndpointExtractorTool

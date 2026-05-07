@@ -18,17 +18,23 @@ interface QueueStatus {
 }
 
 const QUEUE_NAMES = [
-  "recon_queue",
-  "fuzzing_queue",
-  "cloud_queue",
-  "api_queue",
+  "info_gathering_queue",
+  "input_validation_queue",
+  "authentication_queue",
+  "authorization_queue",
+  "config_mgmt_queue",
+  "chain_worker_queue",
+  "reasoning_queue",
 ] as const;
 
 const QUEUE_LABELS: Record<string, string> = {
-  recon_queue: "Recon",
-  fuzzing_queue: "Fuzzing",
-  cloud_queue: "Cloud",
-  api_queue: "API",
+  info_gathering_queue: "Info Gathering",
+  input_validation_queue: "Input Validation",
+  authentication_queue: "Auth",
+  authorization_queue: "Authz",
+  config_mgmt_queue: "Config",
+  chain_worker_queue: "Chain",
+  reasoning_queue: "Reasoning",
 };
 
 const HEALTH_DOT: Record<string, string> = {
