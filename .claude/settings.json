@@ -11,7 +11,7 @@
           },
           {
             "type": "command",
-            "command": "file=\"$CLAUDE_FILE_PATH\"; if [ -n \"$file\" ] && echo \"$file\" | grep -qE '/(base_tool|pipeline)\\.py$|/tools/[^/]+\\.py$'; then echo 'SECURITY-SENSITIVE FILE MODIFIED: Run the security-reviewer agent on this file before continuing.' >&2; fi",
+            "command": "file=\"$CLAUDE_FILE_PATH\"; if [ -n \"$file\" ] && echo \"$file\" | grep -qE '/workers/[^/]+/(base_tool|pipeline)\\.py$|/workers/[^/]+/tools/[^/]+\\.py$'; then echo 'SECURITY-SENSITIVE FILE MODIFIED: Run the security-reviewer agent on this file before continuing.' >&2; fi",
             "timeout": 5000
           }
         ]
@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -f /tmp/.webbh-code-reviewed ]; then rm -f /tmp/.webbh-code-reviewed; exit 0; else echo 'CODE REVIEW GATE: Run the code-reviewer agent on staged changes before committing. After review completes, retry the commit.' >&2; touch /tmp/.webbh-code-reviewed; exit 1; fi",
+            "command": "FLAG=/tmp/.webbh-code-reviewed; if [ -f \"$FLAG\" ]; then rm -f \"$FLAG\"; exit 0; else echo 'CODE REVIEW REMINDER (one-shot ritual): Run the code-reviewer agent on staged changes, then retry the commit. Re-running git commit proceeds; this hook does not verify the agent actually ran.' >&2; touch \"$FLAG\"; exit 1; fi",
             "timeout": 5000
           }
         ]

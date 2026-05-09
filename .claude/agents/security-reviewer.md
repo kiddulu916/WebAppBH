@@ -27,7 +27,7 @@ The `ScopeManager` enforces which domains/IPs/paths are in scope. Check for:
 ## Credential & Secret Exposure
 
 - **Hardcoded secrets**: API keys, passwords, tokens in source files.
-- **Secrets in logs**: Ensure `setup_logger` calls don't log sensitive fields from `target_profile` (e.g., API keys, auth tokens, custom headers with Bearer tokens).
+- **Secrets in logs**: Ensure `setup_logger` calls don't log sensitive fields from `target_profile` (e.g., API keys, auth tokens, custom headers with Bearer tokens). Use `redact_sensitive` (exported from `lib_webbh`) as the project-blessed redaction helper before binding payloads with `.bind()` or passing them to `log.info(...)`.
 - **Secrets in DB**: Check that sensitive config in `target_profile` JSON isn't exposed via API responses without filtering.
 - **Docker build args**: Ensure Dockerfiles don't embed secrets as `ARG` or `ENV` values.
 
