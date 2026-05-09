@@ -28,6 +28,7 @@ class ArchiveProber(InfoGatheringTool):
     async def execute(self, target_id: int, **kwargs) -> dict:
         domain = kwargs.get("domain")
         scope_manager = kwargs.get("scope_manager")
+        rate_limiter = kwargs.get("rate_limiter")
 
         if not domain:
             target = kwargs.get("target")
@@ -41,6 +42,7 @@ class ArchiveProber(InfoGatheringTool):
 
         # Query Wayback Machine CDX API
         try:
+            await self.acquire_rate_limit(rate_limiter)
             timeout = aiohttp.ClientTimeout(total=60)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 cdx_url = (
@@ -81,6 +83,7 @@ class ArchiveProber(InfoGatheringTool):
         observations_saved = 0
         fetched = 0
         for url, timestamp in sensitive_urls[:MAX_CACHED_FETCHES]:
+            await self.acquire_rate_limit(rate_limiter)
             content = await self._fetch_cached_content(url, timestamp)
             if content:
                 # Save as observation — first 2KB as snippet

@@ -5,16 +5,18 @@ import re
 import aiohttp
 from urllib.parse import urljoin
 
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 
 class FormMapper(InfoGatheringTool):
     """Discover and map HTML forms from web pages."""
 
-    async def execute(self, target_id: int, **kwargs):
+    async def execute(self, target_id: int, **kwargs) -> dict:
         target = kwargs.get("target")
         if not target:
-            return
+            return {"found": 0}
+
+        rate_limiter = kwargs.get("rate_limiter")
 
         from lib_webbh.database import Asset
         from lib_webbh import get_session
@@ -32,8 +34,10 @@ class FormMapper(InfoGatheringTool):
         # Also scan the main domain
         urls.insert(0, f"https://{target.base_domain}")
 
+        saved = 0
         for url in urls[:20]:  # Limit to 20 pages
             try:
+                await self.acquire_rate_limit(rate_limiter)
                 forms = await self._extract_forms(url)
                 if forms:
                     # Save the page as a form asset
@@ -46,8 +50,12 @@ class FormMapper(InfoGatheringTool):
                             tech_stack={"forms": forms},
                             page_title=f"Form page: {url}",
                         )
-            except Exception:
+                        saved += 1
+            except Exception as e:
+                logger.warning(f"FormMapper failed on {url}: {e}")
                 continue
+
+        return {"found": saved}
 
     async def _extract_forms(self, url: str) -> list[dict]:
         """Extract forms from a web page."""
@@ -70,6 +78,6 @@ class FormMapper(InfoGatheringTool):
                                 "method": method.group(1).upper() if method else "GET",
                                 "inputs": inputs,
                             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"FormMapper form extraction failed for {url}: {e}")
         return forms

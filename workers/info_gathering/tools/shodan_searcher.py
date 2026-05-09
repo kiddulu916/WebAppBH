@@ -30,6 +30,8 @@ class ShodanSearcher(InfoGatheringTool):
 
         from lib_webbh.intel_enrichment import enrich_shodan
 
+        rate_limiter = kwargs.get("rate_limiter")
+        await self.acquire_rate_limit(rate_limiter)
         result = await enrich_shodan(domain, api_key=api_key)
 
         saved = 0

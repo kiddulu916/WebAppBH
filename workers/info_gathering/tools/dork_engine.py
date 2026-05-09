@@ -39,6 +39,7 @@ class DorkEngine(InfoGatheringTool):
     async def execute(self, target_id: int, **kwargs) -> dict:
         domain = kwargs.get("domain")
         scope_manager = kwargs.get("scope_manager")
+        rate_limiter = kwargs.get("rate_limiter")
 
         if not domain:
             target = kwargs.get("target")
@@ -60,6 +61,7 @@ class DorkEngine(InfoGatheringTool):
         for engine_name, engine_dorks in engine_assignments.items():
             for query, category in engine_dorks:
                 try:
+                    await self.acquire_rate_limit(rate_limiter)
                     results = await self._scrape_engine(engine_name, query)
                     # Tag each result with the dork category
                     for r in results:
@@ -70,8 +72,6 @@ class DorkEngine(InfoGatheringTool):
                         f"Dork query failed on {engine_name}",
                         extra={"dork": query, "error": str(e)},
                     )
-                # Rate limit: 3-7 seconds between queries
-                await asyncio.sleep(random.uniform(3, 7))
 
         # Deduplicate by URL (keep first category encountered)
         seen_urls: set[str] = set()

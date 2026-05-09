@@ -25,6 +25,7 @@ class SecurityTrailsSearcher(InfoGatheringTool):
 
         domain = kwargs.get("domain")
         scope_manager = kwargs.get("scope_manager")
+        rate_limiter = kwargs.get("rate_limiter")
 
         if not domain:
             target = kwargs.get("target")
@@ -53,7 +54,7 @@ class SecurityTrailsSearcher(InfoGatheringTool):
                             if asset_id:
                                 saved += 1
 
-                await asyncio.sleep(2)
+                await self.acquire_rate_limit(rate_limiter)
 
                 # 2. DNS records (A records -> IPs)
                 async with session.get(f"{SECURITYTRAILS_BASE}/domain/{domain}") as resp:
@@ -75,7 +76,7 @@ class SecurityTrailsSearcher(InfoGatheringTool):
                                 if asset_id:
                                     saved += 1
 
-                await asyncio.sleep(2)
+                await self.acquire_rate_limit(rate_limiter)
 
                 # 3. Historical DNS (A records) -- discover past IPs
                 async with session.get(f"{SECURITYTRAILS_BASE}/history/{domain}/dns/a") as resp:
@@ -92,7 +93,7 @@ class SecurityTrailsSearcher(InfoGatheringTool):
                                     if asset_id:
                                         saved += 1
 
-                await asyncio.sleep(2)
+                await self.acquire_rate_limit(rate_limiter)
 
                 # 4. Associated domains
                 async with session.get(f"{SECURITYTRAILS_BASE}/domain/{domain}/associated") as resp:

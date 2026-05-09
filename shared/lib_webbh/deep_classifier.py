@@ -1,22 +1,24 @@
-"""7-layer async deep scope classifier for pending assets.
+"""6-layer async deep scope classifier for pending assets.
 
 Layers (short-circuit on first match):
-1. Reverse DNS — IP resolves to in-scope domain
-2. TLS SAN — certificate names match in-scope domain
-3. HTTP hosting — HTTP response indicates shared hosting with in-scope target
-4. ASN lookup — same ASN as known in-scope IPs
-5. Header linkage — response headers reference in-scope domain
-6. WHOIS — same registrant org as in-scope domains
-7. Discovery provenance — discovered from an in-scope parent asset
+1. Discovery provenance — discovered from an in-scope parent asset (checked first, free)
+2. Reverse DNS — IP resolves to in-scope domain
+3. TLS SAN — certificate names match in-scope domain
+4. HTTP hosting — HTTP response indicates shared hosting with in-scope target
+5. ASN lookup — same ASN as known in-scope IPs
+6. Header linkage — response headers reference in-scope domain
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 import socket
 import ssl
 from dataclasses import dataclass
 from typing import Optional
+
+_log = logging.getLogger("deep-classifier")
 
 
 @dataclass
@@ -82,8 +84,8 @@ async def check_http_hosting(host: str) -> Optional[str]:
                 final_host = resp.url.host
                 if final_host and final_host != host:
                     return final_host
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("HTTP hosting check failed for %s: %s", host, exc)
     return None
 
 
@@ -101,16 +103,27 @@ async def lookup_asn(ip: str) -> Optional[str]:
 
 
 def _whois_asn(ip: str) -> Optional[str]:
-    """Synchronous ASN lookup via DNS TXT query to Team Cymru."""
-    import socket as _socket
+    """Synchronous ASN lookup via DNS TXT query to Team Cymru.
+
+    Uses ``dig +short TXT`` to resolve the TXT record which has the format:
+    ``"ASN | prefix | CC | registry | date"``
+    Returns the ASN string (e.g. "13335") or None on failure.
+    """
+    import subprocess
     try:
         octets = ip.split(".")
         query = f"{octets[3]}.{octets[2]}.{octets[1]}.{octets[0]}.origin.asn.cymru.com"
-        answers = _socket.getaddrinfo(query, None, _socket.AF_INET, _socket.SOCK_DGRAM)
-        # The TXT record format is: "ASN | prefix | CC | registry | date"
-        # But getaddrinfo won't give TXT records, so this is best-effort
-        return None  # Simplified — full implementation would use dnspython
-    except Exception:
+        result = subprocess.run(
+            ["dig", "+short", "TXT", query],
+            capture_output=True, text=True, timeout=5,
+        )
+        txt = result.stdout.strip().strip('"')
+        if not txt or "|" not in txt:
+            return None
+        # Format: "ASN | prefix | CC | registry | date"
+        asn = txt.split("|")[0].strip()
+        return asn if asn.isdigit() else None
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
         return None
 
 
@@ -137,13 +150,13 @@ async def check_header_linkage(host: str) -> Optional[str]:
                             part = part.strip(";")
                             if part.count(".") >= 1 and not part.startswith("http"):
                                 return part
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("Header linkage check failed for %s: %s", host, exc)
     return None
 
 
 class DeepClassifier:
-    """Async deep scope classifier using 7 inference layers."""
+    """Async deep scope classifier using 6 inference layers."""
 
     def __init__(
         self,
@@ -152,6 +165,12 @@ class DeepClassifier:
     ) -> None:
         self._domains = [d.lower().lstrip("*.") for d in (in_scope_domains or [])]
         self._ips = list(in_scope_ips or [])
+        # Pre-resolve ASNs of known in-scope IPs for Layer 4 matching
+        self._in_scope_asns: set[str] = set()
+        for ip in self._ips:
+            asn = _whois_asn(ip)
+            if asn:
+                self._in_scope_asns.add(asn)
 
     def _matches_scope(self, value: str) -> bool:
         """Check if a value matches any known in-scope domain."""
@@ -180,14 +199,14 @@ class DeepClassifier:
             scope_classification. If parent was "in-scope", child is "associated".
         """
 
-        # Layer 7: Discovery provenance (checked first since it's free)
+        # Layer 1: Discovery provenance (checked first since it's free)
         if discovered_from_scope == "in-scope":
             return DeepResult(
                 classification="associated",
                 association_method="discovered_from",
             )
 
-        # Layer 1: Reverse DNS (IPs only)
+        # Layer 2: Reverse DNS (IPs only)
         if asset_type == "ip":
             hostname = await reverse_dns(value)
             if hostname and self._matches_scope(hostname):
@@ -197,7 +216,7 @@ class DeepClassifier:
                     associated_value=hostname,
                 )
 
-        # Layer 2: TLS SAN check
+        # Layer 3: TLS SAN check
         try:
             sans = await get_tls_sans(value)
             for san in sans:
@@ -208,10 +227,10 @@ class DeepClassifier:
                         association_method="tls_san",
                         associated_value=san,
                     )
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("TLS SAN check failed for %s: %s", value, exc)
 
-        # Layer 3: HTTP hosting check
+        # Layer 4: HTTP hosting check
         redirect_host = await check_http_hosting(value)
         if redirect_host and self._matches_scope(redirect_host):
             return DeepResult(
@@ -220,14 +239,17 @@ class DeepClassifier:
                 associated_value=redirect_host,
             )
 
-        # Layer 4: ASN lookup
-        if asset_type == "ip":
+        # Layer 5: ASN lookup — compare against cached in-scope ASNs
+        if asset_type == "ip" and self._in_scope_asns:
             asn = await lookup_asn(value)
-            # ASN matching would require knowing the target's ASN —
-            # simplified: just note the ASN for manual review
-            # Full implementation would compare against known-good ASNs
+            if asn and asn in self._in_scope_asns:
+                return DeepResult(
+                    classification="associated",
+                    association_method="asn_match",
+                    associated_value=asn,
+                )
 
-        # Layer 5: Header linkage
+        # Layer 6: Header linkage
         header_domain = await check_header_linkage(value)
         if header_domain and self._matches_scope(header_domain):
             return DeepResult(
@@ -236,7 +258,6 @@ class DeepClassifier:
                 associated_value=header_domain,
             )
 
-        # Layers 6 (WHOIS) — expensive, deferred to manual triage
         # All layers exhausted → undetermined
         return DeepResult(
             classification="undetermined",

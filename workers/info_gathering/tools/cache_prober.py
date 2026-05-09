@@ -21,6 +21,7 @@ class CacheProber(InfoGatheringTool):
     async def execute(self, target_id: int, **kwargs) -> dict:
         domain = kwargs.get("domain")
         scope_manager = kwargs.get("scope_manager")
+        rate_limiter = kwargs.get("rate_limiter")
 
         if not domain:
             target = kwargs.get("target")
@@ -33,6 +34,7 @@ class CacheProber(InfoGatheringTool):
 
         # Query archive.ph for cached snapshots
         try:
+            await self.acquire_rate_limit(rate_limiter)
             timeout = aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 url = f"https://archive.ph/newest/{domain}"

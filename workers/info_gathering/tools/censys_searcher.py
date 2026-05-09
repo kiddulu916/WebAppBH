@@ -27,6 +27,7 @@ class CensysSearcher(InfoGatheringTool):
 
         domain = kwargs.get("domain")
         scope_manager = kwargs.get("scope_manager")
+        rate_limiter = kwargs.get("rate_limiter")
 
         if not domain:
             target = kwargs.get("target")
@@ -99,8 +100,7 @@ class CensysSearcher(InfoGatheringTool):
                                 if san_id:
                                     saved += 1
 
-                    # Rate limit: 0.5s between host lookups
-                    await asyncio.sleep(0.5)
+                    await self.acquire_rate_limit(rate_limiter)
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             logger.warning(f"Censys request failed: {e}")
