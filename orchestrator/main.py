@@ -223,32 +223,93 @@ class CampaignUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 # Schema sync — add columns that exist in ORM models but not in the DB
 # ---------------------------------------------------------------------------
-def _add_missing_columns(connection) -> None:
-    """Compare ORM metadata to live DB and ALTER TABLE for missing columns."""
+def _render_server_default(server_default, dialect) -> str:
+    """Render the value of a column ``server_default`` as a SQL fragment.
+
+    SQLAlchemy stores ``DefaultClause.arg`` as one of three things:
+
+    * ``str`` — a raw SQL literal that SA renders via
+      ``render_literal_value`` (mirrors SA's ``DDLCompiler.render_default_string``
+      for ``STRINGTYPE``: it must be quoted as a SQL string literal).
+    * ``TextClause`` — a ``text("…")`` expression exposing ``.text``.
+    * Other ``ClauseElement`` (e.g. ``func.now()``) — must be compiled
+      using the active dialect.
+
+    ! The original implementation assumed every ``arg`` was a TextClause and
+      crashed with ``AttributeError: 'str' object has no attribute 'text'``
+      whenever a column was declared with ``server_default="…"`` or
+      ``server_default=func.…()``.
+    """
+    arg = server_default.arg
+    # TextClause exposes ``.text`` — preserve verbatim.
+    if hasattr(arg, "text"):
+        return str(arg.text)
+    # SA renders raw-string server_default values as quoted SQL string literals.
+    if isinstance(arg, str):
+        return "'" + arg.replace("'", "''") + "'"
+    # Any other ClauseElement (FunctionElement, etc.) — let the dialect render it.
+    try:
+        return str(
+            arg.compile(dialect=dialect, compile_kwargs={"literal_binds": True})
+        )
+    except Exception:  # noqa: BLE001 — best-effort; missing default is recoverable
+        return ""
+
+
+def _render_client_default(default) -> str:
+    """Render a Python-side ``default`` (a ``ColumnDefault``) as a SQL fragment.
+
+    Returns an empty string for callables — the helper only emits literal
+    DEFAULT values; callable defaults are applied by SA at INSERT time.
+    """
+    if default is None or callable(default.arg):
+        return ""
+    val = default.arg
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    if isinstance(val, (int, float)):
+        return str(val)
+    return "'" + str(val).replace("'", "''") + "'"
+
+
+def _add_missing_columns(connection, metadata=None) -> None:
+    """Compare ORM metadata to live DB and ALTER TABLE for missing columns.
+
+    Args:
+        connection: A synchronous SQLAlchemy ``Connection``.
+        metadata: Optional ``MetaData`` to inspect. Defaults to ``Base.metadata``.
+            Exposed for unit tests so they can drive the helper against
+            isolated table definitions.
+    """
+    md = metadata if metadata is not None else Base.metadata
     inspector = inspect(connection)
-    for table in Base.metadata.sorted_tables:
+    for table in md.sorted_tables:
         if not inspector.has_table(table.name):
             continue
         db_columns = {c["name"] for c in inspector.get_columns(table.name)}
         for col in table.columns:
-            if col.name not in db_columns:
-                col_type = col.type.compile(dialect=connection.dialect)
-                nullable = "NULL" if col.nullable else "NOT NULL"
-                default_clause = ""
-                if not col.nullable:
-                    if col.server_default is not None:
-                        default_clause = f" DEFAULT {col.server_default.arg.text}"
-                    elif col.default is not None and not callable(col.default.arg):
-                        val = col.default.arg
-                        if isinstance(val, bool):
-                            default_clause = f" DEFAULT {'true' if val else 'false'}"
-                        elif isinstance(val, (int, float)):
-                            default_clause = f" DEFAULT {val}"
-                        else:
-                            default_clause = f" DEFAULT '{val}'"
-                ddl = f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {col_type}{default_clause} {nullable}'
-                logger.info("Adding missing column", extra={"ddl": ddl})
-                connection.execute(text(ddl))
+            if col.name in db_columns:
+                continue
+            col_type = col.type.compile(dialect=connection.dialect)
+            nullable = "NULL" if col.nullable else "NOT NULL"
+            default_clause = ""
+            if not col.nullable:
+                if col.server_default is not None:
+                    rendered = _render_server_default(
+                        col.server_default, connection.dialect
+                    )
+                    if rendered:
+                        default_clause = f" DEFAULT {rendered}"
+                else:
+                    rendered = _render_client_default(col.default)
+                    if rendered:
+                        default_clause = f" DEFAULT {rendered}"
+            ddl = (
+                f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" '
+                f"{col_type}{default_clause} {nullable}"
+            )
+            logger.info("Adding missing column", extra={"ddl": ddl})
+            connection.execute(text(ddl))
 
 
 # ---------------------------------------------------------------------------
