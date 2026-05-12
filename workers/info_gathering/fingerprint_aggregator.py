@@ -9,7 +9,18 @@ The aggregator scores those signals (Task 1.2), writes a single summary
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
+
+Intensity = Literal["low", "medium", "high"]
+
+__all__ = [
+    "CONFIDENCE_THRESHOLD",
+    "FingerprintAggregator",
+    "Intensity",
+    "ProbeResult",
+    "SLOTS",
+    "WEIGHTS",
+]
 
 # Per-signal weights for the per-slot scoring rule. Vendor confidence is the
 # clamped sum of matched-signal weights; a slot is reported only when its top
@@ -50,7 +61,7 @@ class ProbeResult:
 class FingerprintAggregator:
     """Consolidates Stage 2 probe results into one summary Observation."""
 
-    def __init__(self, asset_id: int, target_id: int, intensity: str = "low") -> None:
+    def __init__(self, asset_id: int, target_id: int, intensity: Intensity = "low") -> None:
         self.asset_id = asset_id
         self.target_id = target_id
-        self.intensity = intensity
+        self.intensity: Intensity = intensity

@@ -1,6 +1,7 @@
 # tests/test_fingerprint_aggregator.py
 """Tests for the Stage 2 FingerprintAggregator and ProbeResult dataclass."""
 from workers.info_gathering.fingerprint_aggregator import (
+    CONFIDENCE_THRESHOLD,
     FingerprintAggregator,
     ProbeResult,
     SLOTS,
@@ -19,6 +20,11 @@ class TestWeights:
 class TestSlots:
     def test_slots_cover_full_vocabulary(self):
         assert set(SLOTS) == {"edge", "origin_server", "framework", "os", "tls", "waf"}
+
+
+class TestConfidenceThreshold:
+    def test_confidence_threshold_is_half(self):
+        assert CONFIDENCE_THRESHOLD == 0.5
 
 
 class TestProbeResult:
