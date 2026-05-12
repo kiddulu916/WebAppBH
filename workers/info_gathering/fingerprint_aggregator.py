@@ -155,3 +155,92 @@ class FingerprintAggregator:
             await session.commit()
             await session.refresh(obs)
             return obs.id
+
+    async def emit_info_leaks(
+        self, fingerprint: dict[str, Any], raw: dict[str, Any],
+    ) -> list[int]:
+        """Emit INFO/LOW Vulnerabilities for clear information disclosure.
+
+        ``fingerprint`` is the scored slot map (``{slot: {vendor, ...}}``).
+        ``raw`` is a per-probe dict the pipeline assembles from ``ProbeResult``
+        signals so this method can read banner headers / error-page signatures
+        without re-querying the DB.
+        """
+        from workers.info_gathering.fingerprint_signatures import (
+            DEFAULT_ERROR_LEAKERS,
+            INTERNAL_DEBUG_HEADERS,
+        )
+
+        vuln_ids: list[int] = []
+
+        origin = fingerprint.get("origin_server") or {}
+        if origin.get("vendor") and origin.get("version"):
+            vuln_ids.append(await self._save_vuln(
+                title="Server software and version disclosure",
+                severity="INFO",
+                evidence={
+                    "vendor": origin["vendor"],
+                    "version": origin["version"],
+                    "probe_obs_id": (raw.get("banner") or {}).get("obs_id"),
+                },
+            ))
+
+        banner = raw.get("banner") or {}
+        x_powered_by = banner.get("x_powered_by")
+        if x_powered_by:
+            vuln_ids.append(await self._save_vuln(
+                title="Framework disclosure via X-Powered-By",
+                severity="INFO",
+                evidence={
+                    "header": "X-Powered-By",
+                    "value": x_powered_by,
+                    "probe_obs_id": banner.get("obs_id"),
+                },
+            ))
+
+        err = raw.get("error_page_404") or {}
+        if err.get("signature_match") in DEFAULT_ERROR_LEAKERS:
+            vuln_ids.append(await self._save_vuln(
+                title="Default error page exposes server internals",
+                severity="LOW",
+                evidence={
+                    "signature": err["signature_match"],
+                    "probe_obs_id": err.get("obs_id"),
+                },
+            ))
+
+        banner_headers = banner.get("headers") or {}
+        debug_hits = [h for h in banner_headers if h.lower() in INTERNAL_DEBUG_HEADERS]
+        if debug_hits:
+            vuln_ids.append(await self._save_vuln(
+                title="Internal debug header exposed to public",
+                severity="LOW",
+                evidence={
+                    "headers": debug_hits,
+                    "probe_obs_id": banner.get("obs_id"),
+                },
+            ))
+
+        return vuln_ids
+
+    async def _save_vuln(self, *, title: str, severity: str, evidence: dict[str, Any]) -> int:
+        """Insert one Vulnerability row tagged for Stage 2 / WSTG section 4.1.2."""
+        from lib_webbh import get_session
+        from lib_webbh.database import Vulnerability
+        async with get_session() as session:
+            vuln = Vulnerability(
+                target_id=self.target_id,
+                asset_id=self.asset_id,
+                severity=severity,
+                title=title,
+                worker_type="info_gathering",
+                section_id="4.1.2",
+                stage_name="web_server_fingerprint",
+                source_tool="fingerprint_aggregator",
+                vuln_type="information_disclosure",
+                evidence=evidence,
+            )
+            session.add(vuln)
+            await session.commit()
+            await session.refresh(vuln)
+            return vuln.id

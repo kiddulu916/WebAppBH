@@ -229,3 +229,122 @@ class TestWriteSummary:
         payload = save.call_args.args[0]
         for slot in SLOTS:
             assert slot in payload["fingerprint"]
+
+
+class TestSignaturesModule:
+    def test_signatures_module_exposes_required_tables(self):
+        from workers.info_gathering import fingerprint_signatures as fs
+        assert hasattr(fs, "DEFAULT_ERROR_LEAKERS")
+        assert hasattr(fs, "INTERNAL_DEBUG_HEADERS")
+        assert hasattr(fs, "WAF_PASSIVE_PATTERNS")
+        assert hasattr(fs, "CDN_CERT_ISSUERS")
+
+    def test_default_error_leakers_includes_common_vendors(self):
+        from workers.info_gathering.fingerprint_signatures import DEFAULT_ERROR_LEAKERS
+        for sig in ("apache-default-404", "nginx-default-404", "iis-default-404"):
+            assert sig in DEFAULT_ERROR_LEAKERS
+
+    def test_internal_debug_headers_is_lowercase(self):
+        from workers.info_gathering.fingerprint_signatures import INTERNAL_DEBUG_HEADERS
+        assert all(h == h.lower() for h in INTERNAL_DEBUG_HEADERS)
+
+
+class TestEmitInfoLeaks:
+    @pytest.mark.anyio
+    async def test_emits_vuln_for_x_powered_by(self):
+        agg = FingerprintAggregator(asset_id=501, target_id=42)
+        raw = {
+            "banner": {
+                "x_powered_by": "Express",
+                "obs_id": 7,
+                "headers": {"X-Powered-By": "Express"},
+            },
+        }
+        with patch.object(agg, "_save_vuln", new_callable=AsyncMock, return_value=11) as save:
+            ids = await agg.emit_info_leaks({"origin_server": {"vendor": None}}, raw)
+        assert 11 in ids
+        kwargs = save.call_args.kwargs
+        assert kwargs["title"] == "Framework disclosure via X-Powered-By"
+        assert kwargs["severity"] == "INFO"
+        assert kwargs["evidence"]["probe_obs_id"] == 7
+        assert kwargs["evidence"]["value"] == "Express"
+
+    @pytest.mark.anyio
+    async def test_emits_vuln_for_server_with_version(self):
+        agg = FingerprintAggregator(asset_id=501, target_id=42)
+        fingerprint = {
+            "origin_server": {"vendor": "Apache", "version": "2.4.49"},
+        }
+        raw = {"banner": {"obs_id": 5, "headers": {}}}
+        with patch.object(agg, "_save_vuln", new_callable=AsyncMock, return_value=12) as save:
+            ids = await agg.emit_info_leaks(fingerprint, raw)
+        assert 12 in ids
+        kwargs = save.call_args.kwargs
+        assert kwargs["title"] == "Server software and version disclosure"
+        assert kwargs["severity"] == "INFO"
+        assert kwargs["evidence"]["vendor"] == "Apache"
+        assert kwargs["evidence"]["version"] == "2.4.49"
+
+    @pytest.mark.anyio
+    async def test_emits_low_vuln_for_default_error_page_signature(self):
+        agg = FingerprintAggregator(asset_id=501, target_id=42)
+        raw = {
+            "error_page_404": {
+                "signature_match": "apache-default-404",
+                "obs_id": 9,
+            },
+        }
+        with patch.object(agg, "_save_vuln", new_callable=AsyncMock, return_value=13) as save:
+            ids = await agg.emit_info_leaks({"origin_server": {"vendor": None}}, raw)
+        assert 13 in ids
+        kwargs = save.call_args.kwargs
+        assert kwargs["title"] == "Default error page exposes server internals"
+        assert kwargs["severity"] == "LOW"
+        assert kwargs["evidence"]["probe_obs_id"] == 9
+
+    @pytest.mark.anyio
+    async def test_emits_low_vuln_for_internal_debug_header(self):
+        agg = FingerprintAggregator(asset_id=501, target_id=42)
+        raw = {
+            "banner": {
+                "obs_id": 6,
+                "headers": {"X-Debug-Token": "abc", "Server": "nginx"},
+            },
+        }
+        with patch.object(agg, "_save_vuln", new_callable=AsyncMock, return_value=14) as save:
+            ids = await agg.emit_info_leaks({"origin_server": {"vendor": None}}, raw)
+        assert 14 in ids
+        kwargs = save.call_args.kwargs
+        assert kwargs["title"] == "Internal debug header exposed to public"
+        assert kwargs["severity"] == "LOW"
+        assert "x-debug-token" in [h.lower() for h in kwargs["evidence"]["headers"]]
+
+    @pytest.mark.anyio
+    async def test_no_vulns_when_no_info_leak(self):
+        agg = FingerprintAggregator(asset_id=501, target_id=42)
+        raw = {"banner": {"obs_id": 1, "headers": {"Server": "nginx"}}}
+        with patch.object(agg, "_save_vuln", new_callable=AsyncMock) as save:
+            ids = await agg.emit_info_leaks({"origin_server": {"vendor": "nginx"}}, raw)
+        assert ids == []
+        assert save.call_count == 0
+
+    @pytest.mark.anyio
+    async def test_emit_info_leaks_returns_all_ids_in_order(self):
+        agg = FingerprintAggregator(asset_id=501, target_id=42)
+        fingerprint = {"origin_server": {"vendor": "Apache", "version": "2.4.49"}}
+        raw = {
+            "banner": {
+                "obs_id": 5,
+                "x_powered_by": "PHP/8.0",
+                "headers": {"X-Powered-By": "PHP/8.0", "X-Debug-Token": "t"},
+            },
+            "error_page_404": {"signature_match": "apache-default-404", "obs_id": 9},
+        }
+        return_values = iter([100, 101, 102, 103])
+        with patch.object(
+            agg, "_save_vuln",
+            new_callable=AsyncMock, side_effect=lambda **_: next(return_values),
+        ):
+            ids = await agg.emit_info_leaks(fingerprint, raw)
+        # server+version, x-powered-by, default-error-page, debug-header → 4 vulns
+        assert ids == [100, 101, 102, 103]
