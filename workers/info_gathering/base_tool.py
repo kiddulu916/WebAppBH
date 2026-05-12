@@ -7,7 +7,7 @@ import asyncio
 import os
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Optional  # noqa: F401
 
 from sqlalchemy import select
 
@@ -32,7 +32,7 @@ class InfoGatheringTool(ABC):
     worker_type = "info_gathering"
 
     @abstractmethod
-    async def execute(self, target_id: int, **kwargs) -> Any:
+    async def execute(self, target_id: int, **kwargs) -> dict[str, Any] | None:
         """Run this tool against the target. Must be implemented by subclasses."""
         ...
 

@@ -38,13 +38,24 @@ class TestSaveObservation:
 
 class TestHttpxObservationLinkage:
     @pytest.mark.anyio
-    async def test_httpx_writes_observation_against_asset_id(self):
+    async def test_httpx_writes_observation_against_asset_id(self, tmp_path):
         """Httpx must call save_observation with asset_id, not target_id."""
         tool = Httpx()
         line = json.dumps({"url": "https://a.com", "status_code": 200, "title": "T", "tech": ["nginx"]})
-        with patch.object(tool, "run_subprocess", new_callable=AsyncMock, return_value=line):
-            with patch.object(tool, "save_observation", new_callable=AsyncMock, return_value=1) as save:
-                await tool.execute(target_id=1, asset_id=501, host="a.com")
+
+        fake = MagicMock()
+        fake.name = str(tmp_path / "hosts.txt")
+        fake.__enter__ = MagicMock(return_value=fake)
+        fake.__exit__ = MagicMock(return_value=False)
+        fake.write = MagicMock()
+
+        with patch("workers.info_gathering.tools.httpx.tempfile.NamedTemporaryFile",
+                   return_value=fake), \
+             patch("workers.info_gathering.tools.httpx.os.path.exists", return_value=False), \
+             patch.object(tool, "run_subprocess", new_callable=AsyncMock, return_value=line), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock, return_value=1) as save:
+            await tool.execute(target_id=1, asset_id=501, host="a.com")
+
         kwargs = save.call_args.kwargs
         assert "asset_id" in kwargs
         assert kwargs["asset_id"] == 501

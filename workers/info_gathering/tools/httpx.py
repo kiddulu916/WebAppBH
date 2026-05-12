@@ -10,7 +10,8 @@ from workers.info_gathering.base_tool import InfoGatheringTool
 class Httpx(InfoGatheringTool):
     """HTTP liveness probe using the httpx binary against a single host."""
 
-    async def execute(self, target_id: int, **kwargs):
+    async def execute(self, target_id: int, **kwargs) -> dict[str, int]:
+        _ = target_id  # consumed via the pipeline preamble's asset_id (Phase 3)
         host = kwargs.get("host")
         asset_id = kwargs.get("asset_id")
         if not host or not asset_id:
