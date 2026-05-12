@@ -65,3 +65,61 @@ class FingerprintAggregator:
         self.asset_id = asset_id
         self.target_id = target_id
         self.intensity: Intensity = intensity
+
+    def _score_slot(self, slot: str, results: list[ProbeResult]) -> dict[str, Any]:
+        """Sum weights per (slot, vendor) across non-errored probes.
+
+        Returns either ``{vendor, confidence, signals, conflict: False}`` for a
+        single decisive vendor, ``{vendor, confidence, candidates, conflict: True}``
+        when multiple vendors clear ``CONFIDENCE_THRESHOLD``, or a null-vendor
+        shape carrying every collected signal when no vendor reaches threshold.
+        """
+        totals: dict[str, float] = {}
+        signals_by_vendor: dict[str, list[dict[str, Any]]] = {}
+        for r in results:
+            if r.error is not None:
+                continue
+            for signal in r.signals.get(slot, []):
+                vendor = signal["value"]
+                weight = signal["w"]
+                totals[vendor] = totals.get(vendor, 0.0) + weight
+                signals_by_vendor.setdefault(vendor, []).append(signal)
+
+        if not totals:
+            return {"vendor": None, "confidence": 0.0, "signals": [], "conflict": False}
+
+        sorted_vendors = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
+        top_vendor, top_score = sorted_vendors[0]
+        top_score_clamped = min(top_score, 1.0)
+
+        above_threshold = [v for v, s in sorted_vendors if s >= CONFIDENCE_THRESHOLD]
+
+        if top_score < CONFIDENCE_THRESHOLD:
+            return {
+                "vendor": None,
+                "confidence": top_score_clamped,
+                "signals": [s for sigs in signals_by_vendor.values() for s in sigs],
+                "conflict": False,
+            }
+
+        if len(above_threshold) > 1:
+            return {
+                "vendor": top_vendor,
+                "confidence": top_score_clamped,
+                "conflict": True,
+                "candidates": [
+                    {
+                        "vendor": v,
+                        "confidence": min(s, 1.0),
+                        "signals": signals_by_vendor[v],
+                    }
+                    for v, s in sorted_vendors if s >= CONFIDENCE_THRESHOLD
+                ],
+            }
+
+        return {
+            "vendor": top_vendor,
+            "confidence": top_score_clamped,
+            "signals": signals_by_vendor[top_vendor],
+            "conflict": False,
+        }
