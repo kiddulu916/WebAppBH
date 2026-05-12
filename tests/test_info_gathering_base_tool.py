@@ -253,3 +253,34 @@ class TestResolveOrCreateAsset:
             t.id, "acme.com", base_domain="acme.com",
         )
         assert asset_id == a.id
+
+    @pytest.mark.anyio
+    async def test_empty_host_raises_value_error(self, patched_get_session):
+        """Empty host must fail loudly at the boundary, not create a junk Asset."""
+        sess = patched_get_session
+        t = Target(company_name="X", base_domain="acme.com")
+        sess.add(t)
+        await sess.commit()
+        await sess.refresh(t)
+
+        tool = _Dummy()
+        with pytest.raises(ValueError):
+            await tool.resolve_or_create_asset(t.id, "", base_domain="acme.com")
+
+    @pytest.mark.anyio
+    async def test_ipv6_scoped_address_classified_as_ip(self, patched_get_session):
+        """Link-local IPv6 with %scope suffix must still classify as 'ip'."""
+        sess = patched_get_session
+        t = Target(company_name="X", base_domain="acme.com")
+        sess.add(t)
+        await sess.commit()
+        await sess.refresh(t)
+
+        tool = _Dummy()
+        asset_id = await tool.resolve_or_create_asset(
+            t.id, "fe80::1%eth0", base_domain="acme.com",
+        )
+        row = (await sess.execute(
+            sqlalchemy.select(Asset).where(Asset.id == asset_id)
+        )).scalar_one()
+        assert row.asset_type == "ip"

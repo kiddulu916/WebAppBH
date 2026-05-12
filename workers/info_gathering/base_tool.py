@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import os
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
@@ -24,6 +25,9 @@ from lib_webbh.scope import ScopeManager
 logger = setup_logger("info-gathering-tool")
 
 TOOL_TIMEOUT = int(os.environ.get("TOOL_TIMEOUT", "600"))
+
+# Source-tool sentinel for Assets created by the Stage 2 pipeline preamble.
+PIPELINE_PREAMBLE_SOURCE = "pipeline_preamble"
 
 
 class InfoGatheringTool(ABC):
@@ -172,12 +176,17 @@ class InfoGatheringTool(ABC):
 
         Used by the Stage 2 pipeline preamble to bind subsequent probe rows
         (Observations, Locations, Vulnerabilities) to a single subject Asset.
+
+        Read-then-insert is racy under concurrent preamble calls for the same
+        (target_id, asset_type, host); ``uq_assets_target_type_value`` would
+        raise IntegrityError. Stage 2 runs one pipeline per host, so this is
+        safe today; revisit if parallel host probing is added.
         """
-        import ipaddress
-        from lib_webbh.database import Asset
+        if not host:
+            raise ValueError("host is required")
 
         try:
-            ipaddress.ip_address(host)
+            ipaddress.ip_address(host.split("%", 1)[0])
             asset_type = "ip"
         except ValueError:
             asset_type = "domain" if host == base_domain else "subdomain"
@@ -194,7 +203,7 @@ class InfoGatheringTool(ABC):
                 return existing.id
             asset = Asset(
                 target_id=target_id, asset_type=asset_type,
-                asset_value=host, source_tool="pipeline_preamble",
+                asset_value=host, source_tool=PIPELINE_PREAMBLE_SOURCE,
             )
             session.add(asset)
             await session.commit()
