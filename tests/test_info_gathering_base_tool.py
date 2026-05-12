@@ -101,3 +101,51 @@ class TestWhatWebObservationLinkage:
                 await tool.execute(target_id=1, asset_id=501, host="a.com", intensity="low")
         cmd = sub.call_args.args[0]
         assert "-a" not in cmd
+
+
+class TestSaveLocation:
+    @pytest.mark.anyio
+    async def test_save_location_inserts_new_row_when_none_exists(self):
+        """save_location must create a Location row keyed by (asset_id, port, protocol)."""
+        tool = _Dummy()
+        with patch("workers.info_gathering.base_tool.get_session") as mock_sess:
+            sess = AsyncMock()
+            sess.add = MagicMock()
+            mock_sess.return_value.__aenter__.return_value = sess
+            mock_sess.return_value.__aexit__.return_value = False
+            # First execute() returns "no existing row"
+            exec_result = MagicMock()
+            exec_result.scalar_one_or_none.return_value = None
+            sess.execute = AsyncMock(return_value=exec_result)
+            sess.refresh = AsyncMock(side_effect=lambda loc: setattr(loc, "id", 9))
+            loc_id = await tool.save_location(
+                asset_id=501, port=443, protocol="tcp", service="https", state="open",
+            )
+        sess.add.assert_called_once()
+        sess.commit.assert_awaited_once()
+        sess.refresh.assert_awaited_once()
+        assert loc_id == 9
+
+    @pytest.mark.anyio
+    async def test_save_location_updates_existing_row(self):
+        """When a row already exists for (asset_id, port, protocol), service/state are updated."""
+        from lib_webbh.database import Location
+        existing = Location(asset_id=501, port=443, protocol="tcp", service=None, state=None)
+        existing.id = 7
+        tool = _Dummy()
+        with patch("workers.info_gathering.base_tool.get_session") as mock_sess:
+            sess = AsyncMock()
+            sess.add = MagicMock()
+            mock_sess.return_value.__aenter__.return_value = sess
+            mock_sess.return_value.__aexit__.return_value = False
+            exec_result = MagicMock()
+            exec_result.scalar_one_or_none.return_value = existing
+            sess.execute = AsyncMock(return_value=exec_result)
+            loc_id = await tool.save_location(
+                asset_id=501, port=443, protocol="tcp", service="https", state="open",
+            )
+        sess.add.assert_not_called()
+        sess.commit.assert_awaited_once()
+        assert loc_id == 7
+        assert existing.service == "https"
+        assert existing.state == "open"

@@ -129,6 +129,36 @@ class InfoGatheringTool(ABC):
             await session.refresh(obs)
             return obs.id
 
+    async def save_location(
+        self, asset_id: int, port: int, protocol: str | None = None,
+        service: str | None = None, state: str | None = None,
+    ) -> int | None:
+        """Upsert a Location row keyed by (asset_id, port, protocol). Returns row id."""
+        from lib_webbh.database import Location
+        async with get_session() as session:
+            stmt = select(Location).where(
+                Location.asset_id == asset_id,
+                Location.port == port,
+                Location.protocol == protocol,
+            )
+            result = await session.execute(stmt)
+            existing = result.scalar_one_or_none()
+            if existing is not None:
+                if service is not None:
+                    existing.service = service
+                if state is not None:
+                    existing.state = state
+                await session.commit()
+                return existing.id
+            loc = Location(
+                asset_id=asset_id, port=port, protocol=protocol,
+                service=service, state=state,
+            )
+            session.add(loc)
+            await session.commit()
+            await session.refresh(loc)
+            return loc.id
+
     async def save_vulnerability(self, target_id: int, **kwargs) -> int:
         """Insert a Vulnerability record. Returns vulnerability ID."""
         async with get_session() as session:
