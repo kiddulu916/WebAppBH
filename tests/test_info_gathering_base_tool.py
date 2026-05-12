@@ -6,8 +6,8 @@ from workers.info_gathering.base_tool import InfoGatheringTool
 
 
 class _Dummy(InfoGatheringTool):
-    async def execute(self, target_id: int, **kwargs):
-        return {"found": 0}
+    async def execute(self, target_id: int, **kwargs) -> None:
+        del target_id, kwargs
 
 
 class TestSaveObservation:
