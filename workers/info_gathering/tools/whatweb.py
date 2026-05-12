@@ -2,7 +2,10 @@
 """WhatWeb wrapper — application-layer fingerprint for a single host."""
 import json
 
+from lib_webbh import setup_logger
 from workers.info_gathering.base_tool import InfoGatheringTool
+
+logger = setup_logger("stage2-whatweb")
 
 
 class WhatWeb(InfoGatheringTool):
@@ -23,14 +26,26 @@ class WhatWeb(InfoGatheringTool):
 
         try:
             stdout = await self.run_subprocess(cmd, rate_limiter=kwargs.get("rate_limiter"))
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "whatweb subprocess failed",
+                extra={"host": host, "asset_id": asset_id, "error": str(exc)},
+            )
             return {"found": 0}
 
         try:
             data = json.loads(stdout)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "whatweb stdout was not valid JSON",
+                extra={"host": host, "asset_id": asset_id, "error": str(exc)},
+            )
             return {"found": 0}
         if not isinstance(data, list):
+            logger.warning(
+                "whatweb stdout was not a JSON list",
+                extra={"host": host, "asset_id": asset_id, "type": type(data).__name__},
+            )
             return {"found": 0}
 
         count = 0

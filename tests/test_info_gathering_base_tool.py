@@ -77,3 +77,27 @@ class TestWhatWebObservationLinkage:
         kwargs = save.call_args.kwargs
         assert kwargs["asset_id"] == 501
         assert "target_id" not in kwargs
+
+    @pytest.mark.anyio
+    async def test_whatweb_high_intensity_adds_aggression_flag(self):
+        """intensity=high must append -a 3 to the whatweb argv."""
+        tool = WhatWeb()
+        ww_json = json.dumps([{"target": "https://a.com", "plugins": {}}])
+        with patch.object(tool, "run_subprocess", new_callable=AsyncMock, return_value=ww_json) as sub:
+            with patch.object(tool, "save_observation", new_callable=AsyncMock, return_value=1):
+                await tool.execute(target_id=1, asset_id=501, host="a.com", intensity="high")
+        cmd = sub.call_args.args[0]
+        assert cmd[:3] == ["whatweb", "--json", "-"]
+        assert "-a" in cmd and "3" in cmd
+        assert cmd[-1] == "https://a.com"
+
+    @pytest.mark.anyio
+    async def test_whatweb_low_intensity_does_not_add_aggression_flag(self):
+        """intensity=low must NOT add -a 3."""
+        tool = WhatWeb()
+        ww_json = json.dumps([{"target": "https://a.com", "plugins": {}}])
+        with patch.object(tool, "run_subprocess", new_callable=AsyncMock, return_value=ww_json) as sub:
+            with patch.object(tool, "save_observation", new_callable=AsyncMock, return_value=1):
+                await tool.execute(target_id=1, asset_id=501, host="a.com", intensity="low")
+        cmd = sub.call_args.args[0]
+        assert "-a" not in cmd
