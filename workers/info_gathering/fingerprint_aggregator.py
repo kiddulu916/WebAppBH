@@ -123,3 +123,35 @@ class FingerprintAggregator:
             "signals": signals_by_vendor[top_vendor],
             "conflict": False,
         }
+
+    def _merge_tls(self, results: list[ProbeResult]) -> dict[str, Any]:
+        """Return the ``tls_summary`` payload from the first non-errored TLS probe."""
+        for r in results:
+            if r.probe == "tls" and r.error is None:
+                return r.signals.get("tls_summary", {})
+        return {}
+
+    async def write_summary(self, results: list[ProbeResult]) -> int:
+        """Score every slot, merge TLS, write one ``_probe=summary`` Observation."""
+        partial = any(r.error is not None for r in results)
+        fingerprint: dict[str, Any] = {slot: self._score_slot(slot, results) for slot in SLOTS}
+        fingerprint["tls"] = self._merge_tls(results)
+        payload: dict[str, Any] = {
+            "_probe": "summary",
+            "intensity": self.intensity,
+            "partial": partial,
+            "fingerprint": fingerprint,
+            "raw_probe_obs_ids": [r.obs_id for r in results if r.obs_id is not None],
+        }
+        return await self._save_summary_observation(payload)
+
+    async def _save_summary_observation(self, payload: dict[str, Any]) -> int:
+        """Insert the consolidated summary Observation against ``self.asset_id``."""
+        from lib_webbh import get_session
+        from lib_webbh.database import Observation
+        async with get_session() as session:
+            obs = Observation(asset_id=self.asset_id, tech_stack=payload)
+            session.add(obs)
+            await session.commit()
+            await session.refresh(obs)
+            return obs.id

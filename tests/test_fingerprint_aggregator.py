@@ -1,5 +1,7 @@
 # tests/test_fingerprint_aggregator.py
 """Tests for the Stage 2 FingerprintAggregator and ProbeResult dataclass."""
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from workers.info_gathering.fingerprint_aggregator import (
@@ -144,3 +146,86 @@ class TestScoring:
         assert slot["confidence"] == pytest.approx(0.3)
         # No nginx signal leaked through
         assert all(s["value"] != "nginx" for s in slot["signals"])
+
+
+class TestWriteSummary:
+    @pytest.mark.anyio
+    async def test_write_summary_records_partial_when_probe_errored(self):
+        agg = FingerprintAggregator(asset_id=501, target_id=42, intensity="low")
+        results = [
+            ProbeResult(probe="banner", obs_id=1, signals={"origin_server": [
+                {"src": "banner.server", "value": "nginx", "w": 0.6},
+            ]}),
+            ProbeResult(probe="tls", obs_id=None, signals={}, error="handshake failed"),
+        ]
+        with patch.object(
+            agg, "_save_summary_observation",
+            new_callable=AsyncMock, return_value=99,
+        ) as save:
+            obs_id = await agg.write_summary(results)
+        assert obs_id == 99
+        payload = save.call_args.args[0]
+        assert payload["_probe"] == "summary"
+        assert payload["intensity"] == "low"
+        assert payload["partial"] is True
+        assert payload["fingerprint"]["origin_server"]["vendor"] == "nginx"
+        assert payload["raw_probe_obs_ids"] == [1]
+
+    @pytest.mark.anyio
+    async def test_write_summary_partial_false_when_all_probes_ok(self):
+        agg = FingerprintAggregator(asset_id=501, target_id=42)
+        results = [
+            ProbeResult(probe="banner", obs_id=1, signals={}),
+            ProbeResult(probe="tls", obs_id=2, signals={}),
+        ]
+        with patch.object(
+            agg, "_save_summary_observation",
+            new_callable=AsyncMock, return_value=100,
+        ) as save:
+            await agg.write_summary(results)
+        payload = save.call_args.args[0]
+        assert payload["partial"] is False
+        assert payload["raw_probe_obs_ids"] == [1, 2]
+
+    @pytest.mark.anyio
+    async def test_write_summary_merges_tls_summary_from_tls_probe(self):
+        agg = FingerprintAggregator(asset_id=501, target_id=42)
+        tls_data = {"ja3s": "abcd", "alpn": ["h2"], "cert_issuer": "Cloudflare Inc"}
+        results = [
+            ProbeResult(probe="banner", obs_id=1, signals={}),
+            ProbeResult(probe="tls", obs_id=2, signals={"tls_summary": tls_data}),
+        ]
+        with patch.object(
+            agg, "_save_summary_observation",
+            new_callable=AsyncMock, return_value=101,
+        ) as save:
+            await agg.write_summary(results)
+        payload = save.call_args.args[0]
+        assert payload["fingerprint"]["tls"] == tls_data
+
+    @pytest.mark.anyio
+    async def test_write_summary_skips_tls_from_errored_tls_probe(self):
+        agg = FingerprintAggregator(asset_id=501, target_id=42)
+        results = [
+            ProbeResult(probe="tls", obs_id=None, signals={"tls_summary": {"ja3s": "x"}},
+                        error="handshake"),
+        ]
+        with patch.object(
+            agg, "_save_summary_observation",
+            new_callable=AsyncMock, return_value=102,
+        ) as save:
+            await agg.write_summary(results)
+        payload = save.call_args.args[0]
+        assert payload["fingerprint"]["tls"] == {}
+
+    @pytest.mark.anyio
+    async def test_write_summary_covers_every_slot(self):
+        agg = FingerprintAggregator(asset_id=501, target_id=42)
+        with patch.object(
+            agg, "_save_summary_observation",
+            new_callable=AsyncMock, return_value=103,
+        ) as save:
+            await agg.write_summary([])
+        payload = save.call_args.args[0]
+        for slot in SLOTS:
+            assert slot in payload["fingerprint"]
