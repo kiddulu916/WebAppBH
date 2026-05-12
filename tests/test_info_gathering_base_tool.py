@@ -60,3 +60,20 @@ class TestHttpxObservationLinkage:
         assert "asset_id" in kwargs
         assert kwargs["asset_id"] == 501
         assert "target_id" not in kwargs
+
+
+from workers.info_gathering.tools.whatweb import WhatWeb
+
+
+class TestWhatWebObservationLinkage:
+    @pytest.mark.anyio
+    async def test_whatweb_writes_observation_against_asset_id(self):
+        """WhatWeb must call save_observation with asset_id, not target_id."""
+        tool = WhatWeb()
+        ww_json = json.dumps([{"target": "https://a.com", "plugins": {"Apache": {}}}])
+        with patch.object(tool, "run_subprocess", new_callable=AsyncMock, return_value=ww_json):
+            with patch.object(tool, "save_observation", new_callable=AsyncMock, return_value=1) as save:
+                await tool.execute(target_id=1, asset_id=501, host="a.com", intensity="low")
+        kwargs = save.call_args.kwargs
+        assert kwargs["asset_id"] == 501
+        assert "target_id" not in kwargs
