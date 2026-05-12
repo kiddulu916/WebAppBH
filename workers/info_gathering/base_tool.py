@@ -132,8 +132,14 @@ class InfoGatheringTool(ABC):
     async def save_location(
         self, asset_id: int, port: int, protocol: str | None = None,
         service: str | None = None, state: str | None = None,
-    ) -> int | None:
-        """Upsert a Location row keyed by (asset_id, port, protocol). Returns row id."""
+    ) -> int:
+        """Upsert a Location row keyed by (asset_id, port, protocol). Returns row id.
+
+        Read-then-insert is racy under concurrent probes against the same
+        (asset_id, port, protocol); ``uq_locations_asset_port_proto`` would
+        raise IntegrityError. Stage 2 runs one pipeline per host, so this
+        is safe today; revisit if parallel host probing is added.
+        """
         from lib_webbh.database import Location
         async with get_session() as session:
             stmt = select(Location).where(
