@@ -1,8 +1,11 @@
 # tests/test_info_gathering_base_tool.py
 """Regression tests for InfoGatheringTool base helpers."""
+import json
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.tools.httpx import Httpx
 
 
 class _Dummy(InfoGatheringTool):
@@ -31,3 +34,18 @@ class TestSaveObservation:
         sess.commit.assert_awaited_once()
         sess.refresh.assert_awaited_once()
         assert obs_id == 42
+
+
+class TestHttpxObservationLinkage:
+    @pytest.mark.anyio
+    async def test_httpx_writes_observation_against_asset_id(self):
+        """Httpx must call save_observation with asset_id, not target_id."""
+        tool = Httpx()
+        line = json.dumps({"url": "https://a.com", "status_code": 200, "title": "T", "tech": ["nginx"]})
+        with patch.object(tool, "run_subprocess", new_callable=AsyncMock, return_value=line):
+            with patch.object(tool, "save_observation", new_callable=AsyncMock, return_value=1) as save:
+                await tool.execute(target_id=1, asset_id=501, host="a.com")
+        kwargs = save.call_args.kwargs
+        assert "asset_id" in kwargs
+        assert kwargs["asset_id"] == 501
+        assert "target_id" not in kwargs
