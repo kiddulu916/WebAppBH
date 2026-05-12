@@ -149,3 +149,107 @@ class TestSaveLocation:
         assert loc_id == 7
         assert existing.service == "https"
         assert existing.state == "open"
+
+
+from contextlib import asynccontextmanager
+
+import sqlalchemy
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from lib_webbh.database import Asset, Base, Target
+
+
+@pytest.fixture
+async def db_session():
+    """Fresh in-memory aiosqlite session with the lib_webbh schema."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    async with Session() as sess:
+        yield sess
+    await engine.dispose()
+
+
+@pytest.fixture
+def patched_get_session(db_session, monkeypatch):
+    """Patch get_session in base_tool to yield the test db_session."""
+    @asynccontextmanager
+    async def fake_session():
+        yield db_session
+    monkeypatch.setattr("workers.info_gathering.base_tool.get_session", fake_session)
+    return db_session
+
+
+class TestResolveOrCreateAsset:
+    @pytest.mark.anyio
+    async def test_resolves_existing_subdomain_asset(self, patched_get_session):
+        sess = patched_get_session
+        t = Target(company_name="X", base_domain="acme.com")
+        sess.add(t)
+        await sess.commit()
+        await sess.refresh(t)
+        a = Asset(target_id=t.id, asset_type="subdomain", asset_value="api.acme.com")
+        sess.add(a)
+        await sess.commit()
+        await sess.refresh(a)
+
+        tool = _Dummy()
+        asset_id = await tool.resolve_or_create_asset(
+            t.id, "api.acme.com", base_domain="acme.com",
+        )
+        assert asset_id == a.id
+
+    @pytest.mark.anyio
+    async def test_creates_subdomain_for_unseen_host(self, patched_get_session):
+        sess = patched_get_session
+        t = Target(company_name="X", base_domain="acme.com")
+        sess.add(t)
+        await sess.commit()
+        await sess.refresh(t)
+
+        tool = _Dummy()
+        asset_id = await tool.resolve_or_create_asset(
+            t.id, "new.acme.com", base_domain="acme.com",
+        )
+        row = (await sess.execute(
+            sqlalchemy.select(Asset).where(Asset.id == asset_id)
+        )).scalar_one()
+        assert row.asset_type == "subdomain"
+        assert row.asset_value == "new.acme.com"
+        assert row.source_tool == "pipeline_preamble"
+
+    @pytest.mark.anyio
+    async def test_creates_ip_type_for_ipv4_host(self, patched_get_session):
+        sess = patched_get_session
+        t = Target(company_name="X", base_domain="acme.com")
+        sess.add(t)
+        await sess.commit()
+        await sess.refresh(t)
+
+        tool = _Dummy()
+        asset_id = await tool.resolve_or_create_asset(
+            t.id, "203.0.113.10", base_domain="acme.com",
+        )
+        row = (await sess.execute(
+            sqlalchemy.select(Asset).where(Asset.id == asset_id)
+        )).scalar_one()
+        assert row.asset_type == "ip"
+
+    @pytest.mark.anyio
+    async def test_resolves_existing_base_domain_asset(self, patched_get_session):
+        sess = patched_get_session
+        t = Target(company_name="X", base_domain="acme.com")
+        sess.add(t)
+        await sess.commit()
+        await sess.refresh(t)
+        a = Asset(target_id=t.id, asset_type="domain", asset_value="acme.com")
+        sess.add(a)
+        await sess.commit()
+        await sess.refresh(a)
+
+        tool = _Dummy()
+        asset_id = await tool.resolve_or_create_asset(
+            t.id, "acme.com", base_domain="acme.com",
+        )
+        assert asset_id == a.id

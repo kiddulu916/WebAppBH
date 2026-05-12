@@ -165,6 +165,42 @@ class InfoGatheringTool(ABC):
             await session.refresh(loc)
             return loc.id
 
+    async def resolve_or_create_asset(
+        self, target_id: int, host: str, base_domain: str,
+    ) -> int:
+        """Return the Asset.id for `host` under `target_id`, creating one if missing.
+
+        Used by the Stage 2 pipeline preamble to bind subsequent probe rows
+        (Observations, Locations, Vulnerabilities) to a single subject Asset.
+        """
+        import ipaddress
+        from lib_webbh.database import Asset
+
+        try:
+            ipaddress.ip_address(host)
+            asset_type = "ip"
+        except ValueError:
+            asset_type = "domain" if host == base_domain else "subdomain"
+
+        async with get_session() as session:
+            stmt = select(Asset).where(
+                Asset.target_id == target_id,
+                Asset.asset_type == asset_type,
+                Asset.asset_value == host,
+            )
+            result = await session.execute(stmt)
+            existing = result.scalar_one_or_none()
+            if existing is not None:
+                return existing.id
+            asset = Asset(
+                target_id=target_id, asset_type=asset_type,
+                asset_value=host, source_tool="pipeline_preamble",
+            )
+            session.add(asset)
+            await session.commit()
+            await session.refresh(asset)
+            return asset.id
+
     async def save_vulnerability(self, target_id: int, **kwargs) -> int:
         """Insert a Vulnerability record. Returns vulnerability ID."""
         async with get_session() as session:
