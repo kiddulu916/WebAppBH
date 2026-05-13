@@ -164,7 +164,7 @@ class TestWriteSummary:
         ) as save:
             obs_id = await agg.write_summary(results)
         assert obs_id == 99
-        payload = save.call_args.args[0]
+        payload = save.call_args.kwargs["payload"]
         assert payload["_probe"] == "summary"
         assert payload["intensity"] == "low"
         assert payload["partial"] is True
@@ -183,7 +183,7 @@ class TestWriteSummary:
             new_callable=AsyncMock, return_value=100,
         ) as save:
             await agg.write_summary(results)
-        payload = save.call_args.args[0]
+        payload = save.call_args.kwargs["payload"]
         assert payload["partial"] is False
         assert payload["raw_probe_obs_ids"] == [1, 2]
 
@@ -200,7 +200,7 @@ class TestWriteSummary:
             new_callable=AsyncMock, return_value=101,
         ) as save:
             await agg.write_summary(results)
-        payload = save.call_args.args[0]
+        payload = save.call_args.kwargs["payload"]
         assert payload["fingerprint"]["tls"] == tls_data
 
     @pytest.mark.anyio
@@ -215,7 +215,7 @@ class TestWriteSummary:
             new_callable=AsyncMock, return_value=102,
         ) as save:
             await agg.write_summary(results)
-        payload = save.call_args.args[0]
+        payload = save.call_args.kwargs["payload"]
         assert payload["fingerprint"]["tls"] == {}
 
     @pytest.mark.anyio
@@ -226,7 +226,7 @@ class TestWriteSummary:
             new_callable=AsyncMock, return_value=103,
         ) as save:
             await agg.write_summary([])
-        payload = save.call_args.args[0]
+        payload = save.call_args.kwargs["payload"]
         for slot in SLOTS:
             assert slot in payload["fingerprint"]
 

@@ -2,9 +2,9 @@
 """FingerprintAggregator: consolidates Stage 2 probe results into one summary Observation.
 
 Stage 2 probes return ``ProbeResult`` objects containing per-slot signal hints.
-The aggregator scores those signals (Task 1.2), writes a single summary
-``Observation`` row (Task 1.3), and emits any info-leak ``Vulnerability`` rows
-(Task 1.4). This module is the scaffold — concrete scoring/IO lands in later tasks.
+The aggregator scores those signals (``_score_slot``), writes a single summary
+``Observation`` row (``write_summary``), and emits info-leak ``Vulnerability``
+rows (``emit_info_leaks``).
 """
 from __future__ import annotations
 
@@ -69,10 +69,16 @@ class FingerprintAggregator:
     def _score_slot(self, slot: str, results: list[ProbeResult]) -> dict[str, Any]:
         """Sum weights per (slot, vendor) across non-errored probes.
 
-        Returns either ``{vendor, confidence, signals, conflict: False}`` for a
-        single decisive vendor, ``{vendor, confidence, candidates, conflict: True}``
-        when multiple vendors clear ``CONFIDENCE_THRESHOLD``, or a null-vendor
-        shape carrying every collected signal when no vendor reaches threshold.
+        **Consumer contract:** branch on ``slot["conflict"]`` *before* reading
+        ``slot["signals"]``. The conflict branch returns ``candidates`` and
+        deliberately omits ``signals`` — readers that grab ``slot["signals"]``
+        unconditionally will KeyError on conflict slots.
+
+        Returns one of three shapes:
+          - decisive single vendor: ``{vendor, confidence, signals, conflict: False}``
+          - conflict (≥2 vendors above threshold): ``{vendor, confidence, candidates, conflict: True}``
+          - null-vendor (no vendor reached threshold): ``{vendor: None, confidence, signals, conflict: False}``
+            where ``signals`` is the flat union across every collected vendor.
         """
         totals: dict[str, float] = {}
         signals_by_vendor: dict[str, list[dict[str, Any]]] = {}
@@ -134,7 +140,11 @@ class FingerprintAggregator:
     async def write_summary(self, results: list[ProbeResult]) -> int:
         """Score every slot, merge TLS, write one ``_probe=summary`` Observation."""
         partial = any(r.error is not None for r in results)
-        fingerprint: dict[str, Any] = {slot: self._score_slot(slot, results) for slot in SLOTS}
+        # ``tls`` carries TLS-probe raw data, not scored signals, so skip it
+        # here and let ``_merge_tls`` own that key.
+        fingerprint: dict[str, Any] = {
+            slot: self._score_slot(slot, results) for slot in SLOTS if slot != "tls"
+        }
         fingerprint["tls"] = self._merge_tls(results)
         payload: dict[str, Any] = {
             "_probe": "summary",
@@ -143,9 +153,9 @@ class FingerprintAggregator:
             "fingerprint": fingerprint,
             "raw_probe_obs_ids": [r.obs_id for r in results if r.obs_id is not None],
         }
-        return await self._save_summary_observation(payload)
+        return await self._save_summary_observation(payload=payload)
 
-    async def _save_summary_observation(self, payload: dict[str, Any]) -> int:
+    async def _save_summary_observation(self, *, payload: dict[str, Any]) -> int:
         """Insert the consolidated summary Observation against ``self.asset_id``."""
         from lib_webbh import get_session
         from lib_webbh.database import Observation
@@ -164,7 +174,9 @@ class FingerprintAggregator:
         ``fingerprint`` is the scored slot map (``{slot: {vendor, ...}}``).
         ``raw`` is a per-probe dict the pipeline assembles from ``ProbeResult``
         signals so this method can read banner headers / error-page signatures
-        without re-querying the DB.
+        without re-querying the DB. Per-probe keys are allowed to be missing —
+        the pipeline preamble omits a probe's entry when its probe errored, so
+        ``or {}`` defaults are load-bearing for partial-success runs.
         """
         from workers.info_gathering.fingerprint_signatures import (
             DEFAULT_ERROR_LEAKERS,

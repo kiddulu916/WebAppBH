@@ -8,6 +8,16 @@ to a high-trust, low-false-positive signal.
 """
 from __future__ import annotations
 
+from typing import TypedDict
+
+
+class WafPattern(TypedDict):
+    """Header and cookie substring lists that identify a WAF/CDN passively."""
+
+    headers: list[str]
+    cookies: list[str]
+
+
 # Default-error-page signature ids that, when matched, indicate a fully-default
 # server/framework error page leaking server internals. The aggregator emits a
 # LOW-severity Vulnerability per match. Keep ids stable: they appear in the
@@ -36,7 +46,7 @@ INTERNAL_DEBUG_HEADERS: frozenset[str] = frozenset({
 # Passive WAF/CDN fingerprints. Header and cookie names are matched
 # case-insensitively at the call site (substring match against the
 # response header/cookie name).
-WAF_PASSIVE_PATTERNS: dict[str, dict[str, list[str]]] = {
+WAF_PASSIVE_PATTERNS: dict[str, WafPattern] = {
     "Cloudflare": {
         "headers": ["cf-ray", "cf-cache-status"],
         "cookies": ["__cf_bm", "cf_clearance"],
