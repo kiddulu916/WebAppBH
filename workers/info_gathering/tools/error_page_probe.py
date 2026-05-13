@@ -81,7 +81,7 @@ class ErrorPageProbe(InfoGatheringTool):
         obs_id = await self.save_observation(
             asset_id=asset_id,
             tech_stack={
-                "_probe": "error_page_404",
+                "_probe": "error_page",
                 "body_sha256": body_sha,
                 "body_len": len(body),
                 "signature_match": signature_match,

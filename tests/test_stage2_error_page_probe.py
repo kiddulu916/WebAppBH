@@ -1,28 +1,15 @@
 # tests/test_stage2_error_page_probe.py
 """Tests for the Stage 2 ErrorPageProbe."""
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests._stage2_helpers import fake_session as _fake_session_factory
 from workers.info_gathering.tools.error_page_probe import ErrorPageProbe
 
 
-def _fake_session(body: str, status: int = 404,
-                  exception: Exception | None = None) -> AsyncMock:
-    resp = AsyncMock()
-    resp.status = status
-    resp.text = AsyncMock(return_value=body)
-    resp_ctx = AsyncMock()
-    resp_ctx.__aenter__ = AsyncMock(return_value=resp)
-    resp_ctx.__aexit__ = AsyncMock(return_value=False)
-    session = AsyncMock()
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    if exception is not None:
-        session.get = MagicMock(side_effect=exception)
-    else:
-        session.get = MagicMock(return_value=resp_ctx)
-    return session
+def _fake_session(body: str, status: int = 404, exception=None):
+    return _fake_session_factory(body=body, status=status, exception=exception)
 
 
 class TestErrorPageProbe:

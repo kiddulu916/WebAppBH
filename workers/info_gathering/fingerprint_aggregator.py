@@ -210,7 +210,7 @@ class FingerprintAggregator:
                 },
             ))
 
-        err = raw.get("error_page_404") or {}
+        err = raw.get("error_page") or {}
         if err.get("signature_match") in DEFAULT_ERROR_LEAKERS:
             vuln_ids.append(await self._save_vuln(
                 title="Default error page exposes server internals",

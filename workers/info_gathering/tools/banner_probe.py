@@ -106,7 +106,7 @@ class BannerProbe(InfoGatheringTool):
         for vendor, patterns in WAF_PASSIVE_PATTERNS.items():
             if any(p.lower() in cookie_blob for p in patterns["cookies"]):
                 signals["edge"].append(
-                    {"src": "banner.server", "value": vendor, "w": 0.4},
+                    {"src": "banner.cookie", "value": vendor, "w": 0.4},
                 )
 
         headers_capped = _truncate_headers(headers)

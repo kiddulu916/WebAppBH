@@ -1,44 +1,17 @@
 # tests/test_stage2_banner_probe.py
 """Tests for the Stage 2 BannerProbe."""
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests._stage2_helpers import fake_session as _fake_session_factory
 from workers.info_gathering.tools.banner_probe import BannerProbe
 
 
-class _FakeHeaders(dict):
-    """Dict subclass that also satisfies aiohttp's ``getall(name, default)`` API."""
-
-    def __init__(self, headers: dict, cookies: list[str]) -> None:
-        super().__init__(headers)
-        self._cookies = cookies
-
-    def getall(self, name: str, default):
-        if name == "Set-Cookie":
-            return self._cookies
-        return default
-
-
-def _fake_session(headers: dict, status: int = 200, set_cookies: list[str] | None = None,
-                  exception: Exception | None = None) -> MagicMock:
-    """Build a ClientSession mock whose .get returns a response with these headers."""
-    resp = AsyncMock()
-    resp.status = status
-    resp.headers = _FakeHeaders(headers, set_cookies or [])
-
-    resp_ctx = AsyncMock()
-    resp_ctx.__aenter__ = AsyncMock(return_value=resp)
-    resp_ctx.__aexit__ = AsyncMock(return_value=False)
-
-    session = AsyncMock()
-    if exception is not None:
-        session.get = MagicMock(side_effect=exception)
-    else:
-        session.get = MagicMock(return_value=resp_ctx)
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    return session
+def _fake_session(headers, status=200, set_cookies=None, exception=None):
+    return _fake_session_factory(
+        headers=headers, status=status, cookies=set_cookies, exception=exception,
+    )
 
 
 class TestBannerProbe:

@@ -67,7 +67,7 @@ class MethodProbe(InfoGatheringTool):
         obs_id = await self.save_observation(
             asset_id=asset_id,
             tech_stack={
-                "_probe": "method_options",
+                "_probe": "method_probe",
                 "results": results,
                 "intensity": intensity,
             },

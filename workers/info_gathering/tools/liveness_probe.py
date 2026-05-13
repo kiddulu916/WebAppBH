@@ -16,7 +16,7 @@ from workers.info_gathering.base_tool import InfoGatheringTool
 from workers.info_gathering.fingerprint_aggregator import ProbeResult
 
 # Common HTTP/S ports. Full TCP/UDP discovery is Stage 9's job.
-HTTP_PORTS: list[int] = [80, 443, 8000, 8008, 8080, 8443, 4443, 8888]
+HTTP_PORTS: tuple[int, ...] = (80, 443, 8000, 8008, 8080, 8443, 4443, 8888)
 
 # Ports that imply HTTPS for the Location.service field.
 _HTTPS_PORTS = frozenset({443, 8443, 4443})

@@ -74,7 +74,13 @@ class HeaderOrderProbe(InfoGatheringTool):
         )
 
     async def _raw_get(self, host: str, port: int = 443, tls: bool = True) -> str:
-        """Open a (TLS) socket, issue ``GET /``, read up to 8 KiB of the prefix."""
+        """Open a (TLS) socket, issue ``GET /``, read up to 8 KiB of the prefix.
+
+        TLS cert verification is intentionally disabled — fingerprinting must
+        work against hosts with self-signed or expired certs. A passive MITM
+        could forge the response headers; only the casing/order shape is
+        used downstream (as a corroborating signal), so the risk is bounded.
+        """
         ssl_ctx = None
         if tls:
             ssl_ctx = ssl.create_default_context()

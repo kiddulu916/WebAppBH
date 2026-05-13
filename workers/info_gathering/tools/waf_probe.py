@@ -50,6 +50,11 @@ class WAFProbe(InfoGatheringTool):
 
         active: dict[str, Any] | None = None
         if intensity in ("medium", "high"):
+            # wafw00f itself issues several HTTP requests; passing the
+            # rate_limiter to run_subprocess only meters the wrapper call.
+            # We accept that as the price of a single rate-budget unit per
+            # WAF probe invocation — wafw00f's internal requests bypass our
+            # limiter.
             try:
                 stdout = await self.run_subprocess(
                     ["wafw00f", "-a", "-o", "-", "-f", "json", f"https://{host}/"],

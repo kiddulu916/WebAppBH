@@ -10,7 +10,7 @@ from workers.info_gathering.tools.liveness_probe import HTTP_PORTS, LivenessProb
 
 class TestLivenessProbe:
     def test_http_ports_set(self):
-        assert HTTP_PORTS == [80, 443, 8000, 8008, 8080, 8443, 4443, 8888]
+        assert HTTP_PORTS == (80, 443, 8000, 8008, 8080, 8443, 4443, 8888)
 
     @pytest.mark.anyio
     async def test_writes_one_location_per_alive_port(self, tmp_path):

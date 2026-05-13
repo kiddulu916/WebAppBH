@@ -4,31 +4,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests._stage2_helpers import fake_session as _fake_session_factory
 from workers.info_gathering.tools.waf_probe import WAFProbe
 
 
-class _FakeHeaders(dict):
-    def __init__(self, headers: dict, cookies: list[str]) -> None:
-        super().__init__(headers)
-        self._cookies = cookies
-
-    def getall(self, name: str, default):
-        if name == "Set-Cookie":
-            return self._cookies
-        return default
-
-
-def _fake_session(headers: dict, cookies: list[str] | None = None) -> AsyncMock:
-    resp = AsyncMock()
-    resp.headers = _FakeHeaders(headers, cookies or [])
-    ctx = AsyncMock()
-    ctx.__aenter__ = AsyncMock(return_value=resp)
-    ctx.__aexit__ = AsyncMock(return_value=False)
-    session = AsyncMock()
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    session.get = MagicMock(return_value=ctx)
-    return session
+def _fake_session(headers, cookies=None):
+    return _fake_session_factory(headers=headers, cookies=cookies)
 
 
 class TestWAFProbe:
