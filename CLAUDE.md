@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-WebAppBH is a modular, event-driven Bug Bounty Framework. The stack is PostgreSQL + Redis + a FastAPI orchestrator + 19 specialized Docker workers + a Next.js dashboard. The codebase was restructured from 7 generic workers (recon/api/fuzzing/cloud/etc.) into 19 WSTG-aligned specialized workers via the M1–M11 restructure (now complete — legacy worker dirs and Dockerfiles have been removed).
+WebAppBH is a modular, event-driven Bug Bounty Framework. The stack is PostgreSQL + Redis + a FastAPI orchestrator + 18 active Docker workers (plus one legacy stub dir) + a Next.js dashboard + an Ollama sidecar for the `reasoning_worker`. The codebase was restructured from 7 generic workers (recon/api/fuzzing/cloud/etc.) into WSTG-aligned specialized workers via the M1–M11 restructure (now complete — legacy worker dirs and Dockerfiles have been removed).
 
 ## Planning workflow
 
@@ -26,6 +26,12 @@ docker compose up --build
 docker compose up postgres redis           # infra only
 docker compose up orchestrator             # API (port 8001)
 docker compose up dashboard                # Next.js (port 3000)
+
+# Optional observability overlay (Prometheus/Grafana/Loki/cAdvisor)
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up
+
+# Mobile stack — requires host KVM support (/dev/kvm)
+docker compose up mobile-worker mobsf docker-android   # MobSF on port 8000
 ```
 
 On first run, `shared/setup_env.py` generates DB/Redis credentials and the framework API key into `shared/config/.env`.
@@ -66,9 +72,11 @@ Tests use the `anyio_backend = "asyncio"` fixture (defined in `tests/conftest.py
 - `alembic/` and `shared/lib_webbh/alembic/` — schema migrations.
 - `tests/` — pytest suite (asyncio + aiosqlite).
 
-### Worker inventory (19 active)
+### Worker inventory (18 active)
 
-`info_gathering`, `identity_mgmt`, `authentication`, `authorization`, `session_mgmt`, `input_validation`, `error_handling`, `cryptography`, `business_logic`, `client_side`, `config_mgmt`, `chain_worker`, `mobile_worker`, `reporting_worker`, `reasoning_worker`, `sandbox_worker`, `proxy`, `callback`. The `workers/reporting/` directory is a near-empty legacy stub kept alongside the full `workers/reporting_worker/` implementation.
+`info_gathering`, `identity_mgmt`, `authentication`, `authorization`, `session_mgmt`, `input_validation`, `error_handling`, `cryptography`, `business_logic`, `client_side`, `config_mgmt`, `chain_worker`, `mobile_worker`, `reporting_worker`, `reasoning_worker`, `sandbox_worker`, `proxy`, `callback`. The `workers/reporting/` directory is a near-empty legacy stub kept alongside the full `workers/reporting_worker/` implementation — do not add code there.
+
+`reasoning_worker` calls a local Ollama instance (default `qwen3:14b`); without the `ollama` service the worker will fail its enrichment stage. `mobile_worker` depends on the `mobsf` and `docker-android` sidecars and host KVM.
 
 ### Shared library (`lib_webbh`)
 
@@ -117,7 +125,9 @@ Every worker in `workers/` follows this internal layout:
 
 - DB: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`
 - Redis: `REDIS_HOST`, `REDIS_PORT`
-- Auth: `WEB_APP_BH_API_KEY` (sent as the `X-API-KEY` header)
+- Auth: `WEB_APP_BH_API_KEY` (sent as the `X-API-KEY` header on every `/api/v1/` request)
 - Worker: `TOOL_TIMEOUT` (default `600`s), `COOLDOWN_HOURS` (default `24`), `HEAVY_CONCURRENCY`, `LIGHT_CONCURRENCY`
+- LLM (`reasoning_worker`): `LLM_BASE_URL` (default `http://ollama:11434`), `LLM_MODEL` (default `qwen3:14b`)
+- Optional enrichment: `SHODAN_API_KEY`, `SECURITYTRAILS_API_KEY`, `CENSYS_API_ID`, `CENSYS_API_SECRET`
 
 `shared/setup_env.py` generates these into `shared/config/.env` on first run.
