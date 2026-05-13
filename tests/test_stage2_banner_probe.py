@@ -101,3 +101,22 @@ class TestBannerProbe:
         probe = BannerProbe()
         result = await probe.execute(target_id=1, asset_id=None, host="a.com")
         assert result.error == "missing host or asset_id"
+
+    @pytest.mark.anyio
+    async def test_oversized_header_value_is_truncated(self):
+        probe = BannerProbe()
+        huge = "A" * 10_000
+        session = _fake_session(headers={"Server": "nginx", "X-Big": huge})
+        with patch("workers.info_gathering.tools.banner_probe.aiohttp.ClientSession",
+                   return_value=session), \
+             patch.object(probe, "save_observation",
+                          new_callable=AsyncMock, return_value=99) as obs:
+            result = await probe.execute(
+                target_id=1, asset_id=501, host="a.com", intensity="low",
+            )
+        saved_headers = obs.call_args.kwargs["headers"]
+        assert saved_headers["Server"] == "nginx"
+        assert len(saved_headers["X-Big"]) < len(huge)
+        assert saved_headers["X-Big"].endswith("...[truncated]")
+        # _raw mirrors the truncated form (same dict reference)
+        assert result.signals["_raw"]["headers"]["X-Big"].endswith("...[truncated]")

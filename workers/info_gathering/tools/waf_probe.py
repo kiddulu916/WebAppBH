@@ -12,9 +12,12 @@ from typing import Any
 
 import aiohttp
 
+from lib_webbh import setup_logger
 from workers.info_gathering.base_tool import InfoGatheringTool
 from workers.info_gathering.fingerprint_aggregator import ProbeResult
 from workers.info_gathering.fingerprint_signatures import WAF_PASSIVE_PATTERNS
+
+logger = setup_logger("stage2-waf")
 
 
 class WAFProbe(InfoGatheringTool):
@@ -58,7 +61,11 @@ class WAFProbe(InfoGatheringTool):
                     parsed = parsed[0]
                 if isinstance(parsed, dict) and parsed.get("detected"):
                     active = {"vendor": parsed.get("firewall")}
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "wafw00f active probe failed",
+                    extra={"host": host, "asset_id": asset_id, "error": str(exc)},
+                )
                 active = None
 
         signals: dict[str, Any] = {"waf": []}

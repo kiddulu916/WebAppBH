@@ -15,6 +15,21 @@ from workers.info_gathering.base_tool import InfoGatheringTool
 from workers.info_gathering.fingerprint_aggregator import ProbeResult
 from workers.info_gathering.fingerprint_signatures import WAF_PASSIVE_PATTERNS
 
+# Cap per-value header length so a misbehaving proxy can't bloat the JSON
+# column with a single multi-MB header value.
+_MAX_HEADER_VALUE_LEN = 4096
+
+
+def _truncate_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Truncate any header value longer than ``_MAX_HEADER_VALUE_LEN``."""
+    out: dict[str, str] = {}
+    for k, v in headers.items():
+        if len(v) > _MAX_HEADER_VALUE_LEN:
+            out[k] = v[:_MAX_HEADER_VALUE_LEN] + "...[truncated]"
+        else:
+            out[k] = v
+    return out
+
 # Server-header substring → CDN vendor (edge slot).
 _EDGE_KEYWORDS: dict[str, str] = {
     "cloudflare": "Cloudflare",
@@ -94,21 +109,21 @@ class BannerProbe(InfoGatheringTool):
                     {"src": "banner.server", "value": vendor, "w": 0.4},
                 )
 
+        headers_capped = _truncate_headers(headers)
         obs_id = await self.save_observation(
             asset_id=asset_id,
             tech_stack={
                 "_probe": "banner",
                 "server_raw": server,
                 "x_powered_by": x_powered_by,
-                "headers": headers,
             },
             status_code=status,
-            headers=headers,
+            headers=headers_capped,
         )
         signals["_raw"] = {
             "obs_id": obs_id,
             "server": server,
             "x_powered_by": x_powered_by,
-            "headers": headers,
+            "headers": headers_capped,
         }
         return ProbeResult(probe="banner", obs_id=obs_id, signals=signals)

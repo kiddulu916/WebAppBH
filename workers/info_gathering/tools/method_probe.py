@@ -13,6 +13,7 @@ into ``origin_server``).
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import aiohttp
@@ -47,12 +48,17 @@ class MethodProbe(InfoGatheringTool):
 
         rate_limiter = kwargs.get("rate_limiter")
         url = f"https://{host}/"
-        results: dict[str, dict[str, Any]] = {}
+
+        async def _send_with_limit(session: aiohttp.ClientSession, method: str) -> tuple[str, dict[str, Any]]:
+            await self.acquire_rate_limit(rate_limiter)
+            return method, await self._send_method(session, method, url)
+
         try:
             async with aiohttp.ClientSession() as session:
-                for method in methods:
-                    await self.acquire_rate_limit(rate_limiter)
-                    results[method] = await self._send_method(session, method, url)
+                pairs = await asyncio.gather(
+                    *(_send_with_limit(session, m) for m in methods),
+                )
+            results: dict[str, dict[str, Any]] = dict(pairs)
         except Exception as exc:
             return ProbeResult(
                 probe="method_probe", obs_id=None, signals={}, error=str(exc),
