@@ -8,9 +8,17 @@ LIGHT_LIMIT = int(os.environ.get("LIGHT_CONCURRENCY", str(os.cpu_count() or 4)))
 TOOL_WEIGHTS = {
     "DorkEngine": "LIGHT",
     "ArchiveProber": "LIGHT",
-    "Nmap": "HEAVY",
+    # Nmap moved out of Stage 2 in Phase 3; Stage 9 handles full TCP/UDP discovery.
     "WhatWeb": "LIGHT",
     "Httpx": "LIGHT",
+    # Stage 2 (WSTG-INFO-02) probes — all LIGHT (a handful of HTTP requests each).
+    "LivenessProbe": "LIGHT",
+    "BannerProbe": "LIGHT",
+    "HeaderOrderProbe": "LIGHT",
+    "MethodProbe": "LIGHT",
+    "ErrorPageProbe": "LIGHT",
+    "TLSProbe": "LIGHT",
+    "WAFProbe": "LIGHT",
     "MetafileParser": "LIGHT",
     "Subfinder": "HEAVY",
     "Assetfinder": "LIGHT",

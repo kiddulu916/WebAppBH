@@ -14,7 +14,10 @@ def test_tool_weights_contains_all_tools():
     from workers.info_gathering.concurrency import TOOL_WEIGHTS
 
     expected_tools = {
-        "DorkEngine", "ArchiveProber", "Nmap", "WhatWeb", "Httpx",
+        "DorkEngine", "ArchiveProber", "WhatWeb", "Httpx",
+        # Stage 2 (WSTG-INFO-02) probes
+        "LivenessProbe", "BannerProbe", "HeaderOrderProbe", "MethodProbe",
+        "ErrorPageProbe", "TLSProbe", "WAFProbe",
         "MetafileParser", "Subfinder", "Assetfinder", "AmassPassive",
         "AmassActive", "Massdns", "VHostProber", "CommentHarvester",
         "MetadataExtractor", "FormMapper", "Paramspider", "Katana",

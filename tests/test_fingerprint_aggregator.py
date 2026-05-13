@@ -289,7 +289,7 @@ class TestEmitInfoLeaks:
     async def test_emits_low_vuln_for_default_error_page_signature(self):
         agg = FingerprintAggregator(asset_id=501, target_id=42)
         raw = {
-            "error_page_404": {
+            "error_page": {
                 "signature_match": "apache-default-404",
                 "obs_id": 9,
             },
@@ -338,7 +338,7 @@ class TestEmitInfoLeaks:
                 "x_powered_by": "PHP/8.0",
                 "headers": {"X-Powered-By": "PHP/8.0", "X-Debug-Token": "t"},
             },
-            "error_page_404": {"signature_match": "apache-default-404", "obs_id": 9},
+            "error_page": {"signature_match": "apache-default-404", "obs_id": 9},
         }
         return_values = iter([100, 101, 102, 103])
         with patch.object(
