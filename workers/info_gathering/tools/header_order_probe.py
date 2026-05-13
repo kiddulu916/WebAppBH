@@ -29,9 +29,13 @@ def _detect_casing(header_names: list[str]) -> str:
 
 
 def _is_title_dashed(name: str) -> bool:
-    """Title-Case-Dashed test (e.g., ``Content-Type`` ✓, ``content-type`` ✗)."""
+    """Title-Case-Dashed test (e.g., ``Content-Type`` ✓, ``content-type`` ✗).
+
+    Single-letter parts like ``X-Cache``'s ``X`` are accepted: when ``p[1:]``
+    is empty, ``"".islower()`` is False but the part is still Title-Case.
+    """
     parts = name.split("-")
-    return all(p and p[0].isupper() and p[1:].islower() for p in parts)
+    return all(p and p[0].isupper() and (not p[1:] or p[1:].islower()) for p in parts)
 
 
 class HeaderOrderProbe(InfoGatheringTool):

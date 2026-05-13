@@ -90,6 +90,24 @@ class TestErrorPageProbe:
         assert result.signals["edge"] == []
 
     @pytest.mark.anyio
+    async def test_tomcat_default_page_routes_to_tomcat_not_apache(self):
+        """Regression: ``Apache Tomcat`` body must match Tomcat, not Apache."""
+        probe = ErrorPageProbe()
+        body = ('<html><head><title>Apache Tomcat/9.0.50 - Error report</title></head>'
+                '<body><h1>HTTP Status 404</h1></body></html>')
+        session = _fake_session(body, status=404)
+        with patch("workers.info_gathering.tools.error_page_probe.aiohttp.ClientSession",
+                   return_value=session), \
+             patch.object(probe, "save_observation",
+                          new_callable=AsyncMock, return_value=99) as obs:
+            result = await probe.execute(
+                target_id=1, asset_id=501, host="a.com", intensity="low",
+            )
+        assert obs.call_args.kwargs["tech_stack"]["signature_match"] == "tomcat-default-404"
+        assert any(s["value"] == "Tomcat" for s in result.signals["origin_server"])
+        assert all(s["value"] != "Apache" for s in result.signals["origin_server"])
+
+    @pytest.mark.anyio
     async def test_connection_failure_returns_error_result(self):
         probe = ErrorPageProbe()
         session = _fake_session("", exception=ConnectionError("refused"))

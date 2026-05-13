@@ -19,11 +19,14 @@ from workers.info_gathering.base_tool import InfoGatheringTool
 from workers.info_gathering.fingerprint_aggregator import ProbeResult
 
 # Body-substring → (signature_id, vendor) tuple. Order matters for first-match.
+# Order matters: first match wins, so list the most-specific needle first.
+# Tomcat pages contain both "Apache Tomcat" and "Apache" — the longer needle
+# must come first to keep Tomcat from being misclassified as Apache.
 _SIGNATURES: list[tuple[str, str, str]] = [
     ("<center>nginx",        "nginx-default-404",      "nginx"),
+    ("Apache Tomcat",        "tomcat-default-404",     "Tomcat"),
     ("Apache",               "apache-default-404",     "Apache"),
     ("Microsoft-IIS",        "iis-default-404",        "IIS"),
-    ("Apache Tomcat",        "tomcat-default-404",     "Tomcat"),
     ("Cannot GET /",         "express-default-404",    "Express"),
     ("DEBUG = True",         "django-default-debug",   "Django"),
     ("ray id",               "cloudflare-default-404", "Cloudflare"),

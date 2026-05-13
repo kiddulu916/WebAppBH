@@ -33,6 +33,25 @@ class TestHeaderOrderProbe:
         assert result.obs_id == 2
 
     @pytest.mark.anyio
+    async def test_title_case_with_single_letter_parts(self):
+        """Regression: headers with single-letter parts (``X-Cache``, ``X-Frame-Options``) must detect Title-Case."""
+        probe = HeaderOrderProbe()
+        canned = (
+            "HTTP/1.1 200 OK\r\n"
+            "Date: x\r\n"
+            "X-Cache: HIT\r\n"
+            "X-Frame-Options: DENY\r\n"
+            "Content-Type: text/html\r\n"
+            "\r\n"
+        )
+        with patch.object(probe, "_raw_get",
+                          new_callable=AsyncMock, return_value=canned), \
+             patch.object(probe, "save_observation",
+                          new_callable=AsyncMock, return_value=99) as obs:
+            await probe.execute(target_id=1, asset_id=501, host="x", intensity="low")
+        assert obs.call_args.kwargs["tech_stack"]["casing"] == "Title-Case"
+
+    @pytest.mark.anyio
     async def test_detects_lowercase_casing(self):
         probe = HeaderOrderProbe()
         canned = (
