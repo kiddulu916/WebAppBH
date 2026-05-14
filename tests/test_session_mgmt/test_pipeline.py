@@ -51,16 +51,21 @@ def test_pipeline_filters_stages_with_playbook():
 
     pipeline = Pipeline(target_id=1, container_name="test")
     playbook = {
-        "stages": [
-            {"name": "session_scheme", "enabled": True},
-            {"name": "cookie_attributes", "enabled": True},
-            {"name": "session_fixation", "enabled": True},
-            {"name": "exposed_variables", "enabled": False},
-            {"name": "csrf", "enabled": True},
-            {"name": "logout_functionality", "enabled": True},
-            {"name": "session_timeout", "enabled": True},
-            {"name": "session_puzzling", "enabled": True},
-            {"name": "session_hijacking", "enabled": True},
+        "workers": [
+            {
+                "name": "session_mgmt",
+                "stages": [
+                    {"name": "session_scheme", "enabled": True},
+                    {"name": "cookie_attributes", "enabled": True},
+                    {"name": "session_fixation", "enabled": True},
+                    {"name": "exposed_variables", "enabled": False},
+                    {"name": "csrf", "enabled": True},
+                    {"name": "logout_functionality", "enabled": True},
+                    {"name": "session_timeout", "enabled": True},
+                    {"name": "session_puzzling", "enabled": True},
+                    {"name": "session_hijacking", "enabled": True},
+                ],
+            }
         ]
     }
     filtered = pipeline._filter_stages(playbook)

@@ -19,7 +19,7 @@ async def test_evaluate_target_dispatches_ready_worker(db_session):
     job = JobState(
         target_id=target.id,
         container_name="info_gathering",
-        status="complete",
+        status="COMPLETED",
     )
     db_session.add(job)
     await db_session.commit()

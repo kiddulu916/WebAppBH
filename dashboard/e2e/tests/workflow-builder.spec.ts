@@ -41,12 +41,12 @@ test.describe("Workflow Builder", () => {
 
     await page.getByTestId("flow-playbook-select").selectOption("wide_recon");
 
-    // Should show all 7 recon stages
-    await expect(page.getByTestId("flow-stage-card-passive_discovery")).toBeVisible();
-    await expect(page.getByTestId("flow-stage-card-deep_recon")).toBeVisible();
+    // Should show recon stages (info_gathering is auto-expanded)
+    await expect(page.getByTestId("flow-stage-card-search_engine_recon")).toBeVisible();
+    await expect(page.getByTestId("flow-stage-card-web_server_fingerprint")).toBeVisible();
 
     // Each stage should have a toggle
-    await expect(page.getByTestId("flow-stage-toggle-passive_discovery")).toBeVisible();
+    await expect(page.getByTestId("flow-stage-toggle-search_engine_recon")).toBeVisible();
   });
 
   test("toggling a stage off grays out the card", async ({ page }) => {
@@ -75,9 +75,9 @@ test.describe("Workflow Builder", () => {
     await page.getByRole("link", { name: "Phase Flow" }).click();
 
     // Monitor panel should show stages with seeded job states
-    await expect(page.getByTestId("flow-monitor-stage-passive_discovery")).toBeVisible({ timeout: 10_000 });
-    // The seeded job has status "RUNNING" with phase "passive_discovery"
-    await expect(page.getByTestId("flow-monitor-status-passive_discovery")).toContainText(/running/i);
+    await expect(page.getByTestId("flow-monitor-stage-enumerate_subdomains")).toBeVisible({ timeout: 10_000 });
+    // The seeded job has status "RUNNING" with phase "enumerate_subdomains"
+    await expect(page.getByTestId("flow-monitor-status-enumerate_subdomains")).toContainText(/running/i);
   });
 
   test("apply playbook button triggers API call", async ({ page }) => {

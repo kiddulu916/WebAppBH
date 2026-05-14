@@ -113,6 +113,8 @@ class PlaybookConfig:
     name: str
     description: str
     workers: list[WorkerConfig] = field(default_factory=list)
+    stages: list[StageConfig] = field(default_factory=list)
+    concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
 
     def to_dict(self) -> dict:
         return asdict(self)

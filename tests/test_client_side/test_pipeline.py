@@ -69,20 +69,25 @@ def test_pipeline_filters_stages_with_playbook():
 
     pipeline = Pipeline(target_id=1, container_name="test")
     playbook = {
-        "stages": [
-            {"name": "dom_xss", "enabled": True},
-            {"name": "clickjacking", "enabled": False},
-            {"name": "csrf_tokens", "enabled": True},
-            {"name": "csp_bypass", "enabled": True},
-            {"name": "html5_injection", "enabled": True},
-            {"name": "web_storage", "enabled": True},
-            {"name": "client_side_logic", "enabled": True},
-            {"name": "dom_based_injection", "enabled": True},
-            {"name": "client_side_resource_manipulation", "enabled": True},
-            {"name": "client_side_auth", "enabled": True},
-            {"name": "xss_client_side", "enabled": True},
-            {"name": "css_injection", "enabled": True},
-            {"name": "malicious_upload_client", "enabled": True},
+        "workers": [
+            {
+                "name": "client_side",
+                "stages": [
+                    {"name": "dom_xss", "enabled": True},
+                    {"name": "clickjacking", "enabled": False},
+                    {"name": "csrf_tokens", "enabled": True},
+                    {"name": "csp_bypass", "enabled": True},
+                    {"name": "html5_injection", "enabled": True},
+                    {"name": "web_storage", "enabled": True},
+                    {"name": "client_side_logic", "enabled": True},
+                    {"name": "dom_based_injection", "enabled": True},
+                    {"name": "client_side_resource_manipulation", "enabled": True},
+                    {"name": "client_side_auth", "enabled": True},
+                    {"name": "xss_client_side", "enabled": True},
+                    {"name": "css_injection", "enabled": True},
+                    {"name": "malicious_upload_client", "enabled": True},
+                ],
+            }
         ]
     }
     filtered = pipeline._filter_stages(playbook)

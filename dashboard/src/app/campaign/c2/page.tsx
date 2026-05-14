@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Activity, Settings, RotateCcw } from "lucide-react";
 import AssetTree, { type TreeNode } from "@/components/c2/AssetTree";
 import PipelineGrid from "@/components/pipeline/PipelineGrid";
@@ -142,6 +142,55 @@ export default function C2Page() {
     ["RUNNING", "QUEUED", "PAUSED"].includes(j.status),
   );
 
+  const workerJobCards = useMemo(() => {
+    const seen = new Set<string>();
+    const result: Array<{
+      key: string;
+      containerName: string;
+      status: string;
+      currentPhase: string | null;
+      lastTool: string | null;
+    }> = [];
+    for (const job of jobs) {
+      const key = job.container_name
+        .replace(/^webbh-/, "")
+        .replace(/-t\d+$/, "")
+        .replace(/-/g, "_");
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push({
+          key,
+          containerName: job.container_name,
+          status: job.status,
+          currentPhase: job.current_phase,
+          lastTool: job.last_tool_executed,
+        });
+      }
+    }
+    return result;
+  }, [jobs]);
+
+  /* ---- Fetch job states periodically ---- */
+  const refreshJobs = useCallback(async () => {
+    if (!activeTarget) return;
+    try {
+      const res = await api.getStatus(activeTarget.id);
+      setLocalJobs(res.jobs);
+      setJobs(res.jobs);
+    } catch {
+      /* noop */
+    }
+  }, [activeTarget, setJobs]);
+
+  const handleWorkerControl = useCallback(async (containerName: string, action: "pause" | "stop" | "restart" | "unpause") => {
+    try {
+      await api.controlWorker(containerName, action);
+      await refreshJobs();
+    } catch {
+      /* noop — toast shown by api.request() */
+    }
+  }, [refreshJobs]);
+
   async function handleRerun(playbookName: string) {
     if (!activeTarget) return;
     setRerunning(true);
@@ -160,18 +209,6 @@ export default function C2Page() {
     setRerunMode("pick");
     api.getPlaybooks().then((res) => setPlaybooks(res)).catch(() => {});
   }
-
-  /* ---- Fetch job states periodically ---- */
-  const refreshJobs = useCallback(async () => {
-    if (!activeTarget) return;
-    try {
-      const res = await api.getStatus(activeTarget.id);
-      setLocalJobs(res.jobs);
-      setJobs(res.jobs);
-    } catch {
-      /* noop */
-    }
-  }, [activeTarget, setJobs]);
 
   useEffect(() => {
     if (!activeTarget) return;
@@ -358,6 +395,71 @@ export default function C2Page() {
         />
       </div>
 
+      {/* Worker Job Cards */}
+      {workerJobCards.length > 0 && (
+        <div data-testid="c2-worker-grid" className="rounded-lg border border-border bg-bg-secondary p-4">
+          <div className="section-label mb-3">WORKER JOBS</div>
+          <div className="grid grid-cols-2 gap-3">
+            {workerJobCards.map(({ key, containerName, status, currentPhase }) => (
+              <div
+                key={key}
+                data-testid={`worker-card-${key}`}
+                className="rounded-lg border border-border bg-bg-tertiary p-3"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-mono text-sm text-text-primary capitalize">
+                    {key.replace(/_/g, " ")}
+                  </span>
+                  <span className={`text-xs font-semibold ${
+                    status === "RUNNING" ? "text-neon-orange" :
+                    status === "COMPLETED" ? "text-neon-green" :
+                    status === "FAILED" ? "text-danger" :
+                    status === "PAUSED" ? "text-warning" :
+                    "text-text-muted"
+                  }`}>
+                    {status}
+                  </span>
+                </div>
+                {currentPhase && (
+                  <div className="text-xs text-text-muted mb-2">
+                    Phase: <span className="font-mono text-text-secondary">{currentPhase}</span>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  {(status === "RUNNING") && (
+                    <>
+                      <button
+                        data-testid="worker-pause-btn"
+                        onClick={() => handleWorkerControl(containerName, "pause")}
+                        className="rounded px-2 py-0.5 text-xs border border-border text-text-muted hover:text-text-primary hover:border-text-primary transition-colors"
+                      >
+                        Pause
+                      </button>
+                      <button
+                        data-testid="worker-stop-btn"
+                        onClick={() => handleWorkerControl(containerName, "stop")}
+                        className="rounded px-2 py-0.5 text-xs border border-danger/40 text-danger hover:bg-danger/10 transition-colors"
+                      >
+                        Stop
+                      </button>
+                    </>
+                  )}
+                  {status === "PAUSED" && (
+                    <button
+                      data-testid="worker-resume-btn"
+                      onClick={() => handleWorkerControl(containerName, "unpause")}
+                      className="rounded px-2 py-0.5 text-xs border border-neon-green/40 text-neon-green hover:bg-neon-green/10 transition-colors"
+                    >
+                      Resume
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Asset Tree (1/3) + Campaign Timeline (2/3) */}
       <div className="grid grid-cols-3 gap-5">
         <div className="col-span-1" data-testid="c2-asset-tree">
@@ -372,7 +474,7 @@ export default function C2Page() {
           </div>
         </div>
         <div className="col-span-2">
-          <div className="rounded-lg border border-border bg-bg-secondary p-4">
+          <div data-testid="c2-timeline" className="rounded-lg border border-border bg-bg-secondary p-4">
             <div className="section-label mb-3">CAMPAIGN TIMELINE</div>
             <CampaignTimeline jobs={jobs} />
           </div>

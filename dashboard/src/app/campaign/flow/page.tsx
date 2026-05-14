@@ -60,7 +60,7 @@ function stripWstgPrefix(sectionId: string): string {
 
 function StageRow({
   stage,
-  workerName,
+  workerName: _workerName,
   disabled,
   display,
   onToggle,
@@ -77,12 +77,13 @@ function StageRow({
 
   return (
     <div
-      data-testid={`flow-stage-toggle-${workerName}-${stage.name}`}
-      className="rounded-md bg-bg-tertiary px-3 py-2"
+      data-testid={`flow-stage-card-${stage.name}`}
+      className={`rounded-md bg-bg-tertiary px-3 py-2${!stage.enabled ? " opacity-50" : ""}`}
     >
       <div className="flex items-center gap-3">
         <button
           type="button"
+          data-testid={`flow-stage-toggle-${stage.name}`}
           onClick={onToggle}
           disabled={disabled}
           className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${
@@ -380,7 +381,7 @@ function MonitorWorkerCard({
                     {stripWstgPrefix(display.sectionId)}
                   </span>
                 )}
-                <span className={`ml-auto text-xs font-semibold uppercase ${stageStatusColor}`}>
+                <span data-testid={`flow-monitor-status-${stage.name}`} className={`ml-auto text-xs font-semibold uppercase ${stageStatusColor}`}>
                   {stage.status}
                 </span>
                 {stage.tool && (
@@ -448,10 +449,11 @@ export default function FlowPage() {
           ...w,
           stages: w.stages.map((s) => ({ ...s })),
         })));
+        setExpandedWorkers(new Set(pb.workers.map((w) => w.name)));
       } else {
         setWorkers([]);
+        setExpandedWorkers(new Set());
       }
-      setExpandedWorkers(new Set());
     },
     [playbooks],
   );

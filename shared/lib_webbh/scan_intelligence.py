@@ -236,9 +236,13 @@ async def generate_adaptive_playbook(
         r.confirmed_rate > BOOST_HIT_RATE and r.total_runs >= COLD_START_RUNS
         for r in rankings
     ):
-        adapted.concurrency.light = min(
+        new_light = min(
             base.concurrency.light + 4,
             adapted.concurrency.light + 2,
+        )
+        adapted.concurrency = ConcurrencyConfig(
+            heavy=adapted.concurrency.heavy,
+            light=new_light,
         )
 
     return adapted

@@ -50,11 +50,16 @@ def test_pipeline_filters_stages_with_playbook():
 
     pipeline = Pipeline(target_id=1, container_name="test")
     playbook = {
-        "stages": [
-            {"name": "directory_traversal", "enabled": True},
-            {"name": "authz_bypass", "enabled": False},
-            {"name": "privilege_escalation", "enabled": True},
-            {"name": "idor", "enabled": True},
+        "workers": [
+            {
+                "name": "authorization",
+                "stages": [
+                    {"name": "directory_traversal", "enabled": True},
+                    {"name": "authz_bypass", "enabled": False},
+                    {"name": "privilege_escalation", "enabled": True},
+                    {"name": "idor", "enabled": True},
+                ],
+            }
         ]
     }
     filtered = pipeline._filter_stages(playbook)
