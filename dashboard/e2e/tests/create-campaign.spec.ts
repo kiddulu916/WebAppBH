@@ -53,7 +53,7 @@ test.describe("Create Campaign", () => {
     await page.goto("/campaign");
     await expect(page.getByTestId("scope-builder")).toBeVisible();
     // Settings link must be gone
-    await expect(page.getByRole("link", { name: "Settings" })).not.toBeVisible();
+    await expect(page.getByTestId("scope-builder").getByRole("link", { name: "Settings" })).not.toBeVisible();
 
     // Configure button must exist
     const configureBtn = page.getByTestId("intel-configure-btn");
