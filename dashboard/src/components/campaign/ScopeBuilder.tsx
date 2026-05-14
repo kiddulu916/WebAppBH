@@ -116,6 +116,10 @@ export default function ScopeBuilder() {
   >([{ amount: 50, unit: "req/s" }]);
 
   async function handleSaveKeys() {
+    if (!shodanKey.trim() && !securityTrailsKey.trim() && !censysId.trim() && !censysSecret.trim()) {
+      handleCancelKeys();
+      return;
+    }
     setSavingKeys(true);
     try {
       const payload: {
@@ -415,6 +419,7 @@ export default function ScopeBuilder() {
                       <button
                         type="button"
                         onClick={() => setShowShodan(!showShodan)}
+                        aria-label={showShodan ? "Hide key" : "Show key"}
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
                       >
                         {showShodan ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -437,6 +442,7 @@ export default function ScopeBuilder() {
                       <button
                         type="button"
                         onClick={() => setShowST(!showST)}
+                        aria-label={showST ? "Hide key" : "Show key"}
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
                       >
                         {showST ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -459,6 +465,7 @@ export default function ScopeBuilder() {
                       <button
                         type="button"
                         onClick={() => setShowCensysId(!showCensysId)}
+                        aria-label={showCensysId ? "Hide key" : "Show key"}
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
                       >
                         {showCensysId ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -481,6 +488,7 @@ export default function ScopeBuilder() {
                       <button
                         type="button"
                         onClick={() => setShowCensysSecret(!showCensysSecret)}
+                        aria-label={showCensysSecret ? "Hide key" : "Show key"}
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
                       >
                         {showCensysSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}

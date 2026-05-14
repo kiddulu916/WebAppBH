@@ -73,4 +73,23 @@ test.describe("Create Campaign", () => {
     await expect(page.getByTestId("intel-shodan-input")).not.toBeVisible();
     await expect(configureBtn).toBeVisible();
   });
+
+  test("intel enrichment: filling a key and saving collapses the form", async ({ page }) => {
+    await page.goto("/campaign");
+    await expect(page.getByTestId("scope-builder")).toBeVisible();
+
+    // Open the form
+    await page.getByTestId("intel-configure-btn").click();
+    await expect(page.getByTestId("intel-shodan-input")).toBeVisible();
+
+    // Fill one key
+    await page.getByTestId("intel-shodan-input").fill("test-shodan-key");
+
+    // Save
+    await page.getByTestId("intel-save-btn").click();
+
+    // Form should collapse and configure button should return
+    await expect(page.getByTestId("intel-shodan-input")).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId("intel-configure-btn")).toBeVisible();
+  });
 });
