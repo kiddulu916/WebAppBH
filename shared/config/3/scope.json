@@ -1,8 +1,0 @@
-{
-  "in_scope_domains": [
-    "*.t-mobile.com"
-  ],
-  "out_scope_domains": [],
-  "in_scope_cidrs": [],
-  "in_scope_regex": []
-}
