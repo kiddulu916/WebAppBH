@@ -262,7 +262,7 @@ function ApiKeysSection() {
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-text-secondary">
-              Censys API ID
+              Censys Organization ID
             </label>
             <div className="relative">
               <input
@@ -287,7 +287,7 @@ function ApiKeysSection() {
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-text-secondary">
-              Censys API Secret
+              Censys API Key
             </label>
             <div className="relative">
               <input

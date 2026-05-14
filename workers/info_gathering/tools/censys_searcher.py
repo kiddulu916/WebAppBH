@@ -14,15 +14,16 @@ CENSYS_HOSTS_BASE = "https://search.censys.io/api/v2"
 class CensysSearcher(InfoGatheringTool):
     """Query Censys for hosts, services, and TLS certificate SANs.
 
-    Skips gracefully when CENSYS_API_ID / CENSYS_API_SECRET are not configured.
+    Skips gracefully when CENSYS_API_SECRET is not configured.
+    CENSYS_API_ID (Organization ID) is optional; used as the Basic Auth username when present.
     """
 
     async def execute(self, target_id: int, **kwargs) -> dict:
         api_id = os.environ.get("CENSYS_API_ID", "")
         api_secret = os.environ.get("CENSYS_API_SECRET", "")
 
-        if not api_id or not api_secret:
-            logger.info("CensysSearcher skipped — no CENSYS_API_ID/SECRET configured")
+        if not api_secret:
+            logger.info("CensysSearcher skipped — no CENSYS_API_SECRET configured")
             return {"skipped": True, "reason": "no_api_key"}
 
         domain = kwargs.get("domain")

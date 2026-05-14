@@ -175,5 +175,5 @@ def get_available_intel_sources() -> dict[str, bool]:
     return {
         "shodan": bool(SHODAN_API_KEY),
         "securitytrails": bool(SECURITYTRAILS_API_KEY),
-        "censys": bool(CENSYS_API_ID) and bool(CENSYS_API_SECRET),
+        "censys": bool(CENSYS_API_SECRET),
     }
