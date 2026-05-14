@@ -126,9 +126,7 @@ async def main() -> None:
 
     asyncio.create_task(heartbeat(container_name))
 
-    async for msg_id, data in listen_queue(
-        QUEUE_NAME, CONSUMER_GROUP, CONSUMER_NAME
-    ):
+    async def process_message(msg_id: str, data: dict) -> None:
         try:
             result = await handle_message(data)
             logger.info("Mutation request processed", extra={
@@ -137,6 +135,8 @@ async def main() -> None:
             })
         except Exception as exc:
             logger.error("Message handling failed", extra={"error": str(exc)})
+
+    await listen_queue(QUEUE_NAME, CONSUMER_GROUP, CONSUMER_NAME, callback=process_message)
 
 
 if __name__ == "__main__":

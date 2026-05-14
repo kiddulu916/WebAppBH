@@ -107,7 +107,7 @@ def response(flow: http.HTTPFlow) -> None:
         )
 
     cmd = [
-        sys.executable, "-m", "mitmproxy.tools.main",
+        "mitmdump",
         "--mode", UPSTREAM_MODE,
         "--listen-port", str(PROXY_PORT),
         "--set", "block_global=false",
