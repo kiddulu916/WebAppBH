@@ -99,6 +99,10 @@ export interface AssetWithLocations {
     service: string | null;
     state: string | null;
   }[];
+  observations?: {
+    id: number;
+    tech_stack: Record<string, unknown> | null;
+  }[];
 }
 
 interface AssetsResponse {
@@ -217,6 +221,7 @@ export interface StageConfig {
   name: string;
   enabled: boolean;
   tool_timeout?: number;
+  config?: Record<string, unknown>;
 }
 
 export interface WorkerConfig {

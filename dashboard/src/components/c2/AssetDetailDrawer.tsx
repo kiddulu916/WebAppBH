@@ -13,6 +13,7 @@ import {
   Hash,
 } from "lucide-react";
 import type { AssetWithLocations } from "@/lib/api";
+import FingerprintPanel from "./FingerprintPanel";
 
 interface AssetDetailDrawerProps {
   asset: AssetWithLocations | null;
@@ -156,6 +157,20 @@ export default function AssetDetailDrawer({
               </div>
             </section>
           )}
+
+          {/* Fingerprint panel — rendered when a summary observation is present */}
+          {(() => {
+            const summaryObs = asset.observations?.find(
+              (o) => o.tech_stack?.["_probe"] === "summary",
+            );
+            if (!summaryObs?.tech_stack) return null;
+            return (
+              <FingerprintPanel
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                obs={summaryObs.tech_stack as any}
+              />
+            );
+          })()}
 
           {/* Placeholder sections for future data */}
           <section>

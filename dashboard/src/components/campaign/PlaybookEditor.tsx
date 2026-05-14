@@ -6,6 +6,12 @@ import type { WorkerConfig } from "@/lib/api";
 import { WORKER_STAGES } from "@/lib/worker-stages";
 import { PIPELINE_WORKER_NAMES } from "@/types/schema";
 
+const INTENSITY_COPY = {
+  low: "Conservative probes that look like normal client variation. Safe against most production targets.",
+  medium: "⚠️ Adds active WAF probing and uncommon HTTP methods (PROPFIND, TRACE, HTTP/0.9). May appear in IDS/WAF logs as suspicious. Use when target authorization clearly covers active reconnaissance.",
+  high: "⚠️⚠️ Sends malformed methods, garbage verbs, and aggressive plugin checks. Will trigger WAFs, may be blocked, and is conspicuous to defenders. Only use against authorized targets with explicit go-ahead for noisy fingerprinting.",
+} as const;
+
 function buildDefaultWorkers(): WorkerConfig[] {
   return PIPELINE_WORKER_NAMES.map((name) => ({
     name,
@@ -53,6 +59,27 @@ export default function PlaybookEditor({
               ...w,
               stages: w.stages.map((s, i) =>
                 i === stageIndex ? { ...s, enabled: !s.enabled } : s,
+              ),
+            }
+          : w,
+      ),
+    );
+  };
+
+  const updateStageConfig = (
+    workerName: string,
+    stageName: string,
+    config: Record<string, unknown>,
+  ) => {
+    setWorkers((prev) =>
+      prev.map((w) =>
+        w.name === workerName
+          ? {
+              ...w,
+              stages: w.stages.map((s) =>
+                s.name === stageName
+                  ? { ...s, config: { ...(s.config ?? {}), ...config } }
+                  : s,
               ),
             }
           : w,
@@ -151,6 +178,7 @@ export default function PlaybookEditor({
                       </span>
                       <button
                         type="button"
+                        data-testid={`worker-expand-${worker.name}`}
                         onClick={() =>
                           setExpandedWorker(isExpanded ? null : worker.name)
                         }
@@ -169,31 +197,85 @@ export default function PlaybookEditor({
                 {isExpanded && (
                   <div className="mt-2 space-y-1 pl-11">
                     {worker.stages.map((stage, idx) => (
-                      <div
-                        key={stage.name}
-                        className="flex items-center gap-2"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => toggleStage(worker.name, idx)}
-                          disabled={!worker.enabled}
-                          className={`relative h-3 w-6 shrink-0 rounded-full transition-colors ${
-                            stage.enabled && worker.enabled
-                              ? "bg-neon-green"
-                              : "bg-border-accent"
-                          }`}
-                        >
-                          <span
-                            className={`absolute top-0.5 left-0.5 h-2 w-2 rounded-full bg-white transition-transform ${
+                      <div key={stage.name} className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleStage(worker.name, idx)}
+                            disabled={!worker.enabled}
+                            className={`relative h-3 w-6 shrink-0 rounded-full transition-colors ${
                               stage.enabled && worker.enabled
-                                ? "translate-x-3"
-                                : ""
+                                ? "bg-neon-green"
+                                : "bg-border-accent"
                             }`}
-                          />
-                        </button>
-                        <span className="text-[10px] text-text-primary">
-                          {stage.name}
-                        </span>
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 h-2 w-2 rounded-full bg-white transition-transform ${
+                                stage.enabled && worker.enabled
+                                  ? "translate-x-3"
+                                  : ""
+                              }`}
+                            />
+                          </button>
+                          <span className="text-[10px] text-text-primary">
+                            {stage.name}
+                          </span>
+                        </div>
+
+                        {worker.name === "info_gathering" &&
+                          stage.name === "web_server_fingerprint" && (
+                            <fieldset
+                              className="ml-8 mt-1"
+                              data-testid="fp-intensity-selector"
+                            >
+                              <legend className="sr-only">
+                                Fingerprint intensity
+                              </legend>
+                              {(
+                                ["low", "medium", "high"] as const
+                              ).map((level) => {
+                                const selected =
+                                  ((stage.config?.fingerprint_intensity as string) ??
+                                    "low") === level;
+                                return (
+                                  <label
+                                    key={level}
+                                    className="flex items-start gap-2 py-0.5 cursor-pointer"
+                                  >
+                                    <input
+                                      type="radio"
+                                      name={`fp-intensity-${worker.name}-${stage.name}`}
+                                      value={level}
+                                      checked={selected}
+                                      onChange={() =>
+                                        updateStageConfig(
+                                          worker.name,
+                                          stage.name,
+                                          { fingerprint_intensity: level },
+                                        )
+                                      }
+                                      className="mt-0.5 accent-neon-orange"
+                                      aria-describedby={`fp-${level}-help`}
+                                    />
+                                    <span>
+                                      <span className="text-[10px] capitalize text-text-primary">
+                                        {level}
+                                      </span>
+                                      {selected && (
+                                        <span
+                                          id={`fp-${level}-help`}
+                                          role="note"
+                                          className="block text-[9px] leading-tight text-text-muted mt-0.5"
+                                        >
+                                          {INTENSITY_COPY[level]}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </fieldset>
+                          )}
                       </div>
                     ))}
                   </div>
