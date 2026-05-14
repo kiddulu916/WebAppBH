@@ -20,8 +20,13 @@ RUN go install github.com/tomnomnom/assetfinder@latest
 RUN go install github.com/tomnomnom/waybackurls@latest
 RUN go install github.com/hakluke/hakrawler@latest
 
+# Stage 2 (WSTG-INFO-02) tooling
+RUN go install -v github.com/projectdiscovery/tlsx/cmd/tlsx@latest \
+    && mv /root/go/bin/tlsx /usr/local/bin/tlsx
+
 # Python tools
 RUN pip install --no-cache-dir paramspider || true
+RUN pip install --no-cache-dir wafw00f==2.2.0
 
 # Copy worker code
 COPY workers/info_gathering/ /app/workers/info_gathering/
