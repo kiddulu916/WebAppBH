@@ -48,4 +48,29 @@ test.describe("Create Campaign", () => {
     expect(created).toBeTruthy();
     createdTargetId = created!.id;
   });
+
+  test("intel enrichment: configure button expands inline form; cancel collapses it", async ({ page }) => {
+    await page.goto("/campaign");
+    await expect(page.getByTestId("scope-builder")).toBeVisible();
+    // Settings link must be gone
+    await expect(page.getByRole("link", { name: "Settings" })).not.toBeVisible();
+
+    // Configure button must exist
+    const configureBtn = page.getByTestId("intel-configure-btn");
+    await expect(configureBtn).toBeVisible();
+
+    // Expand the form
+    await configureBtn.click();
+    await expect(page.getByTestId("intel-shodan-input")).toBeVisible();
+    await expect(page.getByTestId("intel-st-input")).toBeVisible();
+    await expect(page.getByTestId("intel-censys-id-input")).toBeVisible();
+    await expect(page.getByTestId("intel-censys-secret-input")).toBeVisible();
+    await expect(page.getByTestId("intel-save-btn")).toBeVisible();
+    await expect(page.getByTestId("intel-cancel-btn")).toBeVisible();
+
+    // Cancel collapses the form
+    await page.getByTestId("intel-cancel-btn").click();
+    await expect(page.getByTestId("intel-shodan-input")).not.toBeVisible();
+    await expect(configureBtn).toBeVisible();
+  });
 });

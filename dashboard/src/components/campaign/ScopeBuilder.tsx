@@ -12,6 +12,8 @@ import {
   Layers,
   Rocket,
   Check,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { api, type CreateTargetPayload } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
@@ -83,6 +85,18 @@ export default function ScopeBuilder() {
     api.getApiKeyStatus().then((res) => setApiKeyStatus(res.keys)).catch(() => {});
   }, []);
 
+  /* ---- Inline API key editor ---- */
+  const [editingKeys, setEditingKeys] = useState(false);
+  const [savingKeys, setSavingKeys] = useState(false);
+  const [shodanKey, setShodanKey] = useState("");
+  const [securityTrailsKey, setSecurityTrailsKey] = useState("");
+  const [censysId, setCensysId] = useState("");
+  const [censysSecret, setCensysSecret] = useState("");
+  const [showShodan, setShowShodan] = useState(false);
+  const [showST, setShowST] = useState(false);
+  const [showCensysId, setShowCensysId] = useState(false);
+  const [showCensysSecret, setShowCensysSecret] = useState(false);
+
   /* ---- Step 1: Scope Rules ---- */
   const [inScopeDomains, setInScopeDomains] = useState("");
   const [inScopeCidrs, setInScopeCidrs] = useState("");
@@ -100,6 +114,49 @@ export default function ScopeBuilder() {
   const [rateLimitRules, setRateLimitRules] = useState<
     Array<{ amount: number; unit: string }>
   >([{ amount: 50, unit: "req/s" }]);
+
+  async function handleSaveKeys() {
+    setSavingKeys(true);
+    try {
+      const payload: {
+        shodan_api_key?: string;
+        securitytrails_api_key?: string;
+        censys_api_id?: string;
+        censys_api_secret?: string;
+      } = {};
+      if (shodanKey.trim()) payload.shodan_api_key = shodanKey.trim();
+      if (securityTrailsKey.trim()) payload.securitytrails_api_key = securityTrailsKey.trim();
+      if (censysId.trim()) payload.censys_api_id = censysId.trim();
+      if (censysSecret.trim()) payload.censys_api_secret = censysSecret.trim();
+      const res = await api.updateApiKeys(payload);
+      setApiKeyStatus(res.keys ?? {});
+      setEditingKeys(false);
+      setShodanKey("");
+      setSecurityTrailsKey("");
+      setCensysId("");
+      setCensysSecret("");
+      setShowShodan(false);
+      setShowST(false);
+      setShowCensysId(false);
+      setShowCensysSecret(false);
+    } catch {
+      // toast shown by api.request()
+    } finally {
+      setSavingKeys(false);
+    }
+  }
+
+  function handleCancelKeys() {
+    setEditingKeys(false);
+    setShodanKey("");
+    setSecurityTrailsKey("");
+    setCensysId("");
+    setCensysSecret("");
+    setShowShodan(false);
+    setShowST(false);
+    setShowCensysId(false);
+    setShowCensysSecret(false);
+  }
 
   /* ---- Validation ---- */
   const canNext = useMemo(() => {
@@ -310,16 +367,21 @@ export default function ScopeBuilder() {
               />
             </div>
 
-            {/* ---- Intel Enrichment Status (keys managed in Settings) ---- */}
+            {/* ---- Intel Enrichment (inline key configuration) ---- */}
             <div className="rounded-md border border-border bg-bg-tertiary p-3 space-y-3">
-              <span className="section-label">Intel Enrichment</span>
-              <p className="text-xs text-text-muted">
-                Passive OSINT enrichment. Manage API keys in{" "}
-                <a href="/settings" className="text-accent hover:underline">
-                  Settings
-                </a>
-                .
-              </p>
+              <div className="flex items-center justify-between">
+                <span className="section-label">Intel Enrichment</span>
+                {!editingKeys && (
+                  <button
+                    data-testid="intel-configure-btn"
+                    type="button"
+                    onClick={() => setEditingKeys(true)}
+                    className="text-xs text-accent hover:underline"
+                  >
+                    Configure
+                  </button>
+                )}
+              </div>
 
               <div className="flex flex-wrap gap-2">
                 {Object.entries(apiKeyStatus).map(([key, configured]) => (
@@ -335,6 +397,119 @@ export default function ScopeBuilder() {
                   </span>
                 ))}
               </div>
+
+              {editingKeys && (
+                <div className="space-y-3 border-t border-border pt-3">
+                  {/* Shodan */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-text-secondary">Shodan API Key</label>
+                    <div className="relative">
+                      <input
+                        data-testid="intel-shodan-input"
+                        type={showShodan ? "text" : "password"}
+                        value={shodanKey}
+                        onChange={(e) => setShodanKey(e.target.value)}
+                        placeholder="Leave blank to keep current"
+                        className="w-full rounded border border-border bg-bg-surface px-2 py-1.5 pr-8 text-xs font-mono text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowShodan(!showShodan)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+                      >
+                        {showShodan ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* SecurityTrails */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-text-secondary">SecurityTrails API Key</label>
+                    <div className="relative">
+                      <input
+                        data-testid="intel-st-input"
+                        type={showST ? "text" : "password"}
+                        value={securityTrailsKey}
+                        onChange={(e) => setSecurityTrailsKey(e.target.value)}
+                        placeholder="Leave blank to keep current"
+                        className="w-full rounded border border-border bg-bg-surface px-2 py-1.5 pr-8 text-xs font-mono text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowST(!showST)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+                      >
+                        {showST ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Censys Organization ID */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-text-secondary">Censys Organization ID</label>
+                    <div className="relative">
+                      <input
+                        data-testid="intel-censys-id-input"
+                        type={showCensysId ? "text" : "password"}
+                        value={censysId}
+                        onChange={(e) => setCensysId(e.target.value)}
+                        placeholder="Leave blank to keep current"
+                        className="w-full rounded border border-border bg-bg-surface px-2 py-1.5 pr-8 text-xs font-mono text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCensysId(!showCensysId)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+                      >
+                        {showCensysId ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Censys API Key */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-text-secondary">Censys API Key</label>
+                    <div className="relative">
+                      <input
+                        data-testid="intel-censys-secret-input"
+                        type={showCensysSecret ? "text" : "password"}
+                        value={censysSecret}
+                        onChange={(e) => setCensysSecret(e.target.value)}
+                        placeholder="Leave blank to keep current"
+                        className="w-full rounded border border-border bg-bg-surface px-2 py-1.5 pr-8 text-xs font-mono text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCensysSecret(!showCensysSecret)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary"
+                      >
+                        {showCensysSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      data-testid="intel-cancel-btn"
+                      type="button"
+                      onClick={handleCancelKeys}
+                      className="rounded px-3 py-1.5 text-xs text-text-muted hover:bg-bg-surface"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      data-testid="intel-save-btn"
+                      type="button"
+                      onClick={handleSaveKeys}
+                      disabled={savingKeys}
+                      className="rounded-md bg-accent px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+                    >
+                      {savingKeys ? "Saving..." : "Save Keys"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
