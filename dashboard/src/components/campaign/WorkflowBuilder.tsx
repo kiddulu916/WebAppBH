@@ -21,34 +21,99 @@ export interface PhaseConfig {
 
 const DEFAULT_PHASES: PhaseConfig[] = [
   {
-    id: "phase_1",
-    label: "Phase 1 — Passive Recon",
-    tools: ["subfinder", "amass", "assetfinder", "crt.sh"],
+    id: "info_gathering",
+    label: "WSTG 4.1 — Information Gathering",
+    tools: [
+      "search_engine_recon", "web_server_fingerprint", "web_server_metafiles",
+      "enumerate_subdomains", "review_comments", "identify_entry_points",
+      "map_execution_paths", "fingerprint_framework", "map_architecture",
+      "map_application",
+    ],
   },
   {
-    id: "phase_2",
-    label: "Phase 2 — Active Recon",
-    tools: ["nmap", "masscan", "naabu"],
+    id: "config_mgmt",
+    label: "WSTG 4.2 — Configuration & Deployment",
+    tools: [
+      "network_config", "platform_config", "file_extension_handling",
+      "backup_files", "api_discovery", "http_methods", "hsts_testing",
+      "rpc_testing", "file_inclusion", "subdomain_takeover", "cloud_storage",
+    ],
   },
   {
-    id: "phase_3",
-    label: "Phase 3 — Content Discovery",
-    tools: ["httpx", "katana", "gospider"],
+    id: "identity_mgmt",
+    label: "WSTG 4.3 — Identity Management",
+    tools: [
+      "role_definitions", "registration_process", "account_provisioning",
+      "account_enumeration", "weak_username_policy",
+    ],
   },
   {
-    id: "phase_4",
-    label: "Phase 4 — Cloud Enum",
-    tools: ["cloud_enum", "s3scanner"],
+    id: "authentication",
+    label: "WSTG 4.4 — Authentication",
+    tools: [
+      "credentials_transport", "default_credentials", "lockout_mechanism",
+      "auth_bypass", "remember_password", "browser_cache",
+      "weak_password_policy", "security_questions", "password_change",
+      "multi_channel_auth",
+    ],
   },
   {
-    id: "phase_5",
-    label: "Phase 5 — Vuln Scanning",
-    tools: ["nuclei", "dalfox"],
+    id: "authorization",
+    label: "WSTG 4.5 — Authorization",
+    tools: [
+      "directory_traversal", "authz_bypass", "privilege_escalation", "idor",
+    ],
   },
   {
-    id: "phase_6",
-    label: "Phase 6 — API Testing",
-    tools: ["paramspider", "arjun"],
+    id: "session_mgmt",
+    label: "WSTG 4.6 — Session Management",
+    tools: [
+      "session_scheme", "cookie_attributes", "session_fixation",
+      "exposed_variables", "csrf", "logout_functionality",
+      "session_timeout", "session_puzzling", "session_hijacking",
+    ],
+  },
+  {
+    id: "input_validation",
+    label: "WSTG 4.7 — Input Validation",
+    tools: [
+      "reflected_xss", "stored_xss", "http_verb_tampering",
+      "http_param_pollution", "sql_injection", "ldap_injection",
+      "xml_injection", "ssti", "xpath_injection", "imap_smtp_injection",
+      "code_injection", "command_injection", "format_string",
+      "host_header_injection", "ssrf", "file_inclusion",
+      "buffer_overflow", "http_smuggling", "websocket_injection",
+    ],
+  },
+  {
+    id: "error_handling",
+    label: "WSTG 4.8 — Error Handling",
+    tools: ["error_codes", "stack_traces"],
+  },
+  {
+    id: "cryptography",
+    label: "WSTG 4.9 — Cryptography",
+    tools: ["tls_testing", "padding_oracle", "plaintext_transmission", "weak_crypto"],
+  },
+  {
+    id: "business_logic",
+    label: "WSTG 4.10 — Business Logic",
+    tools: [
+      "data_validation", "request_forgery", "integrity_checks",
+      "process_timing", "rate_limiting", "workflow_bypass",
+      "application_misuse", "file_upload_validation", "malicious_file_upload",
+    ],
+  },
+  {
+    id: "client_side",
+    label: "WSTG 4.11 — Client-Side Testing",
+    tools: [
+      "dom_xss", "clickjacking", "csrf_tokens", "csp_bypass",
+      "html5_injection", "web_storage", "client_side_logic",
+      "dom_based_injection", "client_side_resource_manipulation",
+      "client_side_auth", "xss_client_side", "css_injection",
+      "malicious_upload_client",
+    ],
   },
 ];
 
