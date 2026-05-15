@@ -1,6 +1,7 @@
 # workers/info_gathering/tools/metadata_extractor.py
 """MetadataExtractor wrapper — extract metadata from documents and files."""
 
+import asyncio
 import aiohttp
 import tempfile
 import os
@@ -56,15 +57,20 @@ class MetadataExtractor(InfoGatheringTool):
                             tmp_path = f.name
 
                         try:
-                            import subprocess
-                            result = subprocess.run(
-                                ["exiftool", "-json", tmp_path],
-                                capture_output=True, text=True, timeout=30
+                            proc = await asyncio.create_subprocess_exec(
+                                "exiftool", "-json", tmp_path,
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.PIPE,
                             )
-                            if result.returncode == 0:
+                            stdout_bytes, _ = await asyncio.wait_for(
+                                proc.communicate(), timeout=30
+                            )
+                            if proc.returncode == 0:
                                 import json
-                                data = json.loads(result.stdout)
+                                data = json.loads(stdout_bytes.decode("utf-8", errors="replace"))
                                 return data[0] if data else {}
+                        except asyncio.TimeoutError:
+                            pass
                         finally:
                             if os.path.exists(tmp_path):
                                 os.unlink(tmp_path)
