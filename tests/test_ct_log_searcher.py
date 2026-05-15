@@ -128,12 +128,32 @@ class TestFetchCrtsh:
         assert result == []
 
     @pytest.mark.anyio
-    async def test_returns_empty_list_on_timeout(self, tool):
+    async def test_returns_empty_list_on_connection_error(self, tool):
         import aiohttp
         from unittest.mock import patch
 
         with patch("workers.info_gathering.tools.ct_log_searcher.aiohttp.ClientSession",
                    side_effect=aiohttp.ClientConnectorError(None, OSError())):
+            result = await tool._fetch_crtsh("example.com")
+
+        assert result == []
+
+    @pytest.mark.anyio
+    async def test_returns_empty_list_on_timeout(self, tool):
+        import asyncio
+        from unittest.mock import patch, MagicMock, AsyncMock
+
+        mock_resp = MagicMock()
+        mock_resp.__aenter__ = AsyncMock(side_effect=asyncio.TimeoutError())
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_resp)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("workers.info_gathering.tools.ct_log_searcher.aiohttp.ClientSession",
+                   return_value=mock_session):
             result = await tool._fetch_crtsh("example.com")
 
         assert result == []
