@@ -66,7 +66,8 @@ class TestTagsForPath:
         tags = self.p._tags_for_path("/ADMIN/panel")
         assert "candidate:forced-browsing" in tags
 
-    def test_partial_prefix_not_matched(self):
+    def test_prefix_match_is_not_word_boundary(self):
+        # /admin is a prefix of /administrator — startswith match is intentional
         tags = self.p._tags_for_path("/administrator")
         assert "candidate:forced-browsing" in tags
 
