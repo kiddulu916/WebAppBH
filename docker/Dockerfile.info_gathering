@@ -24,6 +24,12 @@ RUN go install github.com/hakluke/hakrawler@latest
 RUN go install -v github.com/projectdiscovery/tlsx/cmd/tlsx@latest \
     && mv /root/go/bin/tlsx /usr/local/bin/tlsx
 
+# WSTG-INFO-05 secret scanning tools
+RUN go install github.com/gitleaks/gitleaks/v8@latest \
+    && mv /root/go/bin/gitleaks /usr/local/bin/gitleaks
+RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
+    | sh -s -- -b /usr/local/bin
+
 # Python tools
 RUN pip install --no-cache-dir paramspider || true
 RUN pip install --no-cache-dir wafw00f==2.2.0
