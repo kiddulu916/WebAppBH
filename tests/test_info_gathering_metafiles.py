@@ -499,6 +499,16 @@ class TestMetaTagAnalyzerParsers:
         result = self.tool._parse_meta_tags(html)
         assert "generator" not in result
 
+    def test_og_title_extracted(self):
+        html = '<html><head><meta property="og:title" content="My Page Title"></head></html>'
+        result = self.tool._parse_meta_tags(html)
+        assert result["og_title"] == "My Page Title"
+
+    def test_twitter_card_extracted(self):
+        html = '<html><head><meta name="twitter:card" content="summary_large_image"></head></html>'
+        result = self.tool._parse_meta_tags(html)
+        assert result["twitter_card"] == "summary_large_image"
+
 
 # ---------------------------------------------------------------------------
 # MetaTagAnalyzer — execute() behavior tests
@@ -634,3 +644,69 @@ class TestMetaTagAnalyzerExecute:
             await tool.execute(target_id=1, asset_id=None, target=target)
 
         mock_cls.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_twitter_tags_emit_social_observation(self):
+        tool = MetaTagAnalyzer()
+        target = MagicMock()
+        target.base_domain = "example.com"
+        html = (
+            '<html><head>'
+            '<meta name="twitter:site" content="@examplecorp">'
+            '<meta name="twitter:creator" content="@alice">'
+            '</head></html>'
+        )
+        mock_session = self._make_mock_session(200, html)
+
+        with patch("workers.info_gathering.tools.meta_tag_analyzer.aiohttp.ClientSession",
+                   return_value=mock_session), \
+             patch.object(tool, "acquire_rate_limit", new_callable=AsyncMock), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        social_obs = [
+            c.kwargs["tech_stack"] for c in mock_save.call_args_list
+            if c.kwargs.get("tech_stack", {}).get("intel_type") == "meta_social"
+        ]
+        assert len(social_obs) == 1
+        assert "intel:social-account" in social_obs[0]["tags"]
+        assert social_obs[0]["data"]["twitter_site"] == "@examplecorp"
+
+    @pytest.mark.anyio
+    async def test_observations_use_meta_tag_source(self):
+        tool = MetaTagAnalyzer()
+        target = MagicMock()
+        target.base_domain = "example.com"
+        html = '<html><head><meta name="robots" content="noindex"></head></html>'
+        mock_session = self._make_mock_session(200, html)
+
+        with patch("workers.info_gathering.tools.meta_tag_analyzer.aiohttp.ClientSession",
+                   return_value=mock_session), \
+             patch.object(tool, "acquire_rate_limit", new_callable=AsyncMock), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        for call in mock_save.call_args_list:
+            assert call.kwargs["tech_stack"]["source"] == "meta_tag"
+
+    @pytest.mark.anyio
+    async def test_application_name_alone_emits_meta_generator_observation(self):
+        tool = MetaTagAnalyzer()
+        target = MagicMock()
+        target.base_domain = "example.com"
+        html = '<html><head><meta name="application-name" content="MyApp"></head></html>'
+        mock_session = self._make_mock_session(200, html)
+
+        with patch("workers.info_gathering.tools.meta_tag_analyzer.aiohttp.ClientSession",
+                   return_value=mock_session), \
+             patch.object(tool, "acquire_rate_limit", new_callable=AsyncMock), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        gen_obs = [
+            c.kwargs["tech_stack"] for c in mock_save.call_args_list
+            if c.kwargs.get("tech_stack", {}).get("intel_type") == "meta_generator"
+        ]
+        assert len(gen_obs) == 1
+        assert "candidate:version-disclosure" in gen_obs[0]["tags"]
+        assert gen_obs[0]["data"]["application_name"] == "MyApp"
