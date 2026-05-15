@@ -40,6 +40,7 @@ from .tools.form_mapper import FormMapper
 from .tools.hakrawler import Hakrawler
 from .tools.header_order_probe import HeaderOrderProbe
 from .tools.httpx import Httpx
+from .tools.js_secret_scanner import JsSecretScanner
 from .tools.katana import Katana
 from .tools.liveness_probe import LivenessProbe
 from .tools.massdns import Massdns
@@ -49,8 +50,10 @@ from .tools.metafile_parser import MetafileParser
 from .tools.method_probe import MethodProbe
 from .tools.naabu import Naabu
 from .tools.paramspider import Paramspider
+from .tools.redirect_body_inspector import RedirectBodyInspector
 from .tools.securitytrails_searcher import SecurityTrailsSearcher
 from .tools.shodan_searcher import ShodanSearcher
+from .tools.source_map_prober import SourceMapProber
 from .tools.subfinder import Subfinder
 from .tools.tls_probe import TLSProbe
 from .tools.vhost_prober import VHostProber
@@ -76,9 +79,16 @@ STAGES = [
         AppPathEnumerator,
         CTLogSearcher,
     ]),
-    Stage(name="review_comments", section_id="4.1.5", tools=[CommentHarvester, MetadataExtractor]),
+    Stage(name="review_comments", section_id="4.1.5", tools=[
+        CommentHarvester, MetadataExtractor,
+        JsSecretScanner, SourceMapProber, RedirectBodyInspector,
+    ]),
     Stage(name="identify_entry_points", section_id="4.1.6", tools=[FormMapper, Paramspider, Httpx]),
     Stage(name="map_execution_paths", section_id="4.1.7", tools=[Katana, Hakrawler]),
+    Stage(name="review_comments_deep", section_id="4.1.5", tools=[
+        CommentHarvester, MetadataExtractor,
+        JsSecretScanner, SourceMapProber, RedirectBodyInspector,
+    ]),
     Stage(name="fingerprint_framework", section_id="4.1.8", tools=[Wappalyzer, CookieFingerprinter, Webanalyze]),
     Stage(name="map_architecture", section_id="4.1.9", tools=[Waybackurls, ArchitectureModeler]),
     Stage(name="map_application", section_id="4.1.10", tools=[ApplicationMapper, AttackSurfaceAnalyzer]),
