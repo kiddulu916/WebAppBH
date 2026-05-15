@@ -1,0 +1,726 @@
+{
+  "name": "wide_recon",
+  "description": "Full pipeline with all 15 workers enabled. Best for large targets with many subdomains.",
+  "workers": [
+    {
+      "name": "info_gathering",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "search_engine_recon",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "web_server_fingerprint",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "web_server_metafiles",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "enumerate_subdomains",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "review_comments",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "identify_entry_points",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "map_execution_paths",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "fingerprint_framework",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "map_architecture",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "map_application",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "config_mgmt",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "network_config",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "platform_config",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "file_extension_handling",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "backup_files",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "api_discovery",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "http_methods",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "hsts_testing",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "rpc_testing",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "file_inclusion",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "subdomain_takeover",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "cloud_storage",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "identity_mgmt",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "role_definitions",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "registration_process",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "account_provisioning",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "account_enumeration",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "weak_username_policy",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "authentication",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "credentials_transport",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "default_credentials",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "lockout_mechanism",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "auth_bypass",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "remember_password",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "browser_cache",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "weak_password_policy",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "security_questions",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "password_change",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "multi_channel_auth",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "authorization",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "directory_traversal",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "authz_bypass",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "privilege_escalation",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "idor",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "session_mgmt",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "session_scheme",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "cookie_attributes",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "session_fixation",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "exposed_variables",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "csrf",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "logout_functionality",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "session_timeout",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "session_puzzling",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "session_hijacking",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "input_validation",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "reflected_xss",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "stored_xss",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "http_verb_tampering",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "http_param_pollution",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "sql_injection",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "ldap_injection",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "xml_injection",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "ssti",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "xpath_injection",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "imap_smtp_injection",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "code_injection",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "command_injection",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "format_string",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "host_header_injection",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "ssrf",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "file_inclusion",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "buffer_overflow",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "http_smuggling",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "websocket_injection",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "error_handling",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "error_codes",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "stack_traces",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "cryptography",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "tls_testing",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "padding_oracle",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "plaintext_transmission",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "weak_crypto",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "business_logic",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "data_validation",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "request_forgery",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "integrity_checks",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "process_timing",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "rate_limiting",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "workflow_bypass",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "application_misuse",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "file_upload_validation",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "malicious_file_upload",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "client_side",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "dom_xss",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "clickjacking",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "csrf_tokens",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "csp_bypass",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "html5_injection",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "web_storage",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "client_side_logic",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "dom_based_injection",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "client_side_resource_manipulation",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "client_side_auth",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "xss_client_side",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "css_injection",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "malicious_upload_client",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "mobile_worker",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "acquire_decompile",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "secret_extraction",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "configuration_audit",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "dynamic_analysis",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "endpoint_feedback",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "reasoning_worker",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "finding_correlation",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "impact_analysis",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "chain_hypothesis",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "chain_worker",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "data_collection",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "chain_evaluation",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "ai_chain_discovery",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "chain_execution",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "reporting",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    },
+    {
+      "name": "reporting",
+      "enabled": true,
+      "stages": [
+        {
+          "name": "data_gathering",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "deduplication",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "rendering",
+          "enabled": true,
+          "tool_timeout": 600
+        },
+        {
+          "name": "export",
+          "enabled": true,
+          "tool_timeout": 600
+        }
+      ],
+      "concurrency": {
+        "heavy": 2,
+        "light": 8
+      }
+    }
+  ],
+  "stages": [],
+  "concurrency": {
+    "heavy": 2,
+    "light": 4
+  }
+}
