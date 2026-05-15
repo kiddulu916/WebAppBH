@@ -6,7 +6,7 @@ import aiohttp
 from sqlalchemy import or_, select
 
 from lib_webbh import Asset, Observation, get_session
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 
 class SourceMapProber(InfoGatheringTool):
@@ -89,7 +89,7 @@ class SourceMapProber(InfoGatheringTool):
                         return []
                     html = await resp.text()
         except Exception as exc:
-            self.log.debug("source_map_prober fallback fetch failed", error=str(exc))
+            logger.debug("source_map_prober fallback fetch failed", error=str(exc))
             return []
 
         found = re.findall(r'<script[^>]+src=["\']([^"\']+\.js)["\']', html)

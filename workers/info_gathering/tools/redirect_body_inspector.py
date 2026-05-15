@@ -6,7 +6,7 @@ import aiohttp
 from sqlalchemy import select
 
 from lib_webbh import Asset, Observation, get_session
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 _PATTERNS: list[tuple[re.Pattern, str]] = [
     (
@@ -87,7 +87,7 @@ class RedirectBodyInspector(InfoGatheringTool):
                         return []
                     html = await resp.text()
         except Exception as exc:
-            self.log.debug("redirect_body_inspector fallback fetch failed", error=str(exc))
+            logger.debug("redirect_body_inspector fallback fetch failed", error=str(exc))
             return []
 
         hrefs = re.findall(r'href=["\']([^"\'#?][^"\']*)["\']', html)
@@ -130,12 +130,10 @@ class RedirectBodyInspector(InfoGatheringTool):
         except Exception:
             return
 
-        if body is None:
-            return
-
         await self.save_observation(
             asset_id=asset_id,
-            tech_stack={"_source": "redirect_body_inspector", "status": status},
+            tech_stack={"_source": "redirect_body_inspector"},
+            status_code=status,
         )
 
         matches = self._scan_body(body)
@@ -143,11 +141,12 @@ class RedirectBodyInspector(InfoGatheringTool):
             return
 
         match_types = sorted({t for _, t in matches})
+        short_url = url if len(url) <= 456 else url[:453] + "..."
         await self.save_vulnerability(
             target_id=target_id,
             asset_id=asset_id,
             severity="low",
-            title=f"Sensitive content in redirect response body: {url}",
+            title=f"Sensitive content in redirect response body: {short_url}",
             description=(
                 f"The {status} redirect response for {url} contains sensitive patterns: "
                 f"{', '.join(match_types)}. Browsers discard redirect bodies silently, "

@@ -264,8 +264,7 @@ class TestRedirectBodyInspector:
 
         mock_inspect.assert_awaited_once_with("https://example.com/login", 1, 1)
 
-    @pytest.mark.anyio
-    async def test_scan_body_detects_credential_keyword(self):
+    def test_scan_body_detects_credential_keyword(self):
         """_scan_body returns matches for credential-like strings."""
         tool = RedirectBodyInspector()
         body = 'Redirecting... api_key=supersecret123'
@@ -273,8 +272,7 @@ class TestRedirectBodyInspector:
         types = [t for _, t in matches]
         assert "credential_keyword" in types
 
-    @pytest.mark.anyio
-    async def test_scan_body_detects_internal_ip(self):
+    def test_scan_body_detects_internal_ip(self):
         """_scan_body returns matches for RFC-1918 IP addresses."""
         tool = RedirectBodyInspector()
         body = "Server at 10.0.1.42 is unavailable"
@@ -282,8 +280,7 @@ class TestRedirectBodyInspector:
         types = [t for _, t in matches]
         assert "internal_ip" in types
 
-    @pytest.mark.anyio
-    async def test_scan_body_detects_stack_trace(self):
+    def test_scan_body_detects_stack_trace(self):
         """_scan_body returns matches for Python/Java stack trace patterns."""
         tool = RedirectBodyInspector()
         body = "Traceback (most recent call last):\n  File 'app.py', line 42"
@@ -291,8 +288,7 @@ class TestRedirectBodyInspector:
         types = [t for _, t in matches]
         assert "stack_trace" in types
 
-    @pytest.mark.anyio
-    async def test_scan_body_returns_empty_for_clean_body(self):
+    def test_scan_body_returns_empty_for_clean_body(self):
         """_scan_body returns [] for body with no sensitive patterns."""
         tool = RedirectBodyInspector()
         body = "302 Found. Please follow the redirect."
@@ -327,3 +323,44 @@ class TestRedirectBodyInspector:
         assert save_obs.call_args.kwargs["tech_stack"]["_source"] == "redirect_body_inspector"
         save_vuln.assert_awaited_once()
         assert save_vuln.call_args.kwargs["vuln_type"] == "redirect_body_leakage"
+
+    @pytest.mark.anyio
+    async def test_inspect_skips_non_3xx_response(self):
+        """_inspect must not save Observation or Vulnerability for non-redirect responses."""
+        tool = RedirectBodyInspector()
+
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_resp)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch.object(tool, "save_observation", new_callable=AsyncMock) as save_obs, \
+             patch.object(tool, "save_vulnerability", new_callable=AsyncMock) as save_vuln, \
+             patch(
+                 "workers.info_gathering.tools.redirect_body_inspector.aiohttp.ClientSession",
+                 return_value=mock_session,
+             ):
+            await tool._inspect("https://example.com/page", asset_id=1, target_id=1)
+
+        save_obs.assert_not_awaited()
+        save_vuln.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_falls_back_to_root_when_db_empty(self):
+        """execute() calls _urls_from_root when _get_url_assets returns []."""
+        tool = RedirectBodyInspector()
+        target = MagicMock(base_domain="example.com")
+
+        with patch.object(tool, "_get_url_assets", new_callable=AsyncMock, return_value=[]), \
+             patch.object(tool, "_urls_from_root", new_callable=AsyncMock,
+                          return_value=[("https://example.com/login", 2)]) as from_root, \
+             patch.object(tool, "_inspect", new_callable=AsyncMock):
+
+            await tool.execute(target_id=1, target=target)
+
+        from_root.assert_awaited_once_with("example.com", 1)
