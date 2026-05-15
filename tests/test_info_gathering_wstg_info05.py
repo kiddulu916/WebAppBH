@@ -13,7 +13,7 @@ from workers.info_gathering.tools.metadata_extractor import MetadataExtractor
 
 class TestMetadataExtractorAsyncSubprocess:
     @pytest.mark.anyio
-    async def test_exiftool_called_via_create_subprocess_exec(self, tmp_path):
+    async def test_exiftool_called_via_create_subprocess_exec(self):
         """_extract_metadata must use asyncio.create_subprocess_exec, not subprocess.run."""
         tool = MetadataExtractor()
         fake_url = "https://example.com/report.pdf"
@@ -55,7 +55,7 @@ class TestMetadataExtractorAsyncSubprocess:
         assert result == {"Author": "Alice", "Creator": "Word"}
 
     @pytest.mark.anyio
-    async def test_returns_empty_dict_on_nonzero_returncode(self, tmp_path):
+    async def test_returns_empty_dict_on_nonzero_returncode(self):
         """_extract_metadata returns {} when exiftool exits non-zero."""
         tool = MetadataExtractor()
 
@@ -84,6 +84,40 @@ class TestMetadataExtractorAsyncSubprocess:
             fake_file = MagicMock()
             fake_file.name = "/tmp/test_doc.pdf"
             mock_tmp.return_value.__enter__.return_value = fake_file
+
+            result = await tool._extract_metadata("https://example.com/doc.pdf")
+
+        assert result == {}
+
+    @pytest.mark.anyio
+    async def test_returns_empty_dict_on_timeout(self):
+        """_extract_metadata returns {} when exiftool times out."""
+        tool = MetadataExtractor()
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(side_effect=asyncio.TimeoutError())
+
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.read = AsyncMock(return_value=b"content")
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc), \
+             patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()), \
+             patch("workers.info_gathering.tools.metadata_extractor.aiohttp.ClientSession") as mock_http, \
+             patch("tempfile.NamedTemporaryFile") as mock_tmp, \
+             patch("os.path.exists", return_value=True), \
+             patch("os.unlink"):
+
+            mock_session = AsyncMock()
+            mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
+            mock_session.get.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            fake_file = MagicMock()
+            fake_file.name = "/tmp/test_doc.pdf"
+            mock_tmp.return_value.__enter__ = MagicMock(return_value=fake_file)
+            mock_tmp.return_value.__exit__ = MagicMock(return_value=False)
 
             result = await tool._extract_metadata("https://example.com/doc.pdf")
 

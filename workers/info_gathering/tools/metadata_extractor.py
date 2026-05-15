@@ -3,6 +3,7 @@
 
 import asyncio
 import aiohttp
+import json
 import tempfile
 import os
 
@@ -66,7 +67,6 @@ class MetadataExtractor(InfoGatheringTool):
                                 proc.communicate(), timeout=30
                             )
                             if proc.returncode == 0:
-                                import json
                                 data = json.loads(stdout_bytes.decode("utf-8", errors="replace"))
                                 return data[0] if data else {}
                         except asyncio.TimeoutError:
