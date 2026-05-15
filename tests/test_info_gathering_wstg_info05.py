@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from workers.info_gathering.tools.metadata_extractor import MetadataExtractor
+from workers.info_gathering.tools.source_map_prober import SourceMapProber
 
 
 class TestMetadataExtractorAsyncSubprocess:
@@ -124,9 +125,6 @@ class TestMetadataExtractorAsyncSubprocess:
         assert result == {}
 
 
-from workers.info_gathering.tools.source_map_prober import SourceMapProber
-
-
 class TestSourceMapProber:
     @pytest.mark.anyio
     async def test_saves_vuln_when_map_exposed(self):
@@ -218,3 +216,33 @@ class TestSourceMapProber:
             result = await tool._probe_map("https://example.com/app.js.map")
 
         assert result is False
+
+    @pytest.mark.anyio
+    async def test_probe_map_falls_back_to_get_on_405(self):
+        """HEAD 405 triggers GET fallback; returns True when GET is 200."""
+        prober = SourceMapProber()
+        head_resp = MagicMock()
+        head_resp.status = 405
+        head_resp.__aenter__ = AsyncMock(return_value=head_resp)
+        head_resp.__aexit__ = AsyncMock(return_value=False)
+
+        get_resp = MagicMock()
+        get_resp.status = 200
+        get_resp.__aenter__ = AsyncMock(return_value=get_resp)
+        get_resp.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = MagicMock()
+        mock_session.head = MagicMock(return_value=head_resp)
+        mock_session.get = MagicMock(return_value=get_resp)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(
+            "workers.info_gathering.tools.source_map_prober.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await prober._probe_map("https://example.com/app.js.map")
+
+        assert result is True
+        mock_session.head.assert_called_once()
+        mock_session.get.assert_called_once()

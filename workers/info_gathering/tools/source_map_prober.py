@@ -88,7 +88,8 @@ class SourceMapProber(InfoGatheringTool):
                     if resp.status != 200:
                         return []
                     html = await resp.text()
-        except Exception:
+        except Exception as exc:
+            self.log.debug("source_map_prober fallback fetch failed", error=str(exc))
             return []
 
         found = re.findall(r'<script[^>]+src=["\']([^"\']+\.js)["\']', html)
@@ -96,10 +97,14 @@ class SourceMapProber(InfoGatheringTool):
 
         results = []
         for href in found:
-            full_url = (
-                href if href.startswith("http")
-                else f"https://{base_domain}{href if href.startswith('/') else '/' + href}"
-            )
+            if href.startswith("http"):
+                full_url = href
+            elif href.startswith("//"):
+                full_url = "https:" + href
+            elif href.startswith("/"):
+                full_url = f"https://{base_domain}{href}"
+            else:
+                full_url = f"https://{base_domain}/{href}"
             aid = await self.save_asset(target_id, "url", full_url, "source_map_prober")
             if aid is None:
                 async with get_session() as session:
