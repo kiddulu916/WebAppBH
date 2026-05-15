@@ -28,7 +28,7 @@ class JsSecretScanner(InfoGatheringTool):
             return
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            downloaded = await self._download_js(candidates, tmpdir)
+            downloaded, path_to_asset = await self._download_js(candidates, tmpdir)
             if not downloaded:
                 return
 
@@ -71,8 +71,10 @@ class JsSecretScanner(InfoGatheringTool):
             for finding in findings:
                 detector = finding['detector']
                 short_detector = detector if len(detector) <= 450 else detector[:447] + "..."
+                finding_asset_id = path_to_asset.get(finding.get("file", ""))
                 await self.save_vulnerability(
                     target_id=target_id,
+                    asset_id=finding_asset_id,
                     severity="medium",
                     title=f"Hardcoded secret in JavaScript: {short_detector}",
                     description=(
@@ -153,11 +155,12 @@ class JsSecretScanner(InfoGatheringTool):
 
     async def _download_js(
         self, candidates: list[tuple[str, int]], tmpdir: str
-    ) -> list[str]:
-        """Download JS files into tmpdir; return list of written file paths."""
+    ) -> tuple[list[str], dict[str, int]]:
+        """Download JS files into tmpdir; return (file_paths, path_to_asset_id mapping)."""
         downloaded = []
+        path_to_asset: dict[str, int] = {}
         async with aiohttp.ClientSession() as http:
-            for i, (url, _) in enumerate(candidates[:20]):
+            for i, (url, asset_id) in enumerate(candidates[:20]):
                 try:
                     async with http.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                         if resp.status == 200:
@@ -165,9 +168,10 @@ class JsSecretScanner(InfoGatheringTool):
                             path = os.path.join(tmpdir, f"js_{i}.js")
                             Path(path).write_text(content, encoding="utf-8")
                             downloaded.append(path)
+                            path_to_asset[path] = asset_id
                 except Exception:
                     continue
-        return downloaded
+        return downloaded, path_to_asset
 
     def _parse_trufflehog(self, output: str) -> list[dict]:
         """Parse trufflehog --json NDJSON output into normalised finding dicts."""
@@ -210,12 +214,12 @@ class JsSecretScanner(InfoGatheringTool):
             return []
 
     def _deduplicate(self, findings: list[dict]) -> list[dict]:
-        """Return findings with duplicate secret values removed (first occurrence wins)."""
-        seen: set[str] = set()
+        """Return findings with duplicates removed; key is (tool, detector, file, secret)."""
+        seen: set[tuple] = set()
         unique = []
         for f in findings:
-            key = f.get("secret", "")
-            if key and key not in seen:
+            key = (f.get("tool", ""), f.get("detector", ""), f.get("file", ""), f.get("secret", ""))
+            if key not in seen:
                 seen.add(key)
                 unique.append(f)
         return unique

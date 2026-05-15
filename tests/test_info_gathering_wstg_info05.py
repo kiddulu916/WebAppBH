@@ -415,11 +415,11 @@ class TestJsSecretScanner:
         assert findings == []
 
     def test_deduplicate_removes_same_secret(self):
-        """_deduplicate keeps only the first occurrence of each secret value."""
+        """_deduplicate keeps only the first occurrence per (tool, detector, file, secret) key."""
         tool = JsSecretScanner()
         findings = [
             {"tool": "trufflehog", "secret": "AKIA123", "detector": "AWS", "verified": False, "file": "a.js"},
-            {"tool": "gitleaks",   "secret": "AKIA123", "detector": "aws-access-key", "verified": False, "file": "a.js"},
+            {"tool": "trufflehog", "secret": "AKIA123", "detector": "AWS", "verified": False, "file": "a.js"},
             {"tool": "trufflehog", "secret": "ghp_xyz", "detector": "GitHub", "verified": True, "file": "b.js"},
         ]
         unique = tool._deduplicate(findings)
@@ -438,7 +438,7 @@ class TestJsSecretScanner:
         with patch.object(tool, "_get_js_assets", new_callable=AsyncMock,
                           return_value=[("https://example.com/app.js", 1)]), \
              patch.object(tool, "_download_js", new_callable=AsyncMock,
-                          return_value=["/tmp/js_0.js"]), \
+                          return_value=(["/tmp/js_0.js"], {"/tmp/js_0.js": 1})), \
              patch.object(tool, "run_subprocess", new_callable=AsyncMock,
                           side_effect=[th_output, ""]), \
              patch.object(tool, "_parse_gitleaks", return_value=[]), \
@@ -460,3 +460,4 @@ class TestJsSecretScanner:
         assert vuln_kwargs["vuln_type"] == "hardcoded_secret"
         assert vuln_kwargs["severity"] == "medium"
         assert "AKIAIOSFODNN7EXAMPLE" in vuln_kwargs["evidence"]["secret"]
+        assert vuln_kwargs.get("asset_id") == 1
