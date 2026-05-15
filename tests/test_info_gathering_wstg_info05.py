@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from workers.info_gathering.tools.js_secret_scanner import JsSecretScanner
 from workers.info_gathering.tools.metadata_extractor import MetadataExtractor
 from workers.info_gathering.tools.redirect_body_inspector import RedirectBodyInspector
 from workers.info_gathering.tools.source_map_prober import SourceMapProber
@@ -364,3 +365,98 @@ class TestRedirectBodyInspector:
             await tool.execute(target_id=1, target=target)
 
         from_root.assert_awaited_once_with("example.com", 1)
+
+
+class TestJsSecretScanner:
+    def test_parse_trufflehog_extracts_findings(self):
+        """_parse_trufflehog parses NDJSON output from trufflehog filesystem."""
+        tool = JsSecretScanner()
+        ndjson = (
+            '{"DetectorName":"AWS","Raw":"AKIAIOSFODNN7EXAMPLE","Verified":false,'
+            '"SourceMetadata":{"Data":{"Filesystem":{"file":"/tmp/app.js"}}}}\n'
+            '{"DetectorName":"GitHub","Raw":"ghp_abc123","Verified":true,'
+            '"SourceMetadata":{"Data":{"Filesystem":{"file":"/tmp/lib.js"}}}}\n'
+        )
+        findings = tool._parse_trufflehog(ndjson)
+        assert len(findings) == 2
+        assert findings[0]["tool"] == "trufflehog"
+        assert findings[0]["detector"] == "AWS"
+        assert findings[0]["secret"] == "AKIAIOSFODNN7EXAMPLE"
+        assert findings[0]["verified"] is False
+        assert findings[1]["secret"] == "ghp_abc123"
+        assert findings[1]["verified"] is True
+
+    def test_parse_trufflehog_skips_invalid_lines(self):
+        """_parse_trufflehog skips non-JSON lines gracefully."""
+        tool = JsSecretScanner()
+        output = 'not json\n{"DetectorName":"AWS","Raw":"key","Verified":false,"SourceMetadata":{}}\n'
+        findings = tool._parse_trufflehog(output)
+        assert len(findings) == 1
+
+    def test_parse_gitleaks_extracts_findings(self, tmp_path):
+        """_parse_gitleaks reads the JSON report file gitleaks writes."""
+        tool = JsSecretScanner()
+        report = tmp_path / "report.json"
+        report.write_text(json.dumps([
+            {"RuleID": "aws-access-key", "Secret": "AKIAIOSFODNN7EXAMPLE", "File": "/tmp/app.js"},
+            {"RuleID": "github-pat", "Secret": "ghp_xyz", "File": "/tmp/lib.js"},
+        ]))
+        findings = tool._parse_gitleaks(str(report))
+        assert len(findings) == 2
+        assert findings[0]["tool"] == "gitleaks"
+        assert findings[0]["detector"] == "aws-access-key"
+        assert findings[0]["secret"] == "AKIAIOSFODNN7EXAMPLE"
+        assert findings[0]["verified"] is False
+
+    def test_parse_gitleaks_returns_empty_on_missing_file(self):
+        """_parse_gitleaks returns [] when the report file does not exist."""
+        tool = JsSecretScanner()
+        findings = tool._parse_gitleaks("/nonexistent/path/report.json")
+        assert findings == []
+
+    def test_deduplicate_removes_same_secret(self):
+        """_deduplicate keeps only the first occurrence of each secret value."""
+        tool = JsSecretScanner()
+        findings = [
+            {"tool": "trufflehog", "secret": "AKIA123", "detector": "AWS", "verified": False, "file": "a.js"},
+            {"tool": "gitleaks",   "secret": "AKIA123", "detector": "aws-access-key", "verified": False, "file": "a.js"},
+            {"tool": "trufflehog", "secret": "ghp_xyz", "detector": "GitHub", "verified": True, "file": "b.js"},
+        ]
+        unique = tool._deduplicate(findings)
+        assert len(unique) == 2
+        assert unique[0]["secret"] == "AKIA123"
+        assert unique[1]["secret"] == "ghp_xyz"
+
+    @pytest.mark.anyio
+    async def test_execute_saves_observation_and_vuln(self):
+        """execute() saves one Observation per JS asset and one Vulnerability per unique finding."""
+        tool = JsSecretScanner()
+        target = MagicMock(base_domain="example.com")
+
+        th_output = '{"DetectorName":"AWS","Raw":"AKIAIOSFODNN7EXAMPLE","Verified":false,"SourceMetadata":{"Data":{"Filesystem":{"file":"/tmp/js_0.js"}}}}\n'
+
+        with patch.object(tool, "_get_js_assets", new_callable=AsyncMock,
+                          return_value=[("https://example.com/app.js", 1)]), \
+             patch.object(tool, "_download_js", new_callable=AsyncMock,
+                          return_value=["/tmp/js_0.js"]), \
+             patch.object(tool, "run_subprocess", new_callable=AsyncMock,
+                          side_effect=[th_output, ""]), \
+             patch.object(tool, "_parse_gitleaks", return_value=[]), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock, return_value=10) as save_obs, \
+             patch.object(tool, "save_vulnerability", new_callable=AsyncMock, return_value=5) as save_vuln:
+
+            with patch("tempfile.TemporaryDirectory") as mock_tmpdir:
+                mock_tmpdir.return_value.__enter__ = MagicMock(return_value="/tmp/fakedir")
+                mock_tmpdir.return_value.__exit__ = MagicMock(return_value=False)
+                await tool.execute(target_id=1, target=target)
+
+        save_obs.assert_awaited_once()
+        obs_kwargs = save_obs.call_args.kwargs
+        assert obs_kwargs["asset_id"] == 1
+        assert obs_kwargs["tech_stack"]["_source"] == "js_secret_scanner"
+
+        save_vuln.assert_awaited_once()
+        vuln_kwargs = save_vuln.call_args.kwargs
+        assert vuln_kwargs["vuln_type"] == "hardcoded_secret"
+        assert vuln_kwargs["severity"] == "medium"
+        assert "AKIAIOSFODNN7EXAMPLE" in vuln_kwargs["evidence"]["secret"]
