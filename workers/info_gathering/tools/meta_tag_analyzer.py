@@ -1,9 +1,12 @@
 # workers/info_gathering/tools/meta_tag_analyzer.py
 """MetaTagAnalyzer — WSTG-INFO-03: extract <meta> tags from page root for information leakage."""
 
+import asyncio
 from html.parser import HTMLParser
 
 import aiohttp
+
+MAX_BODY_BYTES = 512 * 1024  # 512 KB cap for meta tag parsing
 
 from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
@@ -58,8 +61,9 @@ class MetaTagAnalyzer(InfoGatheringTool):
                 ) as resp:
                     if resp.status != 200:
                         return
-                    html = await resp.text(errors="replace")
-        except Exception as exc:
+                    raw = await resp.content.read(MAX_BODY_BYTES)
+                    html = raw.decode("utf-8", errors="replace")
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             logger.warning("meta_tag_analyzer fetch failed", host=host, error=str(exc))
             return
 

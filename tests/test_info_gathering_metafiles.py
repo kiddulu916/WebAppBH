@@ -520,6 +520,9 @@ class TestMetaTagAnalyzerExecute:
         mock_resp = AsyncMock()
         mock_resp.status = status
         mock_resp.text = AsyncMock(return_value=body)
+        mock_content = AsyncMock()
+        mock_content.read = AsyncMock(return_value=body.encode("utf-8"))
+        mock_resp.content = mock_content
         mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_resp.__aexit__ = AsyncMock(return_value=False)
 
