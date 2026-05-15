@@ -22,6 +22,7 @@ class Stage:
 # stays readable.
 from .tools.amass_active import AmassActive
 from .tools.amass_passive import AmassPassive
+from .tools.app_path_enumerator import AppPathEnumerator
 from .tools.application_mapper import ApplicationMapper
 from .tools.archive_prober import ArchiveProber
 from .tools.architecture_modeler import ArchitectureModeler
@@ -32,6 +33,7 @@ from .tools.cache_prober import CacheProber
 from .tools.censys_searcher import CensysSearcher
 from .tools.comment_harvester import CommentHarvester
 from .tools.cookie_fingerprinter import CookieFingerprinter
+from .tools.ct_log_searcher import CTLogSearcher
 from .tools.dork_engine import DorkEngine
 from .tools.error_page_probe import ErrorPageProbe
 from .tools.form_mapper import FormMapper
@@ -67,13 +69,19 @@ STAGES = [
         ErrorPageProbe, TLSProbe, WAFProbe, WhatWeb,
     ]),
     Stage(name="web_server_metafiles", section_id="4.1.3", tools=[MetafileParser, MetaTagAnalyzer]),
-    Stage(name="enumerate_subdomains", section_id="4.1.4", tools=[Subfinder, Assetfinder, AmassPassive, AmassActive, Massdns, VHostProber]),
+    Stage(name="enumerate_applications", section_id="4.1.4", tools=[
+        Subfinder, Assetfinder, AmassPassive, AmassActive, Massdns,
+        VHostProber,
+        Naabu,
+        AppPathEnumerator,
+        CTLogSearcher,
+    ]),
     Stage(name="review_comments", section_id="4.1.5", tools=[CommentHarvester, MetadataExtractor]),
     Stage(name="identify_entry_points", section_id="4.1.6", tools=[FormMapper, Paramspider, Httpx]),
     Stage(name="map_execution_paths", section_id="4.1.7", tools=[Katana, Hakrawler]),
     Stage(name="fingerprint_framework", section_id="4.1.8", tools=[Wappalyzer, CookieFingerprinter, Webanalyze]),
-    Stage(name="map_architecture", section_id="4.1.9", tools=[Naabu, Waybackurls, ArchitectureModeler]),
-    Stage(name="map_application", section_id="4.1.10", tools=[ApplicationMapper, AttackSurfaceAnalyzer]),  # Post-processing stage
+    Stage(name="map_architecture", section_id="4.1.9", tools=[Waybackurls, ArchitectureModeler]),
+    Stage(name="map_application", section_id="4.1.10", tools=[ApplicationMapper, AttackSurfaceAnalyzer]),
 ]
 
 STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}
