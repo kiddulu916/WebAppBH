@@ -6,7 +6,9 @@ import re
 
 import aiohttp
 
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
+
+MAX_BODY_BYTES = 1 * 1024 * 1024  # 1 MB cap — prevents memory exhaustion from attacker-controlled responses
 
 _SENSITIVE_PREFIXES = (
     "/admin", "/api", "/internal", "/config", "/backup",
@@ -55,6 +57,9 @@ class MetafileParser(InfoGatheringTool):
         base_url = f"https://{host}"
         rate_limiter = kwargs.get("rate_limiter")
 
+        log = logger.bind(target_id=target_id, host=host)
+        log.info("metafile_parser starting")
+
         async with aiohttp.ClientSession() as session:
             # Phase 1: robots.txt first — returns declared Sitemap: refs
             robots_sitemaps = await self._fetch_robots(
@@ -73,6 +78,8 @@ class MetafileParser(InfoGatheringTool):
                 return_exceptions=True,
             )
 
+        log.info("metafile_parser complete")
+
     async def _get(
         self, session: aiohttp.ClientSession, url: str, rate_limiter=None
     ) -> tuple[int, str] | None:
@@ -82,12 +89,27 @@ class MetafileParser(InfoGatheringTool):
             async with session.get(
                 url,
                 timeout=aiohttp.ClientTimeout(total=15),
-                allow_redirects=True,
+                allow_redirects=False,
             ) as resp:
-                body = await resp.text(errors="replace") if resp.status == 200 else ""
+                if resp.status == 200:
+                    raw = await resp.content.read(MAX_BODY_BYTES)
+                    body = raw.decode("utf-8", errors="replace")
+                else:
+                    body = ""
                 return resp.status, body
-        except Exception:
+        except (aiohttp.ClientError, asyncio.TimeoutError, UnicodeDecodeError) as exc:
+            logger.warning("metafile_parser._get failed", url=url, error=str(exc))
             return None
+
+    def _is_same_origin(self, url: str, base_url: str) -> bool:
+        """Return True only if url shares the same scheme+host as base_url."""
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(url)
+            base = urlparse(base_url)
+            return parsed.scheme in ("http", "https") and parsed.netloc == base.netloc
+        except Exception:
+            return False
 
     # ------------------------------------------------------------------ robots
     async def _fetch_robots(
@@ -117,7 +139,7 @@ class MetafileParser(InfoGatheringTool):
                 asset_id=asset_id,
                 tech_stack={
                     "source": "robots_txt",
-                    "intel_type": "hidden_path",
+                    "intel_type": "crawler_policy",
                     "tags": ["intel:crawler-hint"],
                     "data": {
                         "user_agents": parsed["user_agents"],
@@ -126,7 +148,7 @@ class MetafileParser(InfoGatheringTool):
                 },
             )
 
-        return parsed["sitemaps"]
+        return [s for s in parsed["sitemaps"] if self._is_same_origin(s, base_url)]
 
     # ------------------------------------------------------------------ sitemap
     async def _fetch_sitemap(
@@ -150,6 +172,8 @@ class MetafileParser(InfoGatheringTool):
             for child_url in parsed["nested_sitemaps"]:
                 if child_count >= _SITEMAP_CHILD_CAP:
                     break
+                if not self._is_same_origin(child_url, base_url):
+                    continue
                 child = await self._get(session, child_url, rate_limiter)
                 if child and child[0] == 200:
                     all_urls.extend(self._parse_sitemap(child[1])["urls"])
@@ -184,7 +208,7 @@ class MetafileParser(InfoGatheringTool):
                 continue
             parsed = self._parse_security_txt(result[1])
             if not any(v for v in parsed.values() if v):
-                return
+                continue
             tags = ["intel:security-contact"]
             if parsed.get("hiring"):
                 tags.append("intel:employee-pii")
@@ -261,7 +285,7 @@ class MetafileParser(InfoGatheringTool):
         def _lines(field: str) -> list[str]:
             return [
                 m.strip()
-                for m in re.findall(rf"^{field}:[^\S\n]*(.+)", content, re.IGNORECASE | re.MULTILINE)
+                for m in re.findall(rf"^{re.escape(field)}:[^\S\n]*(.+)", content, re.IGNORECASE | re.MULTILINE)
                 if m.strip()
             ]
         return {
@@ -287,7 +311,7 @@ class MetafileParser(InfoGatheringTool):
         def _field(name: str) -> list[str]:
             return [
                 m.strip()
-                for m in re.findall(rf"^{name}:[^\S\n]*(.+)", content, re.IGNORECASE | re.MULTILINE)
+                for m in re.findall(rf"^{re.escape(name)}:[^\S\n]*(.+)", content, re.IGNORECASE | re.MULTILINE)
                 if m.strip()
             ]
         return {
