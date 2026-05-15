@@ -98,8 +98,10 @@ test.describe("Create Campaign", () => {
     await expect(page.getByTestId("scope-builder")).toBeVisible();
 
     // Step 0: fill required fields
-    await page.getByTestId("scope-company-input").fill("HeaderTest Corp");
-    await page.getByTestId("scope-domain-input").fill("headertest.example.com");
+    const companyName = `HeaderTest-${Date.now()}`;
+    const domain = `headertest-${Date.now()}.example.com`;
+    await page.getByTestId("scope-company-input").fill(companyName);
+    await page.getByTestId("scope-domain-input").fill(domain);
     await page.getByTestId("scope-next-btn").click();
 
     // Step 1: add a custom header
