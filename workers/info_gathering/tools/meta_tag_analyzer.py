@@ -68,7 +68,6 @@ class MetaTagAnalyzer(InfoGatheringTool):
             return
 
         findings = self._parse_meta_tags(html)
-        log.info("meta_tag_analyzer complete")
 
         if findings.get("robots_directive"):
             await self.save_observation(
@@ -107,6 +106,8 @@ class MetaTagAnalyzer(InfoGatheringTool):
                     "data": generator,
                 },
             )
+
+        log.info("meta_tag_analyzer complete")
 
     def _parse_meta_tags(self, html: str) -> dict[str, str]:
         collector = _HeadMetaCollector()

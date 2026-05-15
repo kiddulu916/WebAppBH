@@ -97,7 +97,7 @@ class MetafileParser(InfoGatheringTool):
                 else:
                     body = ""
                 return resp.status, body
-        except (aiohttp.ClientError, asyncio.TimeoutError, UnicodeDecodeError) as exc:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             logger.warning("metafile_parser._get failed", url=url, error=str(exc))
             return None
 
