@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from workers.info_gathering.tools.metadata_extractor import MetadataExtractor
+from workers.info_gathering.tools.redirect_body_inspector import RedirectBodyInspector
 from workers.info_gathering.tools.source_map_prober import SourceMapProber
 
 
@@ -246,3 +247,83 @@ class TestSourceMapProber:
         assert result is True
         mock_session.head.assert_called_once()
         mock_session.get.assert_called_once()
+
+
+class TestRedirectBodyInspector:
+    @pytest.mark.anyio
+    async def test_calls_inspect_for_each_candidate(self):
+        """execute() calls _inspect once per URL candidate."""
+        tool = RedirectBodyInspector()
+        target = MagicMock(base_domain="example.com")
+
+        with patch.object(tool, "_get_url_assets", new_callable=AsyncMock,
+                          return_value=[("https://example.com/login", 1)]), \
+             patch.object(tool, "_inspect", new_callable=AsyncMock) as mock_inspect:
+
+            await tool.execute(target_id=1, target=target)
+
+        mock_inspect.assert_awaited_once_with("https://example.com/login", 1, 1)
+
+    @pytest.mark.anyio
+    async def test_scan_body_detects_credential_keyword(self):
+        """_scan_body returns matches for credential-like strings."""
+        tool = RedirectBodyInspector()
+        body = 'Redirecting... api_key=supersecret123'
+        matches = tool._scan_body(body)
+        types = [t for _, t in matches]
+        assert "credential_keyword" in types
+
+    @pytest.mark.anyio
+    async def test_scan_body_detects_internal_ip(self):
+        """_scan_body returns matches for RFC-1918 IP addresses."""
+        tool = RedirectBodyInspector()
+        body = "Server at 10.0.1.42 is unavailable"
+        matches = tool._scan_body(body)
+        types = [t for _, t in matches]
+        assert "internal_ip" in types
+
+    @pytest.mark.anyio
+    async def test_scan_body_detects_stack_trace(self):
+        """_scan_body returns matches for Python/Java stack trace patterns."""
+        tool = RedirectBodyInspector()
+        body = "Traceback (most recent call last):\n  File 'app.py', line 42"
+        matches = tool._scan_body(body)
+        types = [t for _, t in matches]
+        assert "stack_trace" in types
+
+    @pytest.mark.anyio
+    async def test_scan_body_returns_empty_for_clean_body(self):
+        """_scan_body returns [] for body with no sensitive patterns."""
+        tool = RedirectBodyInspector()
+        body = "302 Found. Please follow the redirect."
+        matches = tool._scan_body(body)
+        assert matches == []
+
+    @pytest.mark.anyio
+    async def test_inspect_saves_observation_and_vuln_on_match(self):
+        """_inspect saves Observation unconditionally; Vulnerability only when patterns match."""
+        tool = RedirectBodyInspector()
+
+        mock_resp = MagicMock()
+        mock_resp.status = 302
+        mock_resp.text = AsyncMock(return_value="password=hunter2")
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_resp)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch.object(tool, "save_observation", new_callable=AsyncMock) as save_obs, \
+             patch.object(tool, "save_vulnerability", new_callable=AsyncMock) as save_vuln, \
+             patch(
+                 "workers.info_gathering.tools.redirect_body_inspector.aiohttp.ClientSession",
+                 return_value=mock_session,
+             ):
+            await tool._inspect("https://example.com/login", asset_id=1, target_id=1)
+
+        save_obs.assert_awaited_once()
+        assert save_obs.call_args.kwargs["tech_stack"]["_source"] == "redirect_body_inspector"
+        save_vuln.assert_awaited_once()
+        assert save_vuln.call_args.kwargs["vuln_type"] == "redirect_body_leakage"
