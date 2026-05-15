@@ -75,9 +75,9 @@ test.describe("Workflow Builder", () => {
     await page.getByRole("link", { name: "Phase Flow" }).click();
 
     // Monitor panel should show stages with seeded job states
-    await expect(page.getByTestId("flow-monitor-stage-enumerate_subdomains")).toBeVisible({ timeout: 10_000 });
-    // The seeded job has status "RUNNING" with phase "enumerate_subdomains"
-    await expect(page.getByTestId("flow-monitor-status-enumerate_subdomains")).toContainText(/running/i);
+    await expect(page.getByTestId("flow-monitor-stage-enumerate_applications")).toBeVisible({ timeout: 10_000 });
+    // The seeded job has status "RUNNING" with phase "enumerate_applications"
+    await expect(page.getByTestId("flow-monitor-status-enumerate_applications")).toContainText(/running/i);
   });
 
   test("apply playbook button triggers API call", async ({ page }) => {

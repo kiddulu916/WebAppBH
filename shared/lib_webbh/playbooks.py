@@ -16,7 +16,7 @@ from dataclasses import dataclass, field, asdict
 PIPELINE_STAGES: dict[str, list[str]] = {
     "info_gathering": [
         "search_engine_recon", "web_server_fingerprint", "web_server_metafiles",
-        "enumerate_subdomains", "review_comments", "identify_entry_points",
+        "enumerate_applications", "review_comments", "identify_entry_points",
         "map_execution_paths", "fingerprint_framework", "map_architecture",
         "map_application",
     ],
@@ -219,7 +219,7 @@ BUILTIN_PLAYBOOKS: dict[str, PlaybookConfig] = {
             disabled_workers=["mobile_worker"],
             worker_overrides={
                 "info_gathering": {
-                    "disabled_stages": ["search_engine_recon", "enumerate_subdomains"],
+                    "disabled_stages": ["search_engine_recon", "enumerate_applications"],
                 },
                 "input_validation": {
                     "concurrency": ConcurrencyConfig(heavy=3, light=6),
@@ -245,7 +245,7 @@ BUILTIN_PLAYBOOKS: dict[str, PlaybookConfig] = {
                 "info_gathering": {
                     "disabled_stages": [
                         "search_engine_recon", "web_server_metafiles",
-                        "enumerate_subdomains", "review_comments",
+                        "enumerate_applications", "review_comments",
                         "fingerprint_framework", "map_architecture",
                     ],
                 },

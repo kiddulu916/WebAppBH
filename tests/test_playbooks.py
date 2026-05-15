@@ -35,11 +35,11 @@ def test_build_worker_config_disabled():
 def test_build_worker_config_with_disabled_stages():
     wc = build_worker_config(
         "info_gathering",
-        disabled_stages=["search_engine_recon", "enumerate_subdomains"],
+        disabled_stages=["search_engine_recon", "enumerate_applications"],
     )
     disabled = [s for s in wc.stages if not s.enabled]
     assert len(disabled) == 2
-    assert {s.name for s in disabled} == {"search_engine_recon", "enumerate_subdomains"}
+    assert {s.name for s in disabled} == {"search_engine_recon", "enumerate_applications"}
 
 
 def test_build_worker_config_stage_timeouts():

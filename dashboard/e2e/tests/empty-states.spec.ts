@@ -62,7 +62,7 @@ test.describe("Empty States", () => {
     // so accept either empty-monitor or actual monitor stage entries
     await expect(
       page.getByTestId("flow-empty-monitor")
-        .or(page.getByTestId("flow-monitor-stage-enumerate_subdomains"))
+        .or(page.getByTestId("flow-monitor-stage-enumerate_applications"))
     ).toBeVisible({ timeout: 5_000 });
   });
 

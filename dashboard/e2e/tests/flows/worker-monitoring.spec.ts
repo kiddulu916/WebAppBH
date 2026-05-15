@@ -29,7 +29,7 @@ test.describe("Flow: Worker Execution Monitoring", () => {
     await page.waitForURL("**/campaign/flow");
 
     // 2. Verify monitor shows stage statuses from seeded jobs
-    await expect(page.getByTestId("flow-monitor-stage-enumerate_subdomains")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("flow-monitor-stage-enumerate_applications")).toBeVisible({ timeout: 10_000 });
 
     // 3. Emit a test event (stage completion)
     await apiClient.emitTestEvent(targetId, {
@@ -66,7 +66,7 @@ test.describe("Flow: Worker Execution Monitoring", () => {
     await page.getByRole("link", { name: "Phase Flow" }).click();
     await page.waitForURL("**/campaign/flow");
 
-    await expect(page.getByTestId("flow-monitor-stage-enumerate_subdomains")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("flow-monitor-stage-enumerate_applications")).toBeVisible({ timeout: 10_000 });
 
     // Block execution state endpoint to simulate disconnect
     await page.route("**/api/v1/targets/*/execution", (route) =>
@@ -86,6 +86,6 @@ test.describe("Flow: Worker Execution Monitoring", () => {
     await page.waitForTimeout(12_000);
 
     // Monitor should recover
-    await expect(page.getByTestId("flow-monitor-stage-enumerate_subdomains")).toBeVisible();
+    await expect(page.getByTestId("flow-monitor-stage-enumerate_applications")).toBeVisible();
   });
 });

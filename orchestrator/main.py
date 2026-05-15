@@ -2709,7 +2709,7 @@ async def test_seed(body: TestSeedRequest):
         now = datetime.now(timezone.utc)
         jobs_data = [
             {"container_name": "info_gathering",
-             "current_phase": "enumerate_subdomains", "status": "RUNNING",
+             "current_phase": "enumerate_applications", "status": "RUNNING",
              "last_tool_executed": "subfinder", "last_seen": now},
             {"container_name": "input_validation",
              "current_phase": "xss_reflected", "status": "COMPLETED",

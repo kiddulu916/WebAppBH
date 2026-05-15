@@ -72,7 +72,7 @@ test.describe("Worker Control", () => {
     const runningCard = page.getByTestId("worker-card-info_gathering");
     await expect(runningCard).toBeVisible();
     await expect(runningCard).toContainText("RUNNING");
-    await expect(runningCard).toContainText("enumerate_subdomains");
+    await expect(runningCard).toContainText("enumerate_applications");
 
     // Pause and Stop buttons should be present on the RUNNING card
     await expect(runningCard.getByTestId("worker-pause-btn")).toBeVisible();

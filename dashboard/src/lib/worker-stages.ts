@@ -10,7 +10,7 @@ export const WORKER_STAGES: Record<string, { id: string; name: string; stageName
     { id: "1", name: "Search Engine Discovery", stageName: "search_engine_recon", sectionId: "WSTG-INFO-01" },
     { id: "2", name: "Fingerprint Web Server", stageName: "web_server_fingerprint", sectionId: "WSTG-INFO-02" },
     { id: "3", name: "Review Webserver Metafiles", stageName: "web_server_metafiles", sectionId: "WSTG-INFO-03" },
-    { id: "4", name: "Enumerate Subdomains", stageName: "enumerate_subdomains", sectionId: "WSTG-INFO-04" },
+    { id: "4", name: "Enumerate Applications", stageName: "enumerate_applications", sectionId: "WSTG-INFO-04" },
     { id: "5", name: "Review Comments", stageName: "review_comments", sectionId: "WSTG-INFO-05" },
     { id: "6", name: "Identify Entry Points", stageName: "identify_entry_points", sectionId: "WSTG-INFO-06" },
     { id: "7", name: "Map Execution Paths", stageName: "map_execution_paths", sectionId: "WSTG-INFO-07" },
