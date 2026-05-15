@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from workers.info_gathering.tools.metafile_parser import MetafileParser
-from workers.info_gathering.tools.meta_tag_analyzer import MetaTagAnalyzer
+# from workers.info_gathering.tools.meta_tag_analyzer import MetaTagAnalyzer  # Task 3
 
 
 # ---------------------------------------------------------------------------
@@ -179,3 +179,263 @@ class TestParseHumansTxt:
         result = self.p._parse_humans_txt("")
         assert result["team"] == []
         assert result["tech_credits"] == []
+
+
+# ---------------------------------------------------------------------------
+# MetafileParser — execute() behavior tests
+# ---------------------------------------------------------------------------
+
+class TestMetafileParserExecute:
+    @pytest.mark.anyio
+    async def test_sensitive_disallow_emits_candidate_tags(self):
+        tool = MetafileParser()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        async def fake_get(session, url, rate_limiter=None):
+            if url.endswith("/robots.txt"):
+                return 200, "User-agent: *\nDisallow: /admin\n"
+            return 404, ""
+
+        with patch.object(tool, "_get", side_effect=fake_get), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target, host="example.com")
+
+        stacks = [c.kwargs["tech_stack"] for c in mock_save.call_args_list]
+        admin_obs = [s for s in stacks if s.get("data", {}).get("path") == "/admin"]
+        assert len(admin_obs) == 1
+        assert "candidate:forced-browsing" in admin_obs[0]["tags"]
+        assert "candidate:authn-bypass" in admin_obs[0]["tags"]
+
+    @pytest.mark.anyio
+    async def test_non_sensitive_disallow_only_hidden_path_tag(self):
+        tool = MetafileParser()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        async def fake_get(session, url, rate_limiter=None):
+            if url.endswith("/robots.txt"):
+                return 200, "User-agent: *\nDisallow: /blog\n"
+            return 404, ""
+
+        with patch.object(tool, "_get", side_effect=fake_get), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        stacks = [c.kwargs["tech_stack"] for c in mock_save.call_args_list]
+        blog_obs = [s for s in stacks if s.get("data", {}).get("path") == "/blog"]
+        assert len(blog_obs) == 1
+        assert blog_obs[0]["tags"] == ["intel:hidden-path"]
+
+    @pytest.mark.anyio
+    async def test_all_404s_write_no_observations(self):
+        tool = MetafileParser()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        async def fake_get(session, url, rate_limiter=None):
+            return 404, ""
+
+        with patch.object(tool, "_get", side_effect=fake_get), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        assert mock_save.call_count == 0
+
+    @pytest.mark.anyio
+    async def test_security_txt_uses_well_known_path_first(self):
+        """When both /.well-known/security.txt and /security.txt respond, only one obs written."""
+        tool = MetafileParser()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        async def fake_get(session, url, rate_limiter=None):
+            if "security.txt" in url:
+                return 200, "Contact: mailto:sec@example.com\n"
+            return 404, ""
+
+        with patch.object(tool, "_get", side_effect=fake_get), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        security_obs = [
+            c.kwargs["tech_stack"] for c in mock_save.call_args_list
+            if c.kwargs.get("tech_stack", {}).get("source") == "security_txt"
+        ]
+        assert len(security_obs) == 1
+        assert "intel:security-contact" in security_obs[0]["tags"]
+
+    @pytest.mark.anyio
+    async def test_security_txt_with_hiring_adds_employee_pii_tag(self):
+        tool = MetafileParser()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        async def fake_get(session, url, rate_limiter=None):
+            if "security.txt" in url:
+                return 200, "Contact: mailto:sec@example.com\nHiring: https://example.com/jobs\n"
+            return 404, ""
+
+        with patch.object(tool, "_get", side_effect=fake_get), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        security_obs = [
+            c.kwargs["tech_stack"] for c in mock_save.call_args_list
+            if c.kwargs.get("tech_stack", {}).get("source") == "security_txt"
+        ]
+        assert len(security_obs) == 1
+        assert "intel:employee-pii" in security_obs[0]["tags"]
+
+    @pytest.mark.anyio
+    async def test_sitemap_batched_into_50_url_chunks(self):
+        """120 URLs → 3 observations (50 + 50 + 20)."""
+        tool = MetafileParser()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        urls_xml = "".join(
+            f"<url><loc>https://example.com/p{i}</loc></url>" for i in range(120)
+        )
+        sitemap_body = f"<urlset>{urls_xml}</urlset>"
+
+        async def fake_get(session, url, rate_limiter=None):
+            if url.endswith("/sitemap.xml"):
+                return 200, sitemap_body
+            return 404, ""
+
+        with patch.object(tool, "_get", side_effect=fake_get), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        sitemap_obs = [
+            c.kwargs["tech_stack"] for c in mock_save.call_args_list
+            if c.kwargs.get("tech_stack", {}).get("source") == "sitemap_xml"
+        ]
+        assert len(sitemap_obs) == 3
+        assert len(sitemap_obs[0]["data"]["urls"]) == 50
+        assert len(sitemap_obs[2]["data"]["urls"]) == 20
+
+    @pytest.mark.anyio
+    async def test_robots_sitemap_ref_fed_to_sitemap_fetcher(self):
+        """Sitemap: https://example.com/news.xml in robots.txt must be fetched."""
+        tool = MetafileParser()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        async def fake_get(session, url, rate_limiter=None):
+            if url.endswith("/robots.txt"):
+                return 200, "Sitemap: https://example.com/news.xml\n"
+            if url.endswith("/news.xml"):
+                return 200, "<urlset><url><loc>https://example.com/news/1</loc></url></urlset>"
+            return 404, ""
+
+        with patch.object(tool, "_get", side_effect=fake_get), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        sitemap_obs = [
+            c.kwargs["tech_stack"] for c in mock_save.call_args_list
+            if c.kwargs.get("tech_stack", {}).get("source") == "sitemap_xml"
+        ]
+        all_urls = [u for obs in sitemap_obs for u in obs["data"]["urls"]]
+        assert "https://example.com/news/1" in all_urls
+
+    @pytest.mark.anyio
+    async def test_humans_txt_team_emits_employee_pii_tag(self):
+        tool = MetafileParser()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        async def fake_get(session, url, rate_limiter=None):
+            if url.endswith("/humans.txt"):
+                return 200, "/* TEAM */\nName: Alice Smith\nRole: Dev\n"
+            return 404, ""
+
+        with patch.object(tool, "_get", side_effect=fake_get), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        humans_obs = [
+            c.kwargs["tech_stack"] for c in mock_save.call_args_list
+            if c.kwargs.get("tech_stack", {}).get("source") == "humans_txt"
+        ]
+        assert len(humans_obs) == 1
+        assert "intel:employee-pii" in humans_obs[0]["tags"]
+
+    @pytest.mark.anyio
+    async def test_humans_txt_no_team_no_tech_skipped(self):
+        """humans.txt with neither TEAM nor SITE/TECHNOLOGY section → no observation."""
+        tool = MetafileParser()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        async def fake_get(session, url, rate_limiter=None):
+            if url.endswith("/humans.txt"):
+                return 200, "/* THANKS */\nOpenSource\n"
+            return 404, ""
+
+        with patch.object(tool, "_get", side_effect=fake_get), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        humans_obs = [
+            c.kwargs["tech_stack"] for c in mock_save.call_args_list
+            if c.kwargs.get("tech_stack", {}).get("source") == "humans_txt"
+        ]
+        assert len(humans_obs) == 0
+
+    @pytest.mark.anyio
+    async def test_well_known_auth_path_gets_authn_bypass_tag(self):
+        tool = MetafileParser()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        async def fake_get(session, url, rate_limiter=None):
+            if "openid-configuration" in url:
+                return 200, '{"issuer":"https://example.com"}'
+            return 404, ""
+
+        with patch.object(tool, "_get", side_effect=fake_get), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        wk_obs = [
+            c.kwargs["tech_stack"] for c in mock_save.call_args_list
+            if c.kwargs.get("tech_stack", {}).get("source") == "well_known_probe"
+        ]
+        assert any("candidate:authn-bypass" in obs["tags"] for obs in wk_obs)
+
+    @pytest.mark.anyio
+    async def test_well_known_non_auth_path_no_authn_bypass_tag(self):
+        tool = MetafileParser()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        async def fake_get(session, url, rate_limiter=None):
+            if "apple-app-site-association" in url:
+                return 200, '{"applinks":{}}'
+            return 404, ""
+
+        with patch.object(tool, "_get", side_effect=fake_get), \
+             patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
+            await tool.execute(target_id=1, asset_id=99, target=target)
+
+        wk_obs = [
+            c.kwargs["tech_stack"] for c in mock_save.call_args_list
+            if c.kwargs.get("tech_stack", {}).get("source") == "well_known_probe"
+        ]
+        assert len(wk_obs) == 1
+        assert "candidate:authn-bypass" not in wk_obs[0]["tags"]
+        assert "intel:hidden-path" in wk_obs[0]["tags"]
+
+    @pytest.mark.anyio
+    async def test_missing_asset_id_returns_early(self):
+        tool = MetafileParser()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        with patch.object(tool, "_get", new_callable=AsyncMock) as mock_get:
+            await tool.execute(target_id=1, asset_id=None, target=target)
+
+        mock_get.assert_not_called()
