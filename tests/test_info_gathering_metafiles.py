@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from workers.info_gathering.tools.metafile_parser import MetafileParser
-# from workers.info_gathering.tools.meta_tag_analyzer import MetaTagAnalyzer  # Task 3
+# from workers.info_gathering.tools.meta_tag_analyzer import MetaTagAnalyzer  # Task 4/5
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +199,7 @@ class TestMetafileParserExecute:
 
         with patch.object(tool, "_get", side_effect=fake_get), \
              patch.object(tool, "save_observation", new_callable=AsyncMock) as mock_save:
-            await tool.execute(target_id=1, asset_id=99, target=target, host="example.com")
+            await tool.execute(target_id=1, asset_id=99, target=target)
 
         stacks = [c.kwargs["tech_stack"] for c in mock_save.call_args_list]
         admin_obs = [s for s in stacks if s.get("data", {}).get("path") == "/admin"]
@@ -244,7 +244,7 @@ class TestMetafileParserExecute:
 
     @pytest.mark.anyio
     async def test_security_txt_uses_well_known_path_first(self):
-        """When both /.well-known/security.txt and /security.txt respond, only one obs written."""
+        """Stops after the first 200 (prefers /.well-known/), writes exactly one observation."""
         tool = MetafileParser()
         target = MagicMock()
         target.base_domain = "example.com"
