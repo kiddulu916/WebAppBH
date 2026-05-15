@@ -38,11 +38,12 @@ class MetadataExtractor(InfoGatheringTool):
             try:
                 metadata = await self._extract_metadata(url)
                 if metadata:
-                    await self.save_observation(
-                        target_id, "metadata",
-                        {"url": url, "metadata": metadata},
-                        "metadata_extractor"
-                    )
+                    asset_id_obs = await self.save_asset(target_id, "url", url, "metadata_extractor")
+                    if asset_id_obs:
+                        await self.save_observation(
+                            asset_id=asset_id_obs,
+                            tech_stack={"_source": "metadata_extractor", "metadata": metadata},
+                        )
             except Exception:
                 continue
 

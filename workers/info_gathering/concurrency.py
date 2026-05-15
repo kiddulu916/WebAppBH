@@ -2,7 +2,7 @@
 import asyncio
 import os
 
-HEAVY_LIMIT = 2
+HEAVY_LIMIT = int(os.environ.get("HEAVY_CONCURRENCY", "2"))
 LIGHT_LIMIT = int(os.environ.get("LIGHT_CONCURRENCY", str(os.cpu_count() or 4)))
 
 TOOL_WEIGHTS = {

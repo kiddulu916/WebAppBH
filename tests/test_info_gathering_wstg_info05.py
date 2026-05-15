@@ -394,19 +394,21 @@ class TestJsSecretScanner:
         assert len(findings) == 1
 
     def test_parse_gitleaks_extracts_findings(self, tmp_path):
-        """_parse_gitleaks reads the JSON report file gitleaks writes."""
+        """_parse_gitleaks reads the JSON report file gitleaks writes and normalizes paths."""
         tool = JsSecretScanner()
         report = tmp_path / "report.json"
         report.write_text(json.dumps([
-            {"RuleID": "aws-access-key", "Secret": "AKIAIOSFODNN7EXAMPLE", "File": "/tmp/app.js"},
-            {"RuleID": "github-pat", "Secret": "ghp_xyz", "File": "/tmp/lib.js"},
+            {"RuleID": "aws-access-key", "Secret": "AKIAIOSFODNN7EXAMPLE", "File": "js_0.js"},
+            {"RuleID": "github-pat", "Secret": "ghp_xyz", "File": "js_1.js"},
         ]))
-        findings = tool._parse_gitleaks(str(report))
+        scandir = str(tmp_path / "scandir")
+        findings = tool._parse_gitleaks(str(report), tmpdir=scandir)
         assert len(findings) == 2
         assert findings[0]["tool"] == "gitleaks"
         assert findings[0]["detector"] == "aws-access-key"
         assert findings[0]["secret"] == "AKIAIOSFODNN7EXAMPLE"
         assert findings[0]["verified"] is False
+        assert findings[0]["file"] == os.path.join(scandir, "js_0.js")
 
     def test_parse_gitleaks_returns_empty_on_missing_file(self):
         """_parse_gitleaks returns [] when the report file does not exist."""

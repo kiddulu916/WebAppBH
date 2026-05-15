@@ -59,7 +59,7 @@ class JsSecretScanner(InfoGatheringTool):
                 logger.debug("gitleaks failed", error=str(exc))
 
             findings = self._deduplicate(
-                self._parse_trufflehog(th_output) + self._parse_gitleaks(gl_report)
+                self._parse_trufflehog(th_output) + self._parse_gitleaks(gl_report, tmpdir=tmpdir)
             )
 
             for _, asset_id in candidates:
@@ -195,7 +195,7 @@ class JsSecretScanner(InfoGatheringTool):
                 continue
         return findings
 
-    def _parse_gitleaks(self, report_path: str) -> list[dict]:
+    def _parse_gitleaks(self, report_path: str, tmpdir: str = "") -> list[dict]:
         """Parse gitleaks JSON report file into normalised finding dicts."""
         try:
             with open(report_path) as f:
@@ -206,7 +206,11 @@ class JsSecretScanner(InfoGatheringTool):
                     "detector": item.get("RuleID", "unknown"),
                     "secret": item.get("Secret", ""),
                     "verified": False,
-                    "file": item.get("File", ""),
+                    "file": (
+                        os.path.join(tmpdir, item.get("File", ""))
+                        if tmpdir and item.get("File", "")
+                        else item.get("File", "")
+                    ),
                 }
                 for item in (data or [])
             ]
