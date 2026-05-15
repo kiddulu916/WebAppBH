@@ -42,6 +42,7 @@ from .tools.katana import Katana
 from .tools.liveness_probe import LivenessProbe
 from .tools.massdns import Massdns
 from .tools.metadata_extractor import MetadataExtractor
+from .tools.meta_tag_analyzer import MetaTagAnalyzer
 from .tools.metafile_parser import MetafileParser
 from .tools.method_probe import MethodProbe
 from .tools.naabu import Naabu
@@ -65,7 +66,7 @@ STAGES = [
         LivenessProbe, BannerProbe, HeaderOrderProbe, MethodProbe,
         ErrorPageProbe, TLSProbe, WAFProbe, WhatWeb,
     ]),
-    Stage(name="web_server_metafiles", section_id="4.1.3", tools=[MetafileParser]),
+    Stage(name="web_server_metafiles", section_id="4.1.3", tools=[MetafileParser, MetaTagAnalyzer]),
     Stage(name="enumerate_subdomains", section_id="4.1.4", tools=[Subfinder, Assetfinder, AmassPassive, AmassActive, Massdns, VHostProber]),
     Stage(name="review_comments", section_id="4.1.5", tools=[CommentHarvester, MetadataExtractor]),
     Stage(name="identify_entry_points", section_id="4.1.6", tools=[FormMapper, Paramspider, Httpx]),
