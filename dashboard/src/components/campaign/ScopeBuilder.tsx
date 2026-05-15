@@ -24,6 +24,7 @@ import WorkflowBuilder, {
   type WorkflowState,
 } from "@/components/campaign/WorkflowBuilder";
 import RateLimitBuilder from "@/components/common/RateLimitBuilder";
+import CustomHeaderBuilder, { type CustomHeader } from "@/components/common/CustomHeaderBuilder";
 
 /* ------------------------------------------------------------------ */
 /* Step definitions                                                    */
@@ -103,6 +104,7 @@ export default function ScopeBuilder() {
   const [inScopeRegex, setInScopeRegex] = useState("");
   const [showOutOfScope, setShowOutOfScope] = useState(false);
   const [outScopeDomains, setOutScopeDomains] = useState("");
+  const [customHeaders, setCustomHeaders] = useState<CustomHeader[]>([]);
 
   /* ---- Step 2: Playbook ---- */
   const [playbook, setPlaybook] = useState("wide_recon");
@@ -205,6 +207,13 @@ export default function ScopeBuilder() {
     setLoading(true);
     setError("");
 
+    const headersRecord = customHeaders
+      .filter((h) => h.key.trim() !== "")
+      .reduce<Record<string, string>>((acc, h) => {
+        acc[h.key.trim()] = h.value;
+        return acc;
+      }, {});
+
     const payload: CreateTargetPayload = {
       company_name: companyName.trim(),
       base_domain: baseDomain.trim(),
@@ -215,6 +224,7 @@ export default function ScopeBuilder() {
         in_scope_cidrs: lines(inScopeCidrs),
         in_scope_regex: lines(inScopeRegex),
         rate_limits: rateLimitRules,
+        ...(Object.keys(headersRecord).length > 0 && { custom_headers: headersRecord }),
       },
     };
 
@@ -613,6 +623,12 @@ export default function ScopeBuilder() {
                 label="Campaign Rate Limits"
               />
             </div>
+            <div className="border-t border-border pt-4">
+              <CustomHeaderBuilder
+                headers={customHeaders}
+                onChange={setCustomHeaders}
+              />
+            </div>
           </div>
         )}
 
@@ -737,6 +753,17 @@ export default function ScopeBuilder() {
                       {rateLimitRules.map((r) => `${r.amount} ${r.unit}`).join(", ")}
                     </span>
                   </div>
+                  {customHeaders.filter((h) => h.key.trim() !== "").length > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-text-muted">Custom headers</span>
+                      <span
+                        data-testid="review-custom-headers-count"
+                        className="font-mono text-xs text-neon-blue"
+                      >
+                        {customHeaders.filter((h) => h.key.trim() !== "").length}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-text-muted">Estimated time</span>
                     <span className="font-mono text-xs text-text-muted">--:--</span>
