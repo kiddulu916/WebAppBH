@@ -210,7 +210,7 @@ export default function ScopeBuilder() {
     const headersRecord = customHeaders
       .filter((h) => h.key.trim() !== "")
       .reduce<Record<string, string>>((acc, h) => {
-        acc[h.key.trim()] = h.value;
+        acc[h.key.trim()] = h.value.trim();
         return acc;
       }, {});
 
@@ -753,14 +753,14 @@ export default function ScopeBuilder() {
                       {rateLimitRules.map((r) => `${r.amount} ${r.unit}`).join(", ")}
                     </span>
                   </div>
-                  {customHeaders.filter((h) => h.key.trim() !== "").length > 0 && (
+                  {new Set(customHeaders.filter((h) => h.key.trim() !== "").map((h) => h.key.trim())).size > 0 && (
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-text-muted">Custom headers</span>
                       <span
                         data-testid="review-custom-headers-count"
                         className="font-mono text-xs text-neon-blue"
                       >
-                        {customHeaders.filter((h) => h.key.trim() !== "").length}
+                        {new Set(customHeaders.filter((h) => h.key.trim() !== "").map((h) => h.key.trim())).size}
                       </span>
                     </div>
                   )}
