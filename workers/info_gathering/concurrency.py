@@ -36,6 +36,8 @@ TOOL_WEIGHTS = {
     "RedirectBodyInspector": "LIGHT",
     "FormMapper": "LIGHT",
     "Paramspider": "LIGHT",
+    "WebSocketProber":      "LIGHT",
+    "EntryPointAggregator": "LIGHT",
     "Katana": "HEAVY",
     "Hakrawler": "LIGHT",
     "Wappalyzer": "LIGHT",

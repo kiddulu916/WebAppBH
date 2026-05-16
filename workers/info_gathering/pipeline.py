@@ -36,6 +36,7 @@ from .tools.cookie_fingerprinter import CookieFingerprinter
 from .tools.ct_log_searcher import CTLogSearcher
 from .tools.dork_engine import DorkEngine
 from .tools.error_page_probe import ErrorPageProbe
+from .tools.entry_point_aggregator import EntryPointAggregator
 from .tools.form_mapper import FormMapper
 from .tools.hakrawler import Hakrawler
 from .tools.header_order_probe import HeaderOrderProbe
@@ -61,6 +62,7 @@ from .tools.waf_probe import WAFProbe
 from .tools.wappalyzer import Wappalyzer
 from .tools.waybackurls import Waybackurls
 from .tools.webanalyze import Webanalyze
+from .tools.websocket_prober import WebSocketProber
 from .tools.whatweb import WhatWeb
 
 from workers.info_gathering.fingerprint_aggregator import FingerprintAggregator, ProbeResult
@@ -84,7 +86,8 @@ STAGES = [
         CommentHarvester, MetadataExtractor,
         JsSecretScanner, SourceMapProber, RedirectBodyInspector,
     ]),
-    Stage(name="identify_entry_points", section_id="4.1.6", tools=[FormMapper, Paramspider, Httpx]),
+    Stage(name="identify_entry_points",  section_id="4.1.6", tools=[FormMapper, Paramspider, Httpx, WebSocketProber]),
+    Stage(name="aggregate_entry_points", section_id="4.1.6", tools=[EntryPointAggregator]),
     Stage(name="map_execution_paths", section_id="4.1.7", tools=[Katana, Hakrawler]),
     Stage(name="review_comments_deep", section_id="4.1.5", tools=[
         CommentHarvester, MetadataExtractor,
