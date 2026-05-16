@@ -11,6 +11,8 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import json
+
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -72,7 +74,6 @@ def _make_playbook(stage_name: str = "map_execution_paths", enabled: bool = True
 
 
 def _katana_output(*urls: str) -> str:
-    import json
     return "\n".join(json.dumps({"url": u}) for u in urls)
 
 
@@ -259,10 +260,10 @@ async def test_stage7_sse_event_includes_paths_found(db_engine):
     target_obj = MagicMock(id=target_id, base_domain="example.com")
     scope_manager = MagicMock(_in_scope_patterns=set())
 
-    events_published: list[dict] = []
+    events_published: list[tuple[str, dict]] = []
 
     async def mock_push_task(stream, payload):
-        events_published.append(payload)
+        events_published.append((stream, payload))
 
     katana_out = _katana_output("https://example.com/p1", "https://example.com/p2")
 
@@ -276,8 +277,10 @@ async def test_stage7_sse_event_includes_paths_found(db_engine):
         await pipeline.run(target_obj, scope_manager, playbook=playbook, host="example.com")
 
     stage7_events = [
-        e for e in events_published
-        if e.get("event") == "STAGE_COMPLETE" and e.get("stage") == "map_execution_paths"
+        payload for stream, payload in events_published
+        if stream == f"events:{target_id}"
+        and payload.get("event") == "STAGE_COMPLETE"
+        and payload.get("stage") == "map_execution_paths"
     ]
     assert stage7_events, "No STAGE_COMPLETE event for map_execution_paths"
     stats = stage7_events[0]["stats"]
@@ -307,11 +310,7 @@ async def test_stage7_intensity_medium_depth_3_in_katana_cmd(db_engine):
 
     pipeline = Pipeline(target_id=target_id, container_name="info_gathering")
     # intensity is read from web_server_fingerprint stage config by _get_intensity()
-    playbook = {"workers": [{"name": "info_gathering", "stages": [
-        {"name": "web_server_fingerprint", "enabled": False,
-         "config": {"fingerprint_intensity": "medium"}},
-        {"name": "map_execution_paths", "enabled": True, "config": {}},
-    ]}]}
+    playbook = _make_playbook(intensity="medium")
     target_obj = MagicMock(id=target_id, base_domain="example.com")
     scope_manager = MagicMock(_in_scope_patterns=set())
 
