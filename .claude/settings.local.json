@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:owasp.org)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Skill(superpowers:writing-plans)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\dat1k\\\\Projects\\\\WebAppBH\\\\docs\\\\plans\\\\implementation\" -ErrorAction SilentlyContinue | Select-Object Name; if \\(-not \\(Test-Path \"C:\\\\Users\\\\dat1k\\\\Projects\\\\WebAppBH\\\\docs\\\\plans\\\\implementation\"\\)\\) { Write-Output \"NOT FOUND\" })",
+      "Skill(superpowers:subagent-driven-development)",
+      "Skill(superpowers:requesting-code-review)",
+      "Bash(pytest *)",
+      "Bash(git commit *)",
+      "Bash(python -m pytest tests/test_wstg_info06_form_mapper.py -v)",
+      "Bash(python -m pytest tests/ -x -q)",
+      "Bash(python -m pytest tests/ -x -q --ignore=tests/e2e)",
+      "Bash(python -m pytest tests/ -q --ignore=tests/e2e --ignore=tests/test_api_contract.py)",
+      "Bash(python -m pytest tests/test_wstg_info06_form_mapper.py -q)",
+      "Bash(python -m pytest tests/test_wstg_info06_form_mapper.py tests/test_info_gathering_stage7.py -v)",
+      "Bash(python *)"
+    ]
+  }
+}
