@@ -91,6 +91,7 @@ class FormMapper(InfoGatheringTool):
                         row = (await session.execute(
                             select(Asset.id).where(
                                 Asset.target_id == target_id,
+                                Asset.asset_type == "form",
                                 Asset.asset_value == url,
                             )
                         )).first()
