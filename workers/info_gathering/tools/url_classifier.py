@@ -1,8 +1,8 @@
 # workers/info_gathering/tools/url_classifier.py
 """Classify discovered URLs into canonical asset types.
 
-Maps URL characteristics (extension, path keywords) to the asset types
-defined in lib_webbh.database.ASSET_TYPES.
+Maps URL characteristics (scheme, extension, path keywords) to the asset
+types defined in lib_webbh.database.ASSET_TYPES.
 """
 
 from urllib.parse import urlparse
@@ -32,6 +32,11 @@ _ERROR_KEYWORDS = frozenset({
     "debug", "exception",
 })
 
+# Path fragments that indicate API endpoints
+_API_PATTERNS = frozenset({
+    "/api/", "/v1/", "/v2/", "/v3/", "/graphql", "/rest/", "/rpc",
+})
+
 # Dork category → asset type mapping
 DORK_CATEGORY_MAP: dict[str, str] = {
     "exposed_files": "sensitive_file",
@@ -41,17 +46,22 @@ DORK_CATEGORY_MAP: dict[str, str] = {
     "sensitive_dirs": "directory",
     "error_pages": "error",
     "login_pages": "undetermined",
-    "api_endpoints": "undetermined",
+    "api_endpoints": "api_endpoint",
 }
 
 
 def classify_url(url: str) -> str:
     """Classify a URL into a canonical asset type based on its characteristics.
 
-    Returns one of: sensitive_file, directory, error, undetermined.
+    Returns one of: websocket, api_endpoint, sensitive_file, directory,
+    error, undetermined.
     Does NOT return domain/ip/subdomain/form/upload — those are set by
     the tools that have richer context (DNS enumeration, form detection, etc.).
     """
+    # WebSocket scheme — checked first, before any path rules
+    if url.startswith(("ws://", "wss://")):
+        return "websocket"
+
     parsed = urlparse(url)
     path = parsed.path.lower()
 
@@ -61,10 +71,15 @@ def classify_url(url: str) -> str:
             return "sensitive_file"
 
     # Check path for directory listings / admin panels
-    path_lower = url.lower()
+    url_lower = url.lower()
     for kw in _DIRECTORY_KEYWORDS:
-        if kw in path_lower:
+        if kw in url_lower:
             return "directory"
+
+    # Check for API endpoint patterns
+    for pattern in _API_PATTERNS:
+        if pattern in url_lower:
+            return "api_endpoint"
 
     # Check for error pages (less reliable from URL alone)
     last_segment = path.rsplit("/", 1)[-1].lower()

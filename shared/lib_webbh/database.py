@@ -111,6 +111,8 @@ ASSET_TYPES = (
     "error",           # Error pages leaking stack traces, DB info, debug output
     "form",            # Pages with form fields / submit functionality
     "upload",          # Pages with file upload functionality
+    "websocket",       # ws:// / wss:// endpoints
+    "api_endpoint",    # REST / GraphQL / RPC paths
     "deadend",         # Low-value pages not worth further exploration
     "undetermined",    # Doesn't fit other categories; needs manual triage
 )
