@@ -62,7 +62,7 @@ class TestWebSocketProber:
         prober._probe = fake_probe
 
         with patch("workers.info_gathering.tools.websocket_prober.get_session") as mock_gs, \
-             patch.object(prober, "save_asset", new_callable=AsyncMock, return_value=10), \
+             patch.object(prober, "save_asset", new_callable=AsyncMock, return_value=10) as mock_save, \
              patch.object(prober, "_lookup_asset_id", new_callable=AsyncMock, return_value=10), \
              patch.object(prober, "save_observation", new_callable=AsyncMock, return_value=1) as mock_obs, \
              patch("aiohttp.ClientSession") as mock_http_cls:
@@ -78,7 +78,7 @@ class TestWebSocketProber:
 
             result = await prober.execute(target_id=1, target=target, asset_id=5)
 
-        prober.save_asset.assert_any_call(1, "websocket", "https://example.com/ws", "websocket_prober")
+        mock_save.assert_any_call(1, "websocket", "https://example.com/ws", "websocket_prober")
         assert result["found"] >= 1
         obs_call = next(
             c for c in mock_obs.call_args_list
