@@ -152,3 +152,75 @@ class TestWebSocketProber:
         mock_save.assert_not_called()
         mock_obs.assert_not_called()
         assert result == {"found": 0, "rejected": 0}
+
+    @pytest.mark.anyio
+    async def test_http_fallback_when_https_fails(self):
+        """HTTPS connection error falls back to HTTP and saves the http:// asset."""
+        prober = WebSocketProber()
+        target = MagicMock()
+        target.base_domain = "example.com"
+
+        async def fake_probe(session, url):
+            if url == "https://example.com/ws":
+                return (0, False)  # HTTPS unreachable
+            if url == "http://example.com/ws":
+                return (101, True)  # HTTP WS handshake accepted
+            return (200, False)
+
+        prober._probe = fake_probe
+
+        with patch("workers.info_gathering.tools.websocket_prober.get_session") as mock_gs, \
+             patch.object(prober, "save_asset", new_callable=AsyncMock, return_value=20) as mock_save, \
+             patch.object(prober, "_lookup_asset_id", new_callable=AsyncMock, return_value=20), \
+             patch.object(prober, "save_observation", new_callable=AsyncMock, return_value=1) as mock_obs, \
+             patch("aiohttp.ClientSession") as mock_http_cls:
+            sess = AsyncMock()
+            mock_gs.return_value.__aenter__.return_value = sess
+            mock_gs.return_value.__aexit__.return_value = False
+            mock_result = AsyncMock()
+            mock_result.all = MagicMock(return_value=[])
+            sess.execute = AsyncMock(return_value=mock_result)
+            mock_http = AsyncMock()
+            mock_http_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+            mock_http_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await prober.execute(target_id=1, target=target, asset_id=5)
+
+        mock_save.assert_any_call(1, "websocket", "http://example.com/ws", "websocket_prober")
+        assert result["found"] >= 1
+
+    @pytest.mark.anyio
+    async def test_out_of_scope_hosts_skipped(self):
+        """Hosts excluded by scope_manager are not probed."""
+        prober = WebSocketProber()
+        target = MagicMock()
+        target.base_domain = "evil.com"
+
+        scope_manager = MagicMock()
+        probe_calls: list[str] = []
+
+        async def fake_probe(session, url):
+            probe_calls.append(url)
+            return (200, False)
+
+        prober._probe = fake_probe
+
+        with patch("workers.info_gathering.tools.websocket_prober.get_session") as mock_gs, \
+             patch.object(prober, "scope_check", new_callable=AsyncMock, return_value=False), \
+             patch("aiohttp.ClientSession") as mock_http_cls:
+            sess = AsyncMock()
+            mock_gs.return_value.__aenter__.return_value = sess
+            mock_gs.return_value.__aexit__.return_value = False
+            mock_result = AsyncMock()
+            mock_result.all = MagicMock(return_value=[])
+            sess.execute = AsyncMock(return_value=mock_result)
+            mock_http = AsyncMock()
+            mock_http_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+            mock_http_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await prober.execute(
+                target_id=1, target=target, asset_id=5, scope_manager=scope_manager,
+            )
+
+        assert probe_calls == []
+        assert result == {"found": 0, "rejected": 0}
