@@ -1,6 +1,7 @@
 """Unit tests for Stage 7 — Map Execution Paths (WSTG-INFO-07)."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -415,8 +416,6 @@ async def test_hakrawler_returns_error_on_subprocess_failure():
 # ---------------------------------------------------------------------------
 # ExecutionPathAnalyzer unit tests
 # ---------------------------------------------------------------------------
-
-from contextlib import asynccontextmanager
 
 from workers.info_gathering.tools.execution_path_analyzer import (
     ExecutionPathAnalyzer,
