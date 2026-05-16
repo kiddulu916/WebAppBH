@@ -78,7 +78,7 @@ def classify_url(url: str) -> str:
 
     # Check for API endpoint patterns
     for pattern in _API_PATTERNS:
-        if pattern in url_lower:
+        if pattern in path:
             return "api_endpoint"
 
     # Check for error pages (less reliable from URL alone)
