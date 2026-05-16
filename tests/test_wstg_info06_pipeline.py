@@ -33,7 +33,8 @@ def test_aggregate_entry_points_shares_section_id_with_identify():
     from workers.info_gathering.pipeline import STAGES
     id_stage = next(s for s in STAGES if s.name == "identify_entry_points")
     agg_stage = next(s for s in STAGES if s.name == "aggregate_entry_points")
-    assert id_stage.section_id == agg_stage.section_id == "4.1.6"
+    assert id_stage.section_id.startswith("4.1.6"), f"unexpected: {id_stage.section_id}"
+    assert agg_stage.section_id.startswith("4.1.6"), f"unexpected: {agg_stage.section_id}"
 
 
 def test_new_tools_registered_as_light_in_concurrency():

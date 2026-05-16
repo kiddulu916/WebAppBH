@@ -23,7 +23,7 @@ def test_build_worker_config_all_enabled():
     wc = build_worker_config("info_gathering")
     assert wc.name == "info_gathering"
     assert wc.enabled is True
-    assert len(wc.stages) == 10
+    assert len(wc.stages) == 12
     assert all(s.enabled for s in wc.stages)
 
 
@@ -109,7 +109,7 @@ def test_get_worker_stages_extracts_correctly():
     d = config.to_dict()
     stages = get_worker_stages(d, "info_gathering")
     assert stages is not None
-    assert len(stages) == 10
+    assert len(stages) == 12
 
 
 def test_get_worker_stages_disabled_worker():

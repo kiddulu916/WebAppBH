@@ -466,7 +466,7 @@ async def test_stage7_no_url_cap_on_form_mapper(db_engine):
     target_obj = MagicMock(base_domain="bigsite.com")
     processed_urls: list[str] = []
 
-    async def mock_fetch_html(url: str) -> str:
+    async def mock_fetch_html(http, url: str) -> str:
         processed_urls.append(url)
         return ""  # no forms; just count pages visited
 

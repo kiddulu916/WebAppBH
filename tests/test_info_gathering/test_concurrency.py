@@ -12,21 +12,11 @@ def test_get_semaphores_returns_bounded_semaphores():
 
 def test_tool_weights_contains_all_tools():
     from workers.info_gathering.concurrency import TOOL_WEIGHTS
+    from workers.info_gathering.pipeline import STAGES
 
-    expected_tools = {
-        "DorkEngine", "ArchiveProber", "WhatWeb", "Httpx",
-        # Stage 2 (WSTG-INFO-02) probes
-        "LivenessProbe", "BannerProbe", "HeaderOrderProbe", "MethodProbe",
-        "ErrorPageProbe", "TLSProbe", "WAFProbe",
-        "MetafileParser", "Subfinder", "Assetfinder", "AmassPassive",
-        "AmassActive", "Massdns", "VHostProber", "CommentHarvester",
-        "MetadataExtractor", "FormMapper", "Paramspider", "Katana",
-        "Hakrawler", "Wappalyzer", "CookieFingerprinter", "Webanalyze",
-        "Naabu", "Waybackurls", "ArchitectureModeler",
-        "ApplicationMapper", "AttackSurfaceAnalyzer",
-        "CacheProber", "ShodanSearcher", "CensysSearcher", "SecurityTrailsSearcher",
-    }
-    assert set(TOOL_WEIGHTS.keys()) == expected_tools
+    # Every tool class used in the pipeline must have a concurrency weight
+    pipeline_tools = {cls.__name__ for stage in STAGES for cls in stage.tools}
+    assert pipeline_tools == set(TOOL_WEIGHTS.keys())
 
 
 def test_tool_weights_valid_values():

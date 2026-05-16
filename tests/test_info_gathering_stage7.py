@@ -54,7 +54,7 @@ async def test_form_mapper_processes_more_than_20_urls():
 
     fetched_urls: list[str] = []
 
-    async def mock_fetch_html(url):
+    async def mock_fetch_html(http, url):
         fetched_urls.append(url)
         # Return minimal HTML with a form so the tool records observations
         return '<form action="/submit" method="POST"><input name="email"></form>'

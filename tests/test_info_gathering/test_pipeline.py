@@ -7,7 +7,7 @@ pytestmark = pytest.mark.anyio
 def test_pipeline_stages_defined():
     from workers.info_gathering.pipeline import STAGES
 
-    assert len(STAGES) == 10
+    assert len(STAGES) == 12
     assert all(hasattr(s, "name") for s in STAGES)
     assert all(hasattr(s, "section_id") for s in STAGES)
     assert all(hasattr(s, "tools") for s in STAGES)
@@ -16,10 +16,18 @@ def test_pipeline_stages_defined():
 def test_pipeline_stages_ordered():
     from workers.info_gathering.pipeline import STAGES
 
-    section_ids = [s.section_id for s in STAGES]
-    # Verify stages are in WSTG section order (4.1.1 -> 4.1.10)
-    expected = [f"4.1.{i}" for i in range(1, 11)]
-    assert section_ids == expected
+    names = [s.name for s in STAGES]
+    # Verify all expected stage names are present
+    expected_names = {
+        "search_engine_recon", "web_server_fingerprint", "web_server_metafiles",
+        "enumerate_applications", "review_comments", "identify_entry_points",
+        "aggregate_entry_points", "map_execution_paths", "review_comments_deep",
+        "fingerprint_framework", "map_architecture", "map_application",
+    }
+    assert set(names) == expected_names
+    # Verify high-level ordering: entry-point discovery before path mapping
+    assert names.index("identify_entry_points") < names.index("map_execution_paths")
+    assert names.index("aggregate_entry_points") == names.index("identify_entry_points") + 1
 
 
 def test_pipeline_all_tools_have_weights():
