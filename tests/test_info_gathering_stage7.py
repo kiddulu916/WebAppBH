@@ -596,3 +596,52 @@ async def test_analyzer_tool_breakdown_reflects_per_tool_counts():
     assert breakdown["katana"]["errored"] is False
     assert breakdown["hakrawler"]["total"] == 2
     assert breakdown["hakrawler"]["errored"] is False
+
+
+# ---------------------------------------------------------------------------
+# Pipeline Stage 7 hook unit tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_pipeline_fetch_ws_seeds_returns_websocket_assets():
+    """_fetch_ws_seeds must query DB for asset_type='websocket' under target_id."""
+    from workers.info_gathering.pipeline import Pipeline
+
+    pipeline = Pipeline(target_id=5, container_name="info_gathering")
+
+    from lib_webbh.database import Base, Asset, Target
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with Session() as sess:
+        t = Target(id=5, company_name="Test", base_domain="example.com")
+        sess.add(t)
+        await sess.flush()
+        ws1 = Asset(target_id=5, asset_type="websocket", asset_value="wss://example.com/ws")
+        ws2 = Asset(target_id=5, asset_type="websocket", asset_value="ws://example.com/events")
+        other = Asset(target_id=5, asset_type="domain", asset_value="https://example.com/page")
+        sess.add_all([ws1, ws2, other])
+        await sess.commit()
+
+    @asynccontextmanager
+    async def fake_session():
+        async with Session() as s:
+            yield s
+
+    with patch("workers.info_gathering.pipeline.get_session", fake_session):
+        seeds = await pipeline._fetch_ws_seeds(5)
+
+    assert "wss://example.com/ws" in seeds
+    assert "ws://example.com/events" in seeds
+    assert "https://example.com/page" not in seeds
+
+    await engine.dispose()

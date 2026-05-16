@@ -64,6 +64,7 @@ from .tools.webanalyze import Webanalyze
 from .tools.whatweb import WhatWeb
 
 from workers.info_gathering.fingerprint_aggregator import FingerprintAggregator, ProbeResult
+from workers.info_gathering.tools.execution_path_analyzer import ExecutionPathAnalyzer, CrawlResult
 
 STAGES = [
     Stage(name="search_engine_recon", section_id="4.1.1", tools=[DorkEngine, ArchiveProber, CacheProber, ShodanSearcher, CensysSearcher, SecurityTrailsSearcher]),
@@ -98,6 +99,7 @@ STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}
 
 # WSTG-INFO-02 section id — matched in run() to gate FingerprintAggregator invocation.
 _STAGE2_SECTION = "4.1.2"
+_STAGE7_SECTION = "4.1.7"
 
 logger = setup_logger("info-gathering-pipeline")
 
@@ -225,10 +227,16 @@ class Pipeline(CheckpointMixin):
             self.log.info(f"Starting stage: {stage.name}")
             await self._update_phase(stage.name)
 
+            # Pre-Stage 7: fetch WebSocket seeds discovered by prior stages
+            ws_seeds: list[str] = []
+            if stage.section_id == _STAGE7_SECTION:
+                ws_seeds = await self._fetch_ws_seeds(self.target_id)
+
             results = await self._run_stage(
                 stage, target, scope_manager=scope_manager,
                 headers=headers, rate_limiter=rate_limiter,
                 asset_id=asset_id, host=host, intensity=intensity,
+                ws_seeds=ws_seeds,
             )
 
             stats = self._stats_from_results(results)
@@ -247,6 +255,21 @@ class Pipeline(CheckpointMixin):
                 stats["probes"] = len(probe_results)
                 stats["summary_written"] = summary_obs_id is not None
                 stats["vulns"] = len(vuln_ids)
+
+            if stage.section_id == _STAGE7_SECTION:
+                analyzer = ExecutionPathAnalyzer(
+                    asset_id=asset_id, target_id=self.target_id,
+                )
+                crawl_results = [r for r in results if isinstance(r, CrawlResult)]
+                summary_obs_id = await analyzer.write_summary(
+                    crawl_results, intensity=intensity,
+                )
+                stats["paths_found"] = sum(
+                    len(r.urls) + len(r.ws_urls)
+                    for r in crawl_results
+                    if r.error is None
+                )
+                stats["summary_written"] = summary_obs_id is not None
 
             self.log.info(f"Stage complete: {stage.name}", extra={"stats": stats})
             await push_task(f"events:{self.target_id}", {
@@ -273,6 +296,7 @@ class Pipeline(CheckpointMixin):
         asset_id: int | None = None,
         host: str | None = None,
         intensity: str = "low",
+        ws_seeds: list[str] | None = None,
     ) -> list:
         """Run all tools in a stage concurrently, return raw per-tool results.
 
@@ -293,6 +317,7 @@ class Pipeline(CheckpointMixin):
                 asset_id=asset_id,
                 host=host,
                 intensity=intensity,
+                ws_seeds=ws_seeds or [],
             )
             for tool in tools
         ]
@@ -359,3 +384,13 @@ class Pipeline(CheckpointMixin):
                 extra={"classified": classified_count},
             )
         return classified_count
+
+    async def _fetch_ws_seeds(self, target_id: int) -> list[str]:
+        """Return all websocket asset URLs discovered for target_id so far."""
+        async with get_session() as session:
+            stmt = select(Asset.asset_value).where(
+                Asset.target_id == target_id,
+                Asset.asset_type == "websocket",
+            )
+            result = await session.execute(stmt)
+            return [row[0] for row in result.all()]
