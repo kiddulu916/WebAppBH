@@ -59,9 +59,6 @@ async def test_form_mapper_processes_more_than_20_urls():
         return '<form action="/submit" method="POST"><input name="email"></form>'
 
     # Patch DB query to return 25 URL assets
-    from contextlib import asynccontextmanager
-    from unittest.mock import MagicMock
-
     mock_result = MagicMock()
     mock_result.all.return_value = url_assets
     mock_execute = AsyncMock(return_value=mock_result)
