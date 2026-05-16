@@ -318,3 +318,98 @@ async def test_katana_returns_crawl_result_with_error_on_subprocess_failure():
     assert result.error is not None
     assert "timed out" in result.error
     assert result.urls == []
+
+
+# ---------------------------------------------------------------------------
+# Hakrawler unit tests
+# ---------------------------------------------------------------------------
+
+from workers.info_gathering.tools.hakrawler import Hakrawler
+
+
+@pytest.mark.anyio
+async def test_hakrawler_uses_host_not_base_domain():
+    """Hakrawler must crawl `host` kwarg, not target.base_domain."""
+    tool = Hakrawler()
+    captured_cmds: list[list[str]] = []
+
+    async def mock_subprocess(cmd, **kwargs):
+        captured_cmds.append(cmd)
+        return ""
+
+    with patch.object(tool, "run_subprocess", side_effect=mock_subprocess), \
+         patch.object(tool, "save_asset", new=AsyncMock(return_value=1)):
+        await tool.execute(
+            target_id=1,
+            target=MagicMock(base_domain="base.com"),
+            host="api.base.com",
+            scope_manager=MagicMock(_in_scope_patterns=set()),
+        )
+
+    assert captured_cmds, "run_subprocess was never called"
+    all_args = " ".join(captured_cmds[0])
+    assert "api.base.com" in all_args
+    assert "https://base.com" not in all_args
+
+
+@pytest.mark.anyio
+async def test_hakrawler_intensity_medium_sets_depth_3():
+    tool = Hakrawler()
+    captured_cmds: list[list[str]] = []
+
+    async def mock_subprocess(cmd, **kwargs):
+        captured_cmds.append(cmd)
+        return ""
+
+    with patch.object(tool, "run_subprocess", side_effect=mock_subprocess), \
+         patch.object(tool, "save_asset", new=AsyncMock(return_value=1)):
+        await tool.execute(
+            target_id=1,
+            target=MagicMock(base_domain="example.com"),
+            host="example.com",
+            intensity="medium",
+            scope_manager=MagicMock(_in_scope_patterns=set()),
+        )
+
+    cmd = captured_cmds[0]
+    assert "-depth" in cmd
+    assert cmd[cmd.index("-depth") + 1] == "3"
+
+
+@pytest.mark.anyio
+async def test_hakrawler_returns_crawl_result():
+    """Hakrawler.execute must return a CrawlResult instance."""
+    tool = Hakrawler()
+
+    output = "https://example.com/page1\nhttps://example.com/page2\n"
+
+    with patch.object(tool, "run_subprocess", new=AsyncMock(return_value=output)), \
+         patch.object(tool, "save_asset", new=AsyncMock(return_value=1)):
+        result = await tool.execute(
+            target_id=1,
+            target=MagicMock(base_domain="example.com"),
+            host="example.com",
+            scope_manager=MagicMock(_in_scope_patterns=set()),
+        )
+
+    assert isinstance(result, CrawlResult)
+    assert result.tool == "hakrawler"
+    assert result.error is None
+    assert "https://example.com/page1" in result.urls
+
+
+@pytest.mark.anyio
+async def test_hakrawler_returns_error_on_subprocess_failure():
+    tool = Hakrawler()
+
+    with patch.object(tool, "run_subprocess", side_effect=TimeoutError("timeout")):
+        result = await tool.execute(
+            target_id=1,
+            target=MagicMock(base_domain="example.com"),
+            host="example.com",
+            scope_manager=MagicMock(_in_scope_patterns=set()),
+        )
+
+    assert isinstance(result, CrawlResult)
+    assert result.error is not None
+    assert result.urls == []
