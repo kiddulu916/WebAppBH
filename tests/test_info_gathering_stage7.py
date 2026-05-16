@@ -413,3 +413,189 @@ async def test_hakrawler_returns_error_on_subprocess_failure():
     assert isinstance(result, CrawlResult)
     assert result.error is not None
     assert result.urls == []
+
+
+# ---------------------------------------------------------------------------
+# ExecutionPathAnalyzer unit tests
+# ---------------------------------------------------------------------------
+
+from contextlib import asynccontextmanager
+
+from workers.info_gathering.tools.execution_path_analyzer import (
+    ExecutionPathAnalyzer,
+    _categorize,
+)
+
+
+def test_analyzer_categorizes_auth_flow_urls():
+    assert _categorize("https://example.com/login") == "auth_flow"
+
+
+def test_analyzer_categorizes_admin_panel_urls():
+    assert _categorize("https://example.com/admin/dashboard") == "admin_panel"
+
+
+def test_analyzer_categorizes_api_endpoint_urls():
+    assert _categorize("https://example.com/api/v1/users") == "api_endpoint"
+
+
+def test_analyzer_categorizes_websocket_urls():
+    assert _categorize("wss://example.com/ws") == "websocket"
+
+
+def test_analyzer_first_matching_bucket_wins():
+    # "wss://" appears first in _CATEGORIES (websocket), before "api_endpoint"
+    assert _categorize("wss://example.com/api/ws") == "websocket"
+
+
+def test_analyzer_categorizes_other_urls():
+    assert _categorize("https://example.com/some/page") == "other"
+
+
+@pytest.mark.anyio
+async def test_analyzer_writes_summary_observation_with_correct_asset_id():
+    analyzer = ExecutionPathAnalyzer(asset_id=99, target_id=1)
+
+    mock_obs_id = 42
+    captured_obs: list = []
+
+    mock_session = MagicMock()
+    mock_session.add = MagicMock(side_effect=lambda obs: captured_obs.append(obs))
+    mock_session.commit = AsyncMock()
+
+    async def set_obs_id(obs):
+        obs.id = mock_obs_id
+
+    mock_session.refresh = AsyncMock(side_effect=set_obs_id)
+
+    @asynccontextmanager
+    async def mock_get_session():
+        yield mock_session
+
+    with patch(
+        "workers.info_gathering.tools.execution_path_analyzer.get_session",
+        mock_get_session,
+    ):
+        result = await analyzer.write_summary(
+            [CrawlResult(tool="katana", urls=["https://example.com/page"])],
+            intensity="low",
+        )
+
+    assert result == mock_obs_id
+    assert len(captured_obs) == 1
+    assert captured_obs[0].asset_id == 99
+
+
+@pytest.mark.anyio
+async def test_analyzer_partial_true_when_both_crawlers_error():
+    analyzer = ExecutionPathAnalyzer(asset_id=1, target_id=1)
+
+    mock_session = MagicMock()
+    mock_session.add = MagicMock()
+    mock_session.commit = AsyncMock()
+
+    saved_tech_stack: list[dict] = []
+
+    async def capture_refresh(obs):
+        obs.id = 1
+        saved_tech_stack.append(obs.tech_stack)
+
+    mock_session.refresh = AsyncMock(side_effect=capture_refresh)
+
+    @asynccontextmanager
+    async def mock_get_session():
+        yield mock_session
+
+    crawl_results = [
+        CrawlResult(tool="katana", error="timeout"),
+        CrawlResult(tool="hakrawler", error="fail"),
+    ]
+
+    with patch(
+        "workers.info_gathering.tools.execution_path_analyzer.get_session",
+        mock_get_session,
+    ):
+        await analyzer.write_summary(crawl_results, intensity="low")
+
+    assert saved_tech_stack, "refresh was never called"
+    assert saved_tech_stack[0].get("partial") is True
+
+
+@pytest.mark.anyio
+async def test_analyzer_partial_true_when_one_crawler_errors():
+    analyzer = ExecutionPathAnalyzer(asset_id=1, target_id=1)
+
+    mock_session = MagicMock()
+    mock_session.add = MagicMock()
+    mock_session.commit = AsyncMock()
+
+    saved_tech_stack: list[dict] = []
+
+    async def capture_refresh(obs):
+        obs.id = 2
+        saved_tech_stack.append(obs.tech_stack)
+
+    mock_session.refresh = AsyncMock(side_effect=capture_refresh)
+
+    @asynccontextmanager
+    async def mock_get_session():
+        yield mock_session
+
+    crawl_results = [
+        CrawlResult(tool="katana", error="timeout"),
+        CrawlResult(tool="hakrawler", urls=["https://example.com/page"]),
+    ]
+
+    with patch(
+        "workers.info_gathering.tools.execution_path_analyzer.get_session",
+        mock_get_session,
+    ):
+        await analyzer.write_summary(crawl_results, intensity="low")
+
+    assert saved_tech_stack, "refresh was never called"
+    assert saved_tech_stack[0].get("partial") is True
+
+
+@pytest.mark.anyio
+async def test_analyzer_tool_breakdown_reflects_per_tool_counts():
+    analyzer = ExecutionPathAnalyzer(asset_id=1, target_id=1)
+
+    mock_session = MagicMock()
+    mock_session.add = MagicMock()
+    mock_session.commit = AsyncMock()
+
+    saved_tech_stack: list[dict] = []
+
+    async def capture_refresh(obs):
+        obs.id = 3
+        saved_tech_stack.append(obs.tech_stack)
+
+    mock_session.refresh = AsyncMock(side_effect=capture_refresh)
+
+    @asynccontextmanager
+    async def mock_get_session():
+        yield mock_session
+
+    crawl_results = [
+        CrawlResult(
+            tool="katana",
+            urls=["https://example.com/a", "https://example.com/b", "https://example.com/c"],
+        ),
+        CrawlResult(
+            tool="hakrawler",
+            urls=["https://example.com/x", "https://example.com/y"],
+        ),
+    ]
+
+    with patch(
+        "workers.info_gathering.tools.execution_path_analyzer.get_session",
+        mock_get_session,
+    ):
+        await analyzer.write_summary(crawl_results, intensity="medium")
+
+    assert saved_tech_stack, "refresh was never called"
+    breakdown = saved_tech_stack[0]["tool_breakdown"]
+    assert breakdown["katana"]["total"] == 3
+    assert breakdown["katana"]["errored"] is False
+    assert breakdown["hakrawler"]["total"] == 2
+    assert breakdown["hakrawler"]["errored"] is False
