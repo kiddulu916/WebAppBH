@@ -83,6 +83,6 @@ async def test_form_mapper_processes_more_than_20_urls():
         await tool.execute(target_id=1, target=target)
 
     # Should have processed all 26 URLs (25 from DB + 1 base domain prepended)
-    assert len(fetched_urls) > 20, (
-        f"FormMapper capped at {len(fetched_urls)} URLs — cap was not removed"
+    assert len(fetched_urls) == 26, (
+        f"FormMapper processed {len(fetched_urls)} URLs, expected 26"
     )
