@@ -34,8 +34,10 @@ class Hakrawler(InfoGatheringTool):
         for key, value in headers.items():
             cmd += ["-h", f"{key}: {value}"]
 
+        # ws_seeds are not forwarded to Hakrawler: its -url flag accepts a single seed
+        # and it performs no JS execution. Katana handles WebSocket seed crawling.
         try:
-            stdout = await self.run_subprocess(cmd, timeout=600, rate_limiter=rate_limiter)
+            stdout = await self.run_subprocess(cmd, rate_limiter=rate_limiter)
         except Exception as exc:
             return CrawlResult(tool="hakrawler", error=str(exc))
 
