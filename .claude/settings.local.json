@@ -16,7 +16,10 @@
       "Bash(python -m pytest tests/ -q --ignore=tests/e2e --ignore=tests/test_api_contract.py)",
       "Bash(python -m pytest tests/test_wstg_info06_form_mapper.py -q)",
       "Bash(python -m pytest tests/test_wstg_info06_form_mapper.py tests/test_info_gathering_stage7.py -v)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Skill(superpowers:systematic-debugging)",
+      "Bash(git stash *)",
+      "Skill(superpowers:receiving-code-review)"
     ]
   }
 }
