@@ -57,6 +57,7 @@ class FormMapper(InfoGatheringTool):
             return {"found": 0}
 
         rate_limiter = kwargs.get("rate_limiter")
+        scope_manager = kwargs.get("scope_manager")
 
         async with get_session() as session:
             rows = (await session.execute(
@@ -72,68 +73,72 @@ class FormMapper(InfoGatheringTool):
         ]
 
         saved = 0
-        for url, existing_asset_id in urls:
-            try:
-                await self.acquire_rate_limit(rate_limiter)
-                html = await self._fetch_html(url)
-                if not html:
-                    continue
-                parser = _FormParser(base_url=url)
-                parser.feed(html)
-                if not parser.forms:
-                    continue
+        async with aiohttp.ClientSession() as http:
+            for url, existing_asset_id in urls:
+                try:
+                    if scope_manager and not await self.scope_check(target_id, url, scope_manager):
+                        continue
+                    await self.acquire_rate_limit(rate_limiter)
+                    html = await self._fetch_html(http, url)
+                    if not html:
+                        continue
+                    parser = _FormParser(base_url=url)
+                    parser.feed(html)
+                    if not parser.forms:
+                        continue
 
-                page_asset_id = existing_asset_id or await self.save_asset(
-                    target_id, "form", url, "form_mapper",
-                )
-                if page_asset_id is None:
-                    async with get_session() as session:
-                        row = (await session.execute(
-                            select(Asset.id).where(
-                                Asset.target_id == target_id,
-                                Asset.asset_type == "form",
-                                Asset.asset_value == url,
-                            )
-                        )).first()
-                        page_asset_id = row[0] if row else None
-                if page_asset_id is None:
-                    continue
-
-                for form in parser.forms:
-                    await self.save_observation(
-                        asset_id=page_asset_id,
-                        tech_stack={
-                            "_probe": "form_mapper",
-                            "action": form["action"],
-                            "method": form["method"],
-                            "input_count": len(form["inputs"]),
-                            "hidden_fields": form["hidden_fields"],
-                        },
+                    page_asset_id = existing_asset_id or await self.save_asset(
+                        target_id, "form", url, "form_mapper",
                     )
-                    await self._write_parameters(page_asset_id, form)
-                saved += 1
-            except Exception as e:
-                logger.warning(f"FormMapper failed on {url}: {e}")
-                continue
+                    if page_asset_id is None:
+                        async with get_session() as session:
+                            row = (await session.execute(
+                                select(Asset.id).where(
+                                    Asset.target_id == target_id,
+                                    Asset.asset_type == "form",
+                                    Asset.asset_value == url,
+                                )
+                            )).first()
+                            page_asset_id = row[0] if row else None
+                    if page_asset_id is None:
+                        continue
+
+                    for form in parser.forms:
+                        await self.save_observation(
+                            asset_id=page_asset_id,
+                            tech_stack={
+                                "_probe": "form_mapper",
+                                "action": form["action"],
+                                "method": form["method"],
+                                "input_count": len(form["inputs"]),
+                                "hidden_fields": form["hidden_fields"],
+                            },
+                        )
+                        await self._write_parameters(page_asset_id, form)
+                    saved += 1
+                except Exception as e:
+                    logger.warning(f"FormMapper failed on {url}: {e}")
+                    continue
 
         return {"found": saved}
 
-    async def _fetch_html(self, url: str) -> str | None:
+    async def _fetch_html(self, http: aiohttp.ClientSession, url: str) -> str | None:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                    if resp.status == 200:
-                        return await resp.text()
+            async with http.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status == 200:
+                    return await resp.text()
         except Exception as e:
             logger.warning(f"FormMapper fetch failed for {url}: {e}")
         return None
 
     async def _write_parameters(self, asset_id: int, form: dict) -> None:
         async with get_session() as session:
+            seen: set[str] = set()
             for inp in form["inputs"]:
                 name = inp.get("name")
-                if not name:
+                if not name or name in seen:
                     continue
+                seen.add(name)
                 existing = (await session.execute(
                     select(Parameter).where(
                         Parameter.asset_id == asset_id,

@@ -145,3 +145,63 @@ class TestFormMapper:
             result = await mapper.execute(target_id=1, target=target)
 
         assert result == {"found": 0}
+
+    @pytest.mark.anyio
+    async def test_out_of_scope_urls_skipped(self):
+        """URLs excluded by scope_manager are not fetched."""
+        mapper = FormMapper()
+        target = MagicMock()
+        target.base_domain = "evil.com"
+        scope_manager = MagicMock()
+
+        fetch_calls: list[str] = []
+
+        async def fake_fetch(http, url):
+            fetch_calls.append(url)
+            return None
+
+        mapper._fetch_html = fake_fetch
+
+        with patch("workers.info_gathering.tools.form_mapper.get_session") as mock_gs, \
+             patch.object(mapper, "scope_check", new_callable=AsyncMock, return_value=False), \
+             patch("aiohttp.ClientSession") as mock_http_cls:
+            sess = AsyncMock()
+            mock_gs.return_value.__aenter__.return_value = sess
+            mock_gs.return_value.__aexit__.return_value = False
+            mock_result = AsyncMock()
+            mock_result.all = MagicMock(return_value=[])
+            sess.execute = AsyncMock(return_value=mock_result)
+            mock_http = AsyncMock()
+            mock_http_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+            mock_http_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await mapper.execute(target_id=1, target=target, scope_manager=scope_manager)
+
+        assert fetch_calls == []
+        assert result == {"found": 0}
+
+    @pytest.mark.anyio
+    async def test_write_parameters_seen_guard_prevents_duplicate_names(self):
+        """Two inputs with the same name in one form must not raise IntegrityError."""
+        mapper = FormMapper()
+        form = {
+            "inputs": [
+                {"name": "ids", "type": "hidden", "value": "1"},
+                {"name": "ids", "type": "hidden", "value": "2"},  # duplicate
+                {"name": "token", "type": "hidden", "value": "abc"},
+            ],
+            "action": "https://example.com/submit",
+        }
+
+        with patch("workers.info_gathering.tools.form_mapper.get_session") as mock_gs:
+            sess = AsyncMock()
+            mock_gs.return_value.__aenter__.return_value = sess
+            mock_gs.return_value.__aexit__.return_value = False
+            mock_result = AsyncMock()
+            mock_result.scalar_one_or_none = MagicMock(return_value=None)
+            sess.execute = AsyncMock(return_value=mock_result)
+
+            await mapper._write_parameters(asset_id=1, form=form)
+
+        # "ids" only added once (seen guard), "token" added once — total 2 adds
+        assert sess.add.call_count == 2

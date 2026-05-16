@@ -210,3 +210,42 @@ class TestEntryPointAggregatorExecute:
 
         mock_cons.assert_called_once_with(paramspider_asset)
         assert result["parameters"] == 1
+
+    @pytest.mark.anyio
+    async def test_out_of_scope_assets_skipped(self):
+        """Assets excluded by scope_manager are not fetched."""
+        agg = EntryPointAggregator()
+        scope_manager = MagicMock()
+
+        out_of_scope_asset = MagicMock()
+        out_of_scope_asset.id = 9
+        out_of_scope_asset.asset_value = "https://evil.com/page"
+        out_of_scope_asset.source_tool = "katana"
+
+        capture_calls: list[str] = []
+
+        async def fake_capture(http, url):
+            capture_calls.append(url)
+            return None
+
+        agg._capture_headers = fake_capture
+
+        with patch("workers.info_gathering.tools.entry_point_aggregator.get_session") as mock_gs, \
+             patch.object(agg, "scope_check", new_callable=AsyncMock, return_value=False), \
+             patch("aiohttp.ClientSession") as mock_http_cls:
+            sess = AsyncMock()
+            mock_gs.return_value.__aenter__.return_value = sess
+            mock_gs.return_value.__aexit__.return_value = False
+            mock_scalars = AsyncMock()
+            mock_scalars.all = MagicMock(return_value=[out_of_scope_asset])
+            mock_exec_result = AsyncMock()
+            mock_exec_result.scalars = MagicMock(return_value=mock_scalars)
+            sess.execute = AsyncMock(return_value=mock_exec_result)
+            mock_http = AsyncMock()
+            mock_http_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+            mock_http_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await agg.execute(target_id=1, scope_manager=scope_manager)
+
+        assert capture_calls == []
+        assert result == {"found": 0, "parameters": 0}

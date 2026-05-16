@@ -18,6 +18,7 @@ class EntryPointAggregator(InfoGatheringTool):
 
     async def execute(self, target_id: int, **kwargs) -> dict:
         rate_limiter = kwargs.get("rate_limiter")
+        scope_manager = kwargs.get("scope_manager")
 
         async with get_session() as session:
             assets = (await session.execute(
@@ -26,6 +27,12 @@ class EntryPointAggregator(InfoGatheringTool):
                     Asset.asset_type.in_(["url", "form"]),
                 )
             )).scalars().all()
+
+        if scope_manager:
+            assets = [
+                a for a in assets
+                if await self.scope_check(target_id, a.asset_value, scope_manager)
+            ]
 
         obs_count = 0
         param_count = 0
@@ -50,6 +57,7 @@ class EntryPointAggregator(InfoGatheringTool):
     async def _capture_headers(
         self, session: aiohttp.ClientSession, url: str,
     ) -> dict | None:
+        last_exc: Exception | None = None
         for method_name in ("head", "get"):
             try:
                 method = getattr(session, method_name)
@@ -61,9 +69,10 @@ class EntryPointAggregator(InfoGatheringTool):
                     if method_name == "head" and resp.status == 405:
                         continue
                     return self._extract_header_data(resp)
-            except Exception:
+            except Exception as exc:
+                last_exc = exc
                 continue
-        logger.warning(f"EntryPointAggregator: could not fetch {url}")
+        logger.warning(f"EntryPointAggregator: could not fetch {url}: {last_exc}")
         return None
 
     def _extract_header_data(self, resp) -> dict:

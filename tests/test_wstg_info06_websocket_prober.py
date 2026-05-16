@@ -85,6 +85,7 @@ class TestWebSocketProber:
             if c.kwargs.get("tech_stack", {}).get("upgrade_accepted")
         )
         assert obs_call.kwargs["tech_stack"]["path"] == "/ws"
+        assert obs_call.kwargs["tech_stack"]["status"] == 101
 
     @pytest.mark.anyio
     async def test_403_writes_observation_but_no_asset(self):

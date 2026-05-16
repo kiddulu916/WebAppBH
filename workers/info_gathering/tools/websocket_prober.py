@@ -17,6 +17,8 @@ WS_PATHS = [
     "/updates", "/notify", "/push", "/realtime", "/feed",
 ]
 
+_MAX_CONCURRENT_PROBES = 20
+
 
 def _ws_upgrade_headers() -> dict[str, str]:
     key = base64.b64encode(os.urandom(16)).decode()
@@ -59,9 +61,10 @@ class WebSocketProber(InfoGatheringTool):
                 if await self.scope_check(target_id, host, scope_manager)
             ]
 
+        sem = asyncio.Semaphore(_MAX_CONCURRENT_PROBES)
         async with aiohttp.ClientSession() as http:
             tasks = [
-                self._probe_host_path(http, target_id, host, host_asset_id, path, rate_limiter)
+                self._probe_host_path(http, target_id, host, host_asset_id, path, rate_limiter, sem)
                 for host, host_asset_id in hosts
                 for path in WS_PATHS
             ]
@@ -79,51 +82,53 @@ class WebSocketProber(InfoGatheringTool):
         host_asset_id: int,
         path: str,
         rate_limiter,
+        sem: asyncio.Semaphore,
     ) -> tuple[int, int]:
         """Probe a single host/path via HTTPS with HTTP fallback. Returns (confirmed, rejected)."""
-        await self.acquire_rate_limit(rate_limiter)
-        url = f"https://{host}{path}"
-        status, accepted = await self._probe(http, url)
-
-        if status == 0:
-            # HTTPS unreachable — try plain HTTP for hosts that don't terminate TLS
+        async with sem:
             await self.acquire_rate_limit(rate_limiter)
-            url = f"http://{host}{path}"
+            url = f"https://{host}{path}"
             status, accepted = await self._probe(http, url)
 
-        if accepted:
-            ws_asset_id = await self.save_asset(
-                target_id, "websocket", url, "websocket_prober",
-            )
-            if ws_asset_id is None:
-                ws_asset_id = await self._lookup_asset_id(target_id, url)
-            if ws_asset_id:
+            if status == 0:
+                # HTTPS unreachable — try plain HTTP for hosts that don't terminate TLS
+                await self.acquire_rate_limit(rate_limiter)
+                url = f"http://{host}{path}"
+                status, accepted = await self._probe(http, url)
+
+            if accepted:
+                ws_asset_id = await self.save_asset(
+                    target_id, "websocket", url, "websocket_prober",
+                )
+                if ws_asset_id is None:
+                    ws_asset_id = await self._lookup_asset_id(target_id, url)
+                if ws_asset_id:
+                    await self.save_observation(
+                        asset_id=ws_asset_id,
+                        tech_stack={
+                            "_probe": "websocket_prober",
+                            "status": status,
+                            "host": host,
+                            "path": path,
+                            "upgrade_accepted": True,
+                        },
+                    )
+                return (1, 0)
+
+            if status in (400, 403):
                 await self.save_observation(
-                    asset_id=ws_asset_id,
+                    asset_id=host_asset_id,
                     tech_stack={
                         "_probe": "websocket_prober",
-                        "status": 101,
+                        "status": status,
                         "host": host,
                         "path": path,
-                        "upgrade_accepted": True,
+                        "upgrade_rejected": True,
                     },
                 )
-            return (1, 0)
+                return (0, 1)
 
-        if status in (400, 403):
-            await self.save_observation(
-                asset_id=host_asset_id,
-                tech_stack={
-                    "_probe": "websocket_prober",
-                    "status": status,
-                    "host": host,
-                    "path": path,
-                    "upgrade_rejected": True,
-                },
-            )
-            return (0, 1)
-
-        return (0, 0)
+            return (0, 0)
 
     async def _probe(
         self, session: aiohttp.ClientSession, url: str,
