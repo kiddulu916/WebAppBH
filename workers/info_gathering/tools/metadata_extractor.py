@@ -34,7 +34,7 @@ class MetadataExtractor(InfoGatheringTool):
         doc_urls = [u for u in urls if any(u.lower().endswith(ext) for ext in
                     ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'])]
 
-        for url in doc_urls[:10]:  # Limit to 10 docs
+        for url in doc_urls:
             try:
                 metadata = await self._extract_metadata(url)
                 if metadata:

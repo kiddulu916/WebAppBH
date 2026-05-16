@@ -33,7 +33,7 @@ class Nmap(InfoGatheringTool):
             return
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("\n".join(targets[:50]))  # Limit to 50 targets
+            f.write("\n".join(targets))
             input_file = f.name
 
         try:

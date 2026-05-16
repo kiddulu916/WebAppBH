@@ -32,7 +32,7 @@ class VHostProber(InfoGatheringTool):
 
         # Probe each subdomain for unique responses
         base_url = f"https://{target.base_domain}"
-        for subdomain in subdomains[:20]:  # Limit to 20
+        for subdomain in subdomains:
             try:
                 async with aiohttp.ClientSession() as session:
                     headers = {"Host": subdomain}

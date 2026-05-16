@@ -44,7 +44,7 @@ class RedirectBodyInspector(InfoGatheringTool):
         if not candidates:
             candidates = await self._urls_from_root(target.base_domain, target_id)
 
-        for url, asset_id in candidates[:50]:
+        for url, asset_id in candidates:
             await self._inspect(url, asset_id, target_id)
 
     async def _get_url_assets(self, target_id: int) -> list[tuple[str, int]]:
@@ -92,7 +92,7 @@ class RedirectBodyInspector(InfoGatheringTool):
 
         hrefs = re.findall(r'href=["\']([^"\'#?][^"\']*)["\']', html)
         results = []
-        for href in hrefs[:50]:
+        for href in hrefs:
             if href.startswith("//"):
                 full_url = "https:" + href
             elif href.startswith("http"):

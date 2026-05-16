@@ -133,7 +133,7 @@ class JsSecretScanner(InfoGatheringTool):
 
         hrefs = re.findall(r'<script[^>]+src=["\']([^"\']+\.js)["\']', html)
         results = []
-        for href in hrefs[:20]:
+        for href in hrefs:
             if href.startswith("//"):
                 full_url = "https:" + href
             elif href.startswith("http"):
@@ -160,7 +160,7 @@ class JsSecretScanner(InfoGatheringTool):
         downloaded = []
         path_to_asset: dict[str, int] = {}
         async with aiohttp.ClientSession() as http:
-            for i, (url, asset_id) in enumerate(candidates[:20]):
+            for i, (url, asset_id) in enumerate(candidates):
                 try:
                     async with http.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                         if resp.status == 200:
