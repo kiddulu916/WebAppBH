@@ -1228,6 +1228,85 @@ async def list_targets():
 
 
 # ---------------------------------------------------------------------------
+# GET /api/v1/path_nodes — tree for a target (optionally scoped to asset)
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/path_nodes")
+async def list_path_nodes(
+    target_id: int = Query(...),
+    asset_id: Optional[int] = Query(None),
+):
+    from lib_webbh.database import PathNode
+    async with get_session() as session:
+        stmt = select(PathNode).where(PathNode.target_id == target_id).order_by(PathNode.full_path)
+        result = await session.execute(stmt)
+        nodes = result.scalars().all()
+
+    node_map: dict[int, dict] = {}
+    for n in nodes:
+        node_map[n.id] = {
+            "id": n.id,
+            "parent_id": n.parent_id,
+            "asset_id": n.asset_id,
+            "path_segment": n.path_segment,
+            "full_path": n.full_path,
+            "node_type": n.node_type,
+            "source_tool": n.source_tool,
+            "children": [],
+        }
+
+    roots: list[dict] = []
+    for node in node_map.values():
+        pid = node["parent_id"]
+        if pid is None or pid not in node_map:
+            roots.append(node)
+        else:
+            node_map[pid]["children"].append(node)
+
+    return {"nodes": roots}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/path_nodes/{node_id} — single node with linked asset detail
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/path_nodes/{node_id}")
+async def get_path_node(node_id: int):
+    from lib_webbh.database import PathNode, Asset as AssetModel, Vulnerability as VulnModel
+    async with get_session() as session:
+        node = await session.get(PathNode, node_id)
+        if node is None:
+            raise HTTPException(status_code=404, detail="Node not found")
+
+        asset_detail = None
+        if node.asset_id:
+            asset = await session.get(AssetModel, node.asset_id)
+            if asset:
+                vuln_result = await session.execute(
+                    select(func.count(), func.min(VulnModel.severity))
+                    .where(VulnModel.asset_id == node.asset_id)
+                )
+                vuln_row = vuln_result.one()
+                asset_detail = {
+                    "id": asset.id,
+                    "asset_type": asset.asset_type,
+                    "asset_value": asset.asset_value,
+                    "scope_classification": asset.scope_classification,
+                    "source_tool": asset.source_tool,
+                    "created_at": asset.created_at.isoformat() if asset.created_at else None,
+                    "vuln_count": vuln_row[0] or 0,
+                    "tech": getattr(asset, "tech", None),
+                }
+
+    return {
+        "id": node.id,
+        "path_segment": node.path_segment,
+        "full_path": node.full_path,
+        "node_type": node.node_type,
+        "source_tool": node.source_tool,
+        "asset": asset_detail,
+    }
+
+
+# ---------------------------------------------------------------------------
 # GET /api/v1/assets — list assets for a target (with locations)
 # ---------------------------------------------------------------------------
 @app.get("/api/v1/assets")

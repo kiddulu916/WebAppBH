@@ -112,6 +112,35 @@ interface AssetsResponse {
   assets: AssetWithLocations[];
 }
 
+export interface PathNodeTree {
+  id: number;
+  parent_id: number | null;
+  asset_id: number | null;
+  path_segment: string;
+  full_path: string;
+  node_type: string | null;
+  source_tool: string | null;
+  children: PathNodeTree[];
+}
+
+export interface PathNodeDetail {
+  id: number;
+  path_segment: string;
+  full_path: string;
+  node_type: string | null;
+  source_tool: string | null;
+  asset: {
+    id: number;
+    asset_type: string;
+    asset_value: string;
+    scope_classification: string;
+    source_tool: string | null;
+    created_at: string | null;
+    vuln_count: number;
+    tech: Record<string, unknown> | null;
+  } | null;
+}
+
 /* ------------------------------------------------------------------ */
 /* Worker Health                                                       */
 /* ------------------------------------------------------------------ */
@@ -332,6 +361,36 @@ export const api = {
     let qs = `?target_id=${targetId}`;
     if (classification) qs += `&classification=${classification}`;
     return request<AssetsResponse>(`/api/v1/assets${qs}`);
+  },
+
+  async getAllAssets(
+    targetId: number,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<AssetWithLocations[]> {
+    const PAGE_SIZE = 500;
+    const first = await request<AssetsResponse>(
+      `/api/v1/assets?target_id=${targetId}&page=1&page_size=${PAGE_SIZE}`,
+    );
+    const all: AssetWithLocations[] = [...first.assets];
+    onProgress?.(all.length, first.total);
+
+    const totalPages = Math.ceil(first.total / PAGE_SIZE);
+    for (let page = 2; page <= totalPages; page++) {
+      const res = await request<AssetsResponse>(
+        `/api/v1/assets?target_id=${targetId}&page=${page}&page_size=${PAGE_SIZE}`,
+      );
+      all.push(...res.assets);
+      onProgress?.(all.length, first.total);
+    }
+    return all;
+  },
+
+  getPathNodes(targetId: number) {
+    return request<{ nodes: PathNodeTree[] }>(`/api/v1/path_nodes?target_id=${targetId}`);
+  },
+
+  getPathNode(nodeId: number) {
+    return request<PathNodeDetail>(`/api/v1/path_nodes/${nodeId}`);
   },
 
   updateAssetClassification(assetId: number, classification: string) {
