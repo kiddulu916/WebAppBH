@@ -74,8 +74,7 @@ class MetaGeneratorProbe(InfoGatheringTool):
                 ) as resp:
                     html = await resp.text(errors="replace")
         except Exception as exc:
-            logger.warning("meta_generator_probe failed",
-                           extra={"host": host, "error": str(exc)})
+            logger.warning("meta_generator_probe failed", host=host, error=str(exc))
             return ProbeResult(probe="meta_generator", obs_id=None, signals={}, error=str(exc))
 
         parser = _PageParser()

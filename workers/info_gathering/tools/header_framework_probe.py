@@ -51,8 +51,7 @@ class HeaderFrameworkProbe(InfoGatheringTool):
                 ) as resp:
                     headers = {k.lower(): v for k, v in resp.headers.items()}
         except Exception as exc:
-            logger.warning("header_framework_probe failed",
-                           extra={"host": host, "error": str(exc)})
+            logger.warning("header_framework_probe failed", host=host, error=str(exc))
             return ProbeResult(probe="header_framework", obs_id=None, signals={}, error=str(exc))
 
         signals: dict[str, Any] = {"framework": [], "cms": [], "language": []}
