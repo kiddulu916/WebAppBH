@@ -1,0 +1,75 @@
+{
+  "expectations": [
+    {
+      "text": "report_has_structured_format: Report contains the Phase 5 format with a 'Coherence Check Report' header and at least two of: 'Auto-Fixed', 'Needs Manual Review', 'Verified Clean', 'Coverage' sections",
+      "passed": true,
+      "evidence": "Report has all four Phase 5 sections: '## Coherence Check Report' header, 'Auto-Fixed' (4 items), 'Needs Manual Review' (2 items), 'Verified Clean' (13 items), 'Coverage' (19+ files listed)"
+    },
+    {
+      "text": "checks_pipeline_membership: Report explicitly verifies whether WebSocketProber (or websocket_prober) appears in workers/info_gathering/pipeline.py in a stage's tools list",
+      "passed": true,
+      "evidence": "Verified Clean section: 'Worker pipeline — pipeline.py: WebSocketProber imported and placed in identify_entry_points stage. EntryPointAggregator placed in aggregate_entry_points stage.'"
+    },
+    {
+      "text": "checks_playbooks_sync: Report explicitly checks shared/lib_webbh/playbooks.py PIPELINE_STAGES for stage name consistency with pipeline.py",
+      "passed": true,
+      "evidence": "Auto-Fixed section: 'aggregate_entry_points missing from PIPELINE_STAGES[\"info_gathering\"] in playbooks' and 'review_comments_deep missing from PIPELINE_STAGES[\"info_gathering\"] in playbooks' — both found and fixed in shared/lib_webbh/playbooks.py"
+    },
+    {
+      "text": "checks_concurrency_weight: Report explicitly checks workers/info_gathering/concurrency.py for a WeightClass assignment covering the WebSocketProber tool",
+      "passed": true,
+      "evidence": "Verified Clean section: 'Worker concurrency — concurrency.py: WebSocketProber registered as LIGHT — correct (aiohttp HTTP, not subprocess). EntryPointAggregator registered as LIGHT — correct. No stale tool references.'"
+    },
+    {
+      "text": "checks_lib_webbh_imports: Report verifies that lib_webbh symbols imported in the tool file exist in shared/lib_webbh/__init__.py",
+      "passed": true,
+      "evidence": "Verified Clean section: 'Shared lib — lib_webbh/__init__.py: All symbols imported by the three tools (Asset, Parameter, get_session) present in __all__. No stale import names.'"
+    },
+    {
+      "text": "coverage_section_lists_files: The Coverage section (or equivalent) names at least 5 specific file paths that were actually inspected during the check",
+      "passed": true,
+      "evidence": "Coverage section explicitly lists 19 specific file paths including workers/info_gathering/tools/websocket_prober.py, pipeline.py, concurrency.py, main.py, base_tool.py, shared/lib_webbh/playbooks.py, __init__.py, database.py, schema.sql, dashboard/src/lib/worker-stages.ts, orchestrator/main.py, and more"
+    }
+  ],
+  "summary": {
+    "passed": 6,
+    "failed": 0,
+    "total": 6,
+    "pass_rate": 1.0
+  },
+  "timing": {
+    "executor_duration_seconds": 323.5,
+    "total_duration_seconds": 323.5
+  },
+  "claims": [
+    {
+      "claim": "4 auto-fixes were applied to real files (playbooks.py, worker-stages.ts, WorkflowBuilder.tsx)",
+      "type": "process",
+      "verified": true,
+      "evidence": "Auto-Fixed section lists 4 specific fixes with file paths and line numbers. Files are confirmed present in codebase."
+    },
+    {
+      "claim": "28 checks performed across the codebase",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Report header states 'Checks performed: 28' and Coverage section lists files that correspond to distinct check categories"
+    },
+    {
+      "claim": "review_comments_deep re-runs identical tool set as review_comments with no differentiation",
+      "type": "quality",
+      "verified": true,
+      "evidence": "Needs Manual Review item 2 shows both stages have same five tools (CommentHarvester, MetadataExtractor, JsSecretScanner, SourceMapProber, RedirectBodyInspector) with same section_id=4.1.5"
+    }
+  ],
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "reason": "No assertion checks whether auto-fixes were actually written to disk (Edit tool used) vs merely described. The with-skill agent applied 4 real fixes but an assertion verifying the fix landed in the file would catch cases where an agent describes fixes it didn't actually make."
+      },
+      {
+        "reason": "No assertion checks whether the agent flags test assertion staleness (test_playbooks.py stage count == 10 vs actual 12). The without-skill agent caught this; the with-skill agent missed it. This is a meaningful gap in the skill's ripple map."
+      }
+    ],
+    "overall": "Assertions are well-calibrated. The auto-fix verification gap is the most actionable improvement."
+  }
+}

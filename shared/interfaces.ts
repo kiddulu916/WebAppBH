@@ -57,6 +57,9 @@ export interface Asset extends Timestamps {
   asset_type: AssetType;
   asset_value: string;
   source_tool: string | null;
+  scope_classification: string;
+  associated_with_id: number | null;
+  association_method: string | null;
 }
 
 export interface Identity extends Timestamps {

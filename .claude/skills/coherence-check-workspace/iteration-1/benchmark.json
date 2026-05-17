@@ -1,0 +1,181 @@
+{
+  "metadata": {
+    "skill_name": "coherence-check",
+    "skill_path": ".claude/skills/coherence-check/SKILL.md",
+    "executor_model": "claude-sonnet-4-6",
+    "analyzer_model": "claude-sonnet-4-6",
+    "timestamp": "2026-05-16T00:00:00Z",
+    "evals_run": [1, 2, 3],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 1,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 323.5,
+        "tokens": 80970,
+        "tool_calls": 53,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "report_has_structured_format", "passed": true, "evidence": "All four Phase 5 sections present: Auto-Fixed (4), Needs Manual Review (2), Verified Clean (13), Coverage (19+ files)"},
+        {"text": "checks_pipeline_membership", "passed": true, "evidence": "Verified Clean: 'WebSocketProber imported and placed in identify_entry_points stage'"},
+        {"text": "checks_playbooks_sync", "passed": true, "evidence": "Auto-Fixed: both missing stages found and fixed in shared/lib_webbh/playbooks.py"},
+        {"text": "checks_concurrency_weight", "passed": true, "evidence": "Verified Clean: 'WebSocketProber registered as LIGHT — correct'"},
+        {"text": "checks_lib_webbh_imports", "passed": true, "evidence": "Verified Clean: 'All symbols imported by the three tools present in __all__'"},
+        {"text": "coverage_section_lists_files", "passed": true, "evidence": "Coverage section lists 19 specific file paths with full paths and line references"}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.5,
+        "passed": 3,
+        "failed": 3,
+        "total": 6,
+        "time_seconds": 416.6,
+        "tokens": 89683,
+        "tool_calls": 78,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "report_has_structured_format", "passed": false, "evidence": "Ad-hoc FAIL/PASS table format; no Phase 5 sections (Auto-Fixed, Verified Clean, Coverage)"},
+        {"text": "checks_pipeline_membership", "passed": true, "evidence": "Table row: 'Pipeline wiring — imported, in identify_entry_points stage: PASS'"},
+        {"text": "checks_playbooks_sync", "passed": true, "evidence": "Checked playbooks.py — but saw post-fix codebase (with_skill agent had already applied fixes)"},
+        {"text": "checks_concurrency_weight", "passed": true, "evidence": "Table row: 'concurrency.py — WebSocketProber: LIGHT registered: PASS'"},
+        {"text": "checks_lib_webbh_imports", "passed": false, "evidence": "Not mentioned in PASS/FAIL table; report file missing from disk for verification"},
+        {"text": "coverage_section_lists_files", "passed": false, "evidence": "No Coverage section present in report"}
+      ],
+      "notes": ["IMPORTANT: Baseline ran after with_skill agent had already applied 4 fixes (playbooks.py, worker-stages.ts, WorkflowBuilder.tsx). Assertions 3-4 may have passed due to this, not genuine baseline coverage. Baseline found a genuine miss from with_skill: stale test_playbooks.py count assertions (== 10 should be 12)."]
+    },
+    {
+      "eval_id": 2,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 297.4,
+        "tokens": 63985,
+        "tool_calls": 42,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "report_has_structured_format", "passed": true, "evidence": "Full Phase 5 format: Coherence Check Report header, Phase 1, Auto-Fixed (None), Needs Manual Review (5), Verified Clean, Coverage (20+ files)"},
+        {"text": "searches_worker_files", "passed": true, "evidence": "Coverage: workers/business_logic/tools/*.py (9 files), workers/info_gathering/tools/*.py (14+ files), plus 5 other worker paths with line-level evidence"},
+        {"text": "checks_schema_sql", "passed": true, "evidence": "MISMATCH-1: schema.sql assets table missing 3 ORM columns. MISMATCH-2: schema.sql job_state missing last_completed_stage. Found via systematic ORM-vs-DDL comparison."},
+        {"text": "checks_database_py", "passed": true, "evidence": "Phase 1 explicitly reads database.py class Asset lines 233-266 and enumerates all columns"},
+        {"text": "checks_dashboard_types", "passed": true, "evidence": "MISMATCH-3: shared/interfaces.ts Asset interface missing 4 ORM fields. dashboard/src/types/schema.ts also analyzed."},
+        {"text": "coverage_section_lists_files", "passed": true, "evidence": "Coverage section lists 20+ paths including database.py, schema.sql, interfaces.ts, 5 dashboard pages, orchestrator/main.py, 5 worker directories"}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.667,
+        "passed": 4,
+        "failed": 2,
+        "total": 6,
+        "time_seconds": 309.8,
+        "tokens": 62338,
+        "tool_calls": 37,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "report_has_structured_format", "passed": false, "evidence": "Uses Executive Summary / Findings by Layer / Root Cause Analysis — not Phase 5 format"},
+        {"text": "searches_worker_files", "passed": true, "evidence": "Section 5 shows 6 specific worker files with line numbers; correctly concludes no worker uses asset.url"},
+        {"text": "checks_schema_sql", "passed": true, "evidence": "Section 2 shows full CREATE TABLE DDL for assets and confirms no url/endpoint_url column"},
+        {"text": "checks_database_py", "passed": true, "evidence": "Section 1 lists all Asset model columns (lines 243-255) explicitly"},
+        {"text": "checks_dashboard_types", "passed": true, "evidence": "Section 4 shows Asset TypeScript interface fields and confirms no url field on Asset"},
+        {"text": "coverage_section_lists_files", "passed": false, "evidence": "No dedicated Coverage section; files discussed inline without consolidated inventory"}
+      ],
+      "notes": ["Baseline missed real ORM-vs-DDL schema drift (3 missing columns in assets, 1 in job_state) that with_skill found via systematic comparison."]
+    },
+    {
+      "eval_id": 3,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 364.8,
+        "tokens": 58407,
+        "tool_calls": 34,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "report_has_structured_format", "passed": true, "evidence": "Full Phase 5: Coherence Check Report header, Auto-Fixed (None + explanation), Needs Manual Review (9), Additional Pre-existing Drift, Verified Clean, Summary Table, Coverage"},
+        {"text": "checks_playbooks_py", "passed": true, "evidence": "MISMATCH 1: playbooks.py still has enumerate_applications — stage filter would silently drop renamed stage. MISMATCH 2: disabled_stages preset mismatch."},
+        {"text": "checks_e2e_tests", "passed": true, "evidence": "MISMATCH 5-7: 5 E2E testid selectors in 3 spec files plus 2 additional text assertions — all cited with exact file:line"},
+        {"text": "checks_both_stage_names", "passed": true, "evidence": "Phase 1 confirms git diff shows no rename; report traces what breaks if only pipeline.py had new name, confirming downstream still has old name"},
+        {"text": "identifies_pipeline_current_state", "passed": true, "evidence": "Verified Clean: enumerate_applications has section_id=4.1.4, correct tools list (9 tools), all imports present — read from actual file"},
+        {"text": "coverage_section_lists_files", "passed": true, "evidence": "Coverage section lists 12 specific files with line-level references across all 4 layers"}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.667,
+        "passed": 4,
+        "failed": 2,
+        "total": 6,
+        "time_seconds": 159.0,
+        "tokens": 41341,
+        "tool_calls": 35,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "report_has_structured_format", "passed": false, "evidence": "Uses Executive Summary / Search Results / Consistency Analysis / What Would Need to Change structure — not Phase 5 format"},
+        {"text": "checks_playbooks_py", "passed": true, "evidence": "Section 2: PIPELINE_STAGES lists enumerate_applications at position 4; both disabled_stages presets noted. Pre-existing 12 vs 10 stage drift also found."},
+        {"text": "checks_e2e_tests", "passed": true, "evidence": "Search Results table lists all 4 E2E spec files with line numbers for testid and text assertions"},
+        {"text": "checks_both_stage_names", "passed": true, "evidence": "Explicit 'New name' and 'Old name' sub-sections; new name found only in evals.json, old name in 11 source files"},
+        {"text": "identifies_pipeline_current_state", "passed": true, "evidence": "Section 1: 'pipeline still defines the stage as enumerate_applications (line 78). The rename has not been applied.'"},
+        {"text": "coverage_section_lists_files", "passed": false, "evidence": "No Coverage section. 'What Would Need to Change' table lists files needing updates, not files inspected."}
+      ],
+      "notes": ["Baseline uniquely found shared/config/1/playbook.json (serialized artifact). With_skill additionally found worker-stages.ts lists review_comments_deep but playbooks.py does not. Baseline completed in 159s vs 364s for with_skill."]
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {"mean": 1.0, "stddev": 0.0, "min": 1.0, "max": 1.0},
+      "time_seconds": {"mean": 328.6, "stddev": 34.1, "min": 297.4, "max": 364.8},
+      "tokens": {"mean": 67787, "stddev": 11619, "min": 58407, "max": 80970}
+    },
+    "without_skill": {
+      "pass_rate": {"mean": 0.611, "stddev": 0.096, "min": 0.5, "max": 0.667},
+      "time_seconds": {"mean": 295.1, "stddev": 131.3, "min": 159.0, "max": 416.6},
+      "tokens": {"mean": 64454, "stddev": 24786, "min": 41341, "max": 89683}
+    },
+    "delta": {
+      "pass_rate": "+0.39",
+      "time_seconds": "+33.5",
+      "tokens": "+3333"
+    }
+  },
+  "notes": [
+    "Eval 1 comparison partially confounded: with_skill applied 4 real fixes before without_skill ran — baseline saw post-fix codebase for playbooks.py/worker-stages.ts/WorkflowBuilder.tsx.",
+    "Key skill advantage in eval 2: systematic ORM-vs-DDL comparison found 4 real mismatches (3 missing assets columns, 1 missing job_state column) that baseline missed entirely.",
+    "Skill always produces Phase 5 format + Coverage section; baseline never does. Structural auditability is a consistent win.",
+    "Skill gap found: test assertion staleness (test_playbooks.py count == 10 vs actual 12) caught by baseline but missed by skill — ripple map needs a check for unit tests asserting stage counts.",
+    "With_skill correctly declined auto-fix on hypothetical scenarios — correct judgment in the auto-fix decision logic."
+  ]
+}

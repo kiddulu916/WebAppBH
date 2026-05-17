@@ -1,0 +1,63 @@
+{
+  "expectations": [
+    {
+      "text": "report_has_structured_format: Report contains the Phase 5 format with a 'Coherence Check Report' header and at least two of: 'Auto-Fixed', 'Needs Manual Review', 'Verified Clean', 'Coverage' sections",
+      "passed": false,
+      "evidence": "Report uses ad-hoc FAIL/PASS table format with 'Executive Summary' and table rows. No Phase 5 sections (Auto-Fixed, Verified Clean, Coverage) present. Has 'FAIL' and 'Everything else is clean' but not the structured Phase 5 schema."
+    },
+    {
+      "text": "checks_pipeline_membership: Report explicitly verifies whether WebSocketProber (or websocket_prober) appears in workers/info_gathering/pipeline.py in a stage's tools list",
+      "passed": true,
+      "evidence": "Table row: 'Pipeline wiring — imported, in identify_entry_points stage, section_id=4.1.6 — PASS'"
+    },
+    {
+      "text": "checks_playbooks_sync: Report explicitly checks shared/lib_webbh/playbooks.py PIPELINE_STAGES for stage name consistency with pipeline.py",
+      "passed": true,
+      "evidence": "Table row: 'playbooks.py PIPELINE_STAGES[\"info_gathering\"] — all 12 stages, correct order — PASS'. Note: this passed because the with-skill agent had already fixed playbooks.py before this baseline ran, creating a confounded comparison."
+    },
+    {
+      "text": "checks_concurrency_weight: Report explicitly checks workers/info_gathering/concurrency.py for a WeightClass assignment covering the WebSocketProber tool",
+      "passed": true,
+      "evidence": "Table row: 'concurrency.py — \"WebSocketProber\": \"LIGHT\" registered — PASS'"
+    },
+    {
+      "text": "checks_lib_webbh_imports: Report verifies that lib_webbh symbols imported in the tool file exist in shared/lib_webbh/__init__.py",
+      "passed": false,
+      "evidence": "No row in the PASS/FAIL table references lib_webbh/__init__.py import verification. The report file is also missing from disk (agent did not write it), so this cannot be confirmed from file content."
+    },
+    {
+      "text": "coverage_section_lists_files: The Coverage section (or equivalent) names at least 5 specific file paths that were actually inspected during the check",
+      "passed": false,
+      "evidence": "Report has no Coverage section. Files checked are implied by the PASS/FAIL table rows but not listed as an explicit inventory of inspected paths."
+    }
+  ],
+  "summary": {
+    "passed": 3,
+    "failed": 3,
+    "total": 6,
+    "pass_rate": 0.5
+  },
+  "timing": {
+    "executor_duration_seconds": 416.6,
+    "total_duration_seconds": 416.6
+  },
+  "claims": [
+    {
+      "claim": "Stale test_playbooks.py stage count assertion found (== 10 should be == 12)",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Notification summary explicitly cites test_playbooks.py lines 26 and 112 asserting len == 10 while pipeline has 12 stages. This is a genuine CI-breaking finding that the with-skill agent missed."
+    }
+  ],
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "reason": "CRITICAL: The without-skill agent ran after the with-skill agent had already applied 4 fixes to playbooks.py, worker-stages.ts, and WorkflowBuilder.tsx. Assertions 3 (playbooks sync) passed because the fixes were already in place — not because the baseline agent found and verified them. Future evals should snapshot the codebase state before running both agents, or run baseline first."
+      },
+      {
+        "reason": "The without-skill agent found a genuine CI-breaking issue (test_playbooks.py stale count == 10) that the with-skill agent missed. This reveals a gap in the skill: the ripple map should explicitly check unit test files that assert stage counts when new stages are added."
+      }
+    ],
+    "overall": "The confounded evaluation (baseline saw post-fix code) limits the comparison's validity for eval 1. The baseline still provides useful signal: it correctly found the CI-breaking test staleness that the skill missed."
+  }
+}

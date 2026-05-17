@@ -1557,7 +1557,7 @@ async def create_report(target_id: int, body: ReportCreate):
         if has_vulns is None:
             raise HTTPException(status_code=400, detail="No vulnerabilities found for this target")
 
-    msg_id = await push_task("report_queue", {
+    msg_id = await push_task("reporting_queue", {
         "target_id": target_id,
         "formats": body.formats,
         "platform": body.platform,

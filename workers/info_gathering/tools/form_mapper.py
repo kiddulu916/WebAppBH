@@ -132,25 +132,34 @@ class FormMapper(InfoGatheringTool):
         return None
 
     async def _write_parameters(self, asset_id: int, form: dict) -> None:
+        seen: set[str] = set()
+        candidates: list[tuple[str, str | None]] = []
+        for inp in form["inputs"]:
+            name = inp.get("name")
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            candidates.append((name, inp.get("value")))
+
+        if not candidates:
+            return
+
+        names = [name for name, _ in candidates]
         async with get_session() as session:
-            seen: set[str] = set()
-            for inp in form["inputs"]:
-                name = inp.get("name")
-                if not name or name in seen:
-                    continue
-                seen.add(name)
-                existing = (await session.execute(
-                    select(Parameter).where(
+            existing_names = set(
+                (await session.execute(
+                    select(Parameter.param_name).where(
                         Parameter.asset_id == asset_id,
-                        Parameter.param_name == name,
+                        Parameter.param_name.in_(names),
                     )
-                )).scalar_one_or_none()
-                if existing is not None:
-                    continue
-                session.add(Parameter(
-                    asset_id=asset_id,
-                    param_name=name,
-                    param_value=inp.get("value"),
-                    source_url=form["action"],
-                ))
+                )).scalars().all()
+            )
+            for name, value in candidates:
+                if name not in existing_names:
+                    session.add(Parameter(
+                        asset_id=asset_id,
+                        param_name=name,
+                        param_value=value,
+                        source_url=form["action"],
+                    ))
             await session.commit()

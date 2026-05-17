@@ -91,7 +91,6 @@ class WebSocketProber(InfoGatheringTool):
             status, accepted = await self._probe(http, url)
 
             if status == 0:
-                # HTTPS unreachable — try plain HTTP for hosts that don't terminate TLS
                 await self.acquire_rate_limit(rate_limiter)
                 url = f"http://{host}{path}"
                 status, accepted = await self._probe(http, url)

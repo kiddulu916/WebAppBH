@@ -6,13 +6,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 WebAppBH is a modular, event-driven Bug Bounty Framework. The stack is PostgreSQL + Redis + a FastAPI orchestrator + 18 active Docker workers (plus one legacy stub dir) + a Next.js dashboard + an Ollama sidecar for the `reasoning_worker`. The codebase was restructured from 7 generic workers (recon/api/fuzzing/cloud/etc.) into WSTG-aligned specialized workers via the M1–M11 restructure (now complete — legacy worker dirs and Dockerfiles have been removed).
 
+## Three-layer coherence rule
+
+Whenever a pipeline stage is added, renamed, or removed in any worker, **three files must be kept in sync**:
+
+1. `workers/{worker}/pipeline.py` — defines the `Stage` objects that actually run
+2. `shared/lib_webbh/playbooks.py` → `PIPELINE_STAGES` dict — controls which stages each playbook enables
+3. `dashboard/src/lib/worker-stages.ts` → `WORKER_STAGES` — drives the C2 dashboard stage display
+
+Drift between any two of these causes silent breakage: the dashboard shows phantom stages, the playbook silently skips stages, or both. Always update all three in the same commit.
+
 ## Planning workflow
 
-Active design docs and implementation plans live in:
+Active design docs and implementation plans live in two trees:
+
+**Standard plans** (feature work, refactors):
 - `docs/plans/design/YYYY-MM-DD-<topic>-design.md`
 - `docs/plans/implementation/YYYY-MM-DD-<topic>.md`
 
-The historical "what-was-built" map is the M-numbered restructure series (`docs/plans/design/2026-03-29-restructure-00-overview.md` through `restructure-12-migration.md`). For new work, scan recent plans (e.g. `2026-05-07-flow-page-playbook-rebuild-design.md`) for context and shape, then create today's design + implementation pair following the same naming convention.
+**Superpowers plans** (created via the brainstorming skill):
+- `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
+- `docs/superpowers/plans/YYYY-MM-DD-<topic>.md`
+
+The historical "what-was-built" map is the M-numbered restructure series (`docs/plans/design/2026-03-29-restructure-00-overview.md` through `restructure-12-migration.md`). For new work, scan recent plans in both trees for context and shape, then create today's design + implementation pair following the same naming convention.
 
 **Do not do extensive research when writing plans.** Reference the design doc and existing implementation plans directly.
 
@@ -48,17 +64,34 @@ cd dashboard && npm install
 npm run dev          # next dev (port 3000)
 npm run build        # next build
 npm run lint         # eslint
-npm run test:e2e     # playwright e2e suite under dashboard/e2e/
+
+# Playwright — two projects:
+npx playwright test --project=chromium        # seeded-data suite (default CI, fast)
+npx playwright test --project=live            # live pipeline against testphp.vulnweb.com
 ```
 
-### Tests
+The `chromium` project skips `flows/live-pipeline-journey.spec.ts`; the `live` project runs only that file. Frontend e2e needs the stack started with `docker-compose.test.yml` so the seed endpoint is active.
+
+### Backend E2E tests
+
+The `tests/` directory contains a live-stack e2e suite (no mocks, no aiosqlite). Tests are skipped by default unless `--e2e` is passed.
+
 ```bash
-pytest                                                          # all tests
-pytest tests/test_scope.py                                      # single file
-pytest tests/test_recon_tools_passive.py -k "test_subfinder"    # single test
+# Requires the docker stack running with docker-compose.test.yml overlay
+docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --build
+
+pytest tests/e2e/ --e2e -v                           # all workers
+pytest tests/e2e/test_info_gathering.py --e2e -v     # single worker
 ```
 
-Tests use the `anyio_backend = "asyncio"` fixture (defined in `tests/conftest.py`) and aiosqlite for an in-memory SQLite database. Orchestrator-specific fixtures live in `tests/conftest_orchestrator.py` and are auto-loaded via `pytest_plugins`.
+`tests/pytest.ini` sets `asyncio_mode = auto` and registers the `e2e` marker. `tests/conftest.py` provides the session-scoped `stack` fixture (auto-starts docker if not running), the `SSEMonitor` class (drives stage assertions by consuming the real SSE stream), and helpers: `create_target`, `cleanup_target`, `assert_assets`, `assert_vulnerabilities`, `assert_job_completed`.
+
+Each `tests/e2e/test_<worker>.py` file declares:
+- `WORKER` — container name (matches `docker logs <WORKER>`)
+- `PLAYBOOK` — `e2e_<worker>` (single-worker playbook defined in `playbooks.py`)
+- `LAST_STAGE` — final stage name for `assert_job_completed`
+- `STAGE_ASSERTIONS` — ordered dict mapping stage name → assertion callable (or `None`)
+- `STAGE_TIMEOUTS` — per-stage timeout in seconds
 
 ## Architecture
 
@@ -67,10 +100,10 @@ Tests use the `anyio_backend = "asyncio"` fixture (defined in `tests/conftest.py
 - `shared/` — Also holds `setup_env.py`, `schema.sql`, `models.py`, `interfaces.ts`, `config/`, `raw/`, `logs/`, `mobile_analysis/`, `mobile_binaries/`.
 - `orchestrator/` — FastAPI app on port 8001 with prefix `/api/v1/`. Key files: `main.py`, `event_engine.py`, `worker_manager.py`, `target_expander.py`, `dependency_map.py`, `resource_guard.py`, `rate_limit.py`, `metrics.py`. Sub-route modules in `orchestrator/routes/` (`campaigns.py`, `resources.py`).
 - `workers/` — 19 specialized worker containers. Each follows the same internal layout (see "Worker pattern" below).
-- `dashboard/` — Next.js 16.1 + React 19.2 + Zustand 5 + TanStack Table 8 + `@xyflow/react` (flow page) + Tailwind v4 + Geist font + Sonner toasts + Lucide icons. Playwright e2e under `dashboard/e2e/`.
+- `dashboard/` — Next.js 16.1 + React 19.2 + Zustand 5 + TanStack Table 8 + `@xyflow/react` (flow page) + Tailwind v4 + Geist font + Sonner toasts + Lucide icons. Playwright e2e under `dashboard/e2e/`. Page routes: `app/campaign/[id]/` for per-campaign deep views (findings, chains, targets, reports), `app/campaign/` for global views (flow, c2, graph, triage). API routes in `dashboard/src/app/api/` proxy to the orchestrator (SSE at `api/sse/[targetId]/route.ts`).
 - `docker/` — One Dockerfile per service, all inheriting from `Dockerfile.base`.
 - `alembic/` and `shared/lib_webbh/alembic/` — schema migrations.
-- `tests/` — pytest suite (asyncio + aiosqlite).
+- `tests/` — live e2e pytest suite; `tests/conftest.py` holds the stack lifecycle, `SSEMonitor`, and shared helpers; `tests/e2e/test_<worker>.py` for per-worker coverage.
 
 ### Worker inventory (18 active)
 
@@ -102,14 +135,14 @@ Always use `lib_webbh` models for DB interactions. Do not invent table names or 
 ### Worker pattern
 
 Every worker in `workers/` follows this internal layout:
-1. `base_tool.py` — Abstract base class named `<Worker>Tool` (e.g. `InfoGatheringTool`, `InputValidationTool`, `AuthenticationTool`, `ChainTestTool`, `MobileTestTool`). Provides the subprocess runner (always `asyncio.create_subprocess_exec`, never `shell=True`), cooldown checks, scope checks, and DB insert helpers.
+1. `base_tool.py` — Abstract base class named `<Worker>Tool` (e.g. `InfoGatheringTool`, `InputValidationTool`, `AuthenticationTool`, `ChainTestTool`, `MobileTestTool`). Provides the subprocess runner (always `asyncio.create_subprocess_exec`, never `shell=True`), cooldown checks, scope checks, and DB insert helpers. Key helpers available on every tool instance: `save_asset(target_id, asset_type, value, source_tool)`, `save_observation(asset_id, tech_stack, ...)`, `acquire_rate_limit(rate_limiter)`.
 2. `tools/` — One file per external tool, subclassing the worker's base class and implementing `async execute(self, target_id, **kwargs)`.
 3. `pipeline.py` — Defines an ordered list of `Stage` objects, runs tools concurrently within each stage via `asyncio.gather`, and checkpoints progress in the `job_state` table (via `CheckpointMixin`).
-4. `concurrency.py` — Semaphore-based concurrency control with `WeightClass` enum (HEAVY / LIGHT). Reads `HEAVY_CONCURRENCY` and `LIGHT_CONCURRENCY` from env.
+4. `concurrency.py` — Semaphore-based concurrency control with `WeightClass` enum (HEAVY / LIGHT). Reads `HEAVY_CONCURRENCY` and `LIGHT_CONCURRENCY` from env. Every tool class name must have an entry in `TOOL_WEIGHTS`.
 5. `main.py` — Entry point: calls `listen_queue` / `listen_priority_queues` and runs the pipeline on each message, with a heartbeat loop updating `job_state.last_seen`.
 6. `requirements.txt` — Worker-specific Python deps (if any beyond `lib_webbh`).
 
-`workers/info_gathering/` is the canonical reference implementation — copy its shape when scaffolding a new worker.
+`workers/info_gathering/` is the canonical reference implementation — copy its shape when scaffolding a new worker. The full scaffolding template is at `docs/plans/implementation/2026-03-29-restructure-worker-template.md`.
 
 ### Event flow
 
@@ -129,5 +162,9 @@ Every worker in `workers/` follows this internal layout:
 - Worker: `TOOL_TIMEOUT` (default `600`s), `COOLDOWN_HOURS` (default `24`), `HEAVY_CONCURRENCY`, `LIGHT_CONCURRENCY`
 - LLM (`reasoning_worker`): `LLM_BASE_URL` (default `http://ollama:11434`), `LLM_MODEL` (default `qwen3:14b`)
 - Optional enrichment: `SHODAN_API_KEY`, `SECURITYTRAILS_API_KEY`, `CENSYS_API_ID`, `CENSYS_API_SECRET`
+- Mobile: `MOBSF_API_KEY` (MobSF sidecar API key)
 
 `shared/setup_env.py` generates these into `shared/config/.env` on first run.
+
+### Monitoring ports (optional overlay)
+Prometheus: 9090 · Grafana: 3001 · cAdvisor: 8080. Loki + Promtail aggregate container logs. Enable via `docker-compose.monitoring.yml`.

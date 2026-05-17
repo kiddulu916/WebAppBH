@@ -1,0 +1,25 @@
+{
+  "eval_id": 1,
+  "eval_name": "tool-addition-check",
+  "prompt": "I just added a new WebSocketProber tool to info_gathering. Check coherence.",
+  "assertions": [
+    {
+      "text": "report_has_structured_format: Report contains the Phase 5 format with a 'Coherence Check Report' header and at least two of: 'Auto-Fixed', 'Needs Manual Review', 'Verified Clean', 'Coverage' sections"
+    },
+    {
+      "text": "checks_pipeline_membership: Report explicitly verifies whether WebSocketProber (or websocket_prober) appears in workers/info_gathering/pipeline.py in a stage's tools list"
+    },
+    {
+      "text": "checks_playbooks_sync: Report explicitly checks shared/lib_webbh/playbooks.py PIPELINE_STAGES for stage name consistency with pipeline.py"
+    },
+    {
+      "text": "checks_concurrency_weight: Report explicitly checks workers/info_gathering/concurrency.py for a WeightClass assignment covering the WebSocketProber tool"
+    },
+    {
+      "text": "checks_lib_webbh_imports: Report verifies that lib_webbh symbols imported in the tool file exist in shared/lib_webbh/__init__.py"
+    },
+    {
+      "text": "coverage_section_lists_files: The Coverage section (or equivalent) names at least 5 specific file paths that were actually inspected during the check"
+    }
+  ]
+}

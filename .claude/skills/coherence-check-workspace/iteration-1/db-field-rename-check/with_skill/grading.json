@@ -1,0 +1,72 @@
+{
+  "expectations": [
+    {
+      "text": "report_has_structured_format: Report contains the Phase 5 format with a 'Coherence Check Report' header and at least two of: 'Auto-Fixed', 'Needs Manual Review', 'Verified Clean', 'Coverage' sections",
+      "passed": true,
+      "evidence": "Report has 'Coherence Check Report' header, 'Phase 1 — Change Discovery', 'Auto-Fixed' (None), 'Needs Manual Review' (5 items), 'Verified Clean' section, 'Coverage' section with 20+ files listed"
+    },
+    {
+      "text": "searches_worker_files: Report searches worker files (workers/) for references to the Asset model's url or endpoint_url field — not just describes that it should check workers, but actually reports findings",
+      "passed": true,
+      "evidence": "Coverage section lists 'workers/business_logic/tools/*.py — 9 files', 'workers/info_gathering/tools/*.py — 14+ files', and 5 other worker paths. MISMATCH-4 shows 25+ specific worker file references with line numbers for asset_type==\"url\" patterns."
+    },
+    {
+      "text": "checks_schema_sql: Report explicitly checks shared/schema.sql for the Asset table's url/endpoint_url column",
+      "passed": true,
+      "evidence": "MISMATCH-1 explicitly compares ORM columns against schema.sql DDL and finds 3 missing columns (scope_classification, associated_with_id, association_method). MISMATCH-2 finds job_state.last_completed_stage missing from schema.sql."
+    },
+    {
+      "text": "checks_database_py: Report explicitly checks shared/lib_webbh/database.py Asset ORM model for field name",
+      "passed": true,
+      "evidence": "Phase 1 explicitly reads 'shared/lib_webbh/database.py, class Asset, lines 233-266' and confirms Asset ORM model columns. MISMATCH-1 cites specific ORM column definitions."
+    },
+    {
+      "text": "checks_dashboard_types: Report checks dashboard TypeScript types (dashboard/src/ or shared/interfaces.ts) for references to the url or endpoint_url field on Asset",
+      "passed": true,
+      "evidence": "MISMATCH-3 cites 'shared/interfaces.ts:54-60 defines Asset with only id, target_id, asset_type, asset_value, source_tool — missing tech, scope_classification, associated_with_id, association_method'. Coverage lists dashboard/src/app/campaign/assets/page.tsx and dashboard/src/types/schema.ts."
+    },
+    {
+      "text": "coverage_section_lists_files: The Coverage section (or equivalent) names at least 5 specific file paths that were actually inspected",
+      "passed": true,
+      "evidence": "Coverage section lists 20+ specific paths including shared/lib_webbh/database.py, shared/schema.sql, shared/interfaces.ts, dashboard/src/types/schema.ts, dashboard/src/lib/api.ts, 5 dashboard pages, orchestrator/main.py, and multiple worker directories"
+    }
+  ],
+  "summary": {
+    "passed": 6,
+    "failed": 0,
+    "total": 6,
+    "pass_rate": 1.0
+  },
+  "timing": {
+    "executor_duration_seconds": 297.4,
+    "total_duration_seconds": 297.4
+  },
+  "claims": [
+    {
+      "claim": "schema.sql assets table is missing 3 ORM columns (scope_classification, associated_with_id, association_method)",
+      "type": "factual",
+      "verified": true,
+      "evidence": "MISMATCH-1 cites database.py lines 233-266 and schema.sql lines 57-72 with column-by-column comparison. Workers that write these fields are also cited (base_tool.py:111, main.py:94, pipeline.py:375-377)."
+    },
+    {
+      "claim": "schema.sql job_state table is missing last_completed_stage column",
+      "type": "factual",
+      "verified": true,
+      "evidence": "MISMATCH-2 cites database.py:408 (ORM), schema.sql:200-221 (DDL, column absent), dashboard/src/types/schema.ts:145 (TypeScript references it)"
+    },
+    {
+      "claim": "28 checks performed",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Report header states 'Checks performed: 28'"
+    }
+  ],
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "reason": "An assertion checking whether the agent found REAL mismatches beyond the hypothetical scenario would better discriminate skill quality. The with-skill agent found 4 genuine issues; without-skill found 0. The current assertions only check process (did it look?), not outcome (did it find real problems?)"
+      }
+    ],
+    "overall": "Strong result. The skill's systematic ORM-vs-DDL comparison check is clearly what drove the real finding discovery."
+  }
+}

@@ -25,8 +25,9 @@ const DEFAULT_PHASES: PhaseConfig[] = [
     label: "WSTG 4.1 — Information Gathering",
     tools: [
       "search_engine_recon", "web_server_fingerprint", "web_server_metafiles",
-      "enumerate_applications", "review_comments", "review_comments_deep", "identify_entry_points",
-      "map_execution_paths", "fingerprint_framework", "map_architecture",
+      "enumerate_applications", "review_comments", "identify_entry_points",
+      "aggregate_entry_points", "map_execution_paths", "review_comments_deep",
+      "fingerprint_framework", "map_architecture",
       "map_application",
     ],
   },

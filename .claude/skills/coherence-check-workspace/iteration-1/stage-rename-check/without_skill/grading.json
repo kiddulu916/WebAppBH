@@ -1,0 +1,72 @@
+{
+  "expectations": [
+    {
+      "text": "report_has_structured_format: Report contains the Phase 5 format with a 'Coherence Check Report' header and at least two of: 'Auto-Fixed', 'Needs Manual Review', 'Verified Clean', 'Coverage' sections",
+      "passed": false,
+      "evidence": "Report uses 'Executive Summary', 'Search Results', 'Consistency Analysis by Area', 'What Would Need to Change', 'Pre-existing Drift', 'Verdict' structure — not Phase 5 format. No 'Coherence Check Report' header, no 'Auto-Fixed', 'Verified Clean', or 'Coverage' sections."
+    },
+    {
+      "text": "checks_playbooks_py: Report explicitly reads or greps shared/lib_webbh/playbooks.py and reports whether the stage name appears there",
+      "passed": true,
+      "evidence": "Section 2 'shared/lib_webbh/playbooks.py — CONSISTENT WITH PIPELINE (old name)' reports: 'PIPELINE_STAGES[\"info_gathering\"] lists \"enumerate_applications\" at position 4. Two built-in playbooks (deep_webapp, api_focused) reference it in disabled_stages.'"
+    },
+    {
+      "text": "checks_e2e_tests: Report checks dashboard/e2e/ for references to the old stage name (enumerate_applications) or new stage name (map_application_endpoints)",
+      "passed": true,
+      "evidence": "Section 8 'dashboard/e2e/ tests — CONSISTENT WITH PIPELINE (old name)' and Search Results table shows all 4 E2E spec files with line numbers (empty-states.spec.ts:65, worker-monitoring.spec.ts:32,69,89, worker-control.spec.ts:75, workflow-builder.spec.ts:78,79,80)"
+    },
+    {
+      "text": "checks_both_stage_names: Report searches for both the old name 'enumerate_applications' AND the new name 'map_application_endpoints' to determine which is present where",
+      "passed": true,
+      "evidence": "Search Results section has two sub-sections: 'New name (map_application_endpoints)' — shows only 1 result in evals.json; 'Old name (enumerate_applications)' — shows 11 files with line numbers."
+    },
+    {
+      "text": "identifies_pipeline_current_state: Report determines the actual current state of workers/info_gathering/pipeline.py (which stage name is actually there now) rather than assuming",
+      "passed": true,
+      "evidence": "Section 1 'workers/info_gathering/pipeline.py — INCONSISTENT WITH STATED RENAME': 'The pipeline still defines the stage as enumerate_applications (line 78). The rename to map_application_endpoints has not been applied.'"
+    },
+    {
+      "text": "coverage_section_lists_files: The Coverage section (or equivalent) names at least 5 specific file paths that were actually inspected",
+      "passed": false,
+      "evidence": "No dedicated Coverage section. Files are mentioned inline within sections but not consolidated into an inspection inventory. The 'What Would Need to Change' table lists files that need updating but that's different from a list of what was actually inspected."
+    }
+  ],
+  "summary": {
+    "passed": 4,
+    "failed": 2,
+    "total": 6,
+    "pass_rate": 0.667
+  },
+  "timing": {
+    "executor_duration_seconds": 159.0,
+    "total_duration_seconds": 159.0
+  },
+  "claims": [
+    {
+      "claim": "map_application_endpoints appears nowhere in real source files",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Search Results table shows only 1 hit in evals.json (the eval definition itself)"
+    },
+    {
+      "claim": "11 files consistently use enumerate_applications",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Search Results table lists all 11 files with specific line numbers, all confirmed from report content"
+    },
+    {
+      "claim": "shared/config/1/playbook.json found as persisted artifact with old stage name",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Baseline uniquely found the serialized playbook.json at line 25 — the with-skill agent did not check this file. This is a genuine additional finding."
+    }
+  ],
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "reason": "The without-skill agent completed in 159s vs 364s for with-skill, and found nearly the same downstream files — but missed the structured output format and the 'Additional Pre-existing Drift: worker-stages.ts lists review_comments_deep but playbooks.py does not' finding. An assertion on finding additional pre-existing drift beyond the stated scenario would discriminate more clearly."
+      }
+    ],
+    "overall": "The baseline performed well on substantive checks for this eval (correctly found both stage names, all E2E references, pre-existing drift). The skill's primary advantage here is format discipline and the extra worker-stages.ts drift finding. Consider whether format compliance assertions are the right way to measure skill value for this use case."
+  }
+}

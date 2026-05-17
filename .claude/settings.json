@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "FLAG=/tmp/.webbh-code-reviewed; if [ -f \"$FLAG\" ]; then rm -f \"$FLAG\"; exit 0; else echo 'CODE REVIEW REMINDER (one-shot ritual): Run the code-reviewer agent on staged changes, then retry the commit. Re-running git commit proceeds; this hook does not verify the agent actually ran.' >&2; touch \"$FLAG\"; exit 1; fi",
+            "command": "FLAG=/tmp/.webbh-code-reviewed; if [ -f \"$FLAG\" ]; then rm -f \"$FLAG\"; exit 0; else echo 'SIMPLIFY + CODE REVIEW (one-shot ritual): (1) Run /simplify to clean up changed code. (2) Run the code-reviewer agent on staged changes. Then retry git commit. Re-running proceeds; this hook does not verify either ran.' >&2; touch \"$FLAG\"; exit 1; fi",
             "timeout": 5000
           }
         ]

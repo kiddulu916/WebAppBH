@@ -1,0 +1,83 @@
+{
+  "skill_name": "coherence-check",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I just added a new WebSocketProber tool to info_gathering. Check coherence.",
+      "expected_output": "A structured coherence report tracing the WebSocketProber addition through pipeline.py stage membership, playbooks.py PIPELINE_STAGES, concurrency.py WeightClass, lib_webbh imports, DB model fields used, and E2E test stage references. Should flag any mismatches and apply auto-fixes where unambiguous.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "report_has_structured_format: Report contains the Phase 5 format with a 'Coherence Check Report' header and at least two of: 'Auto-Fixed', 'Needs Manual Review', 'Verified Clean', 'Coverage' sections"
+        },
+        {
+          "text": "checks_pipeline_membership: Report explicitly verifies whether WebSocketProber (or websocket_prober) appears in workers/info_gathering/pipeline.py in a stage's tools list"
+        },
+        {
+          "text": "checks_playbooks_sync: Report explicitly checks shared/lib_webbh/playbooks.py PIPELINE_STAGES for stage name consistency with pipeline.py"
+        },
+        {
+          "text": "checks_concurrency_weight: Report explicitly checks workers/info_gathering/concurrency.py for a WeightClass assignment covering the WebSocketProber tool"
+        },
+        {
+          "text": "checks_lib_webbh_imports: Report verifies that lib_webbh symbols imported in the tool file exist in shared/lib_webbh/__init__.py"
+        },
+        {
+          "text": "coverage_section_lists_files: The Coverage section (or equivalent) names at least 5 specific file paths that were actually inspected during the check"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I renamed the `url` field to `endpoint_url` on the Asset model. Make sure everything is consistent.",
+      "expected_output": "A structured coherence report that searches all 18 workers, orchestrator routes, schema.sql, and dashboard TypeScript types for references to the Asset model's URL field. Should identify whether the rename was fully propagated or missed anywhere, and fix or flag each gap.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "report_has_structured_format: Report contains the Phase 5 format with a 'Coherence Check Report' header and at least two of: 'Auto-Fixed', 'Needs Manual Review', 'Verified Clean', 'Coverage' sections"
+        },
+        {
+          "text": "searches_worker_files: Report searches worker files (workers/) for references to the Asset model's url or endpoint_url field — not just describes that it should check workers, but actually reports findings"
+        },
+        {
+          "text": "checks_schema_sql: Report explicitly checks shared/schema.sql for the Asset table's url/endpoint_url column"
+        },
+        {
+          "text": "checks_database_py: Report explicitly checks shared/lib_webbh/database.py Asset ORM model for field name"
+        },
+        {
+          "text": "checks_dashboard_types: Report checks dashboard TypeScript types (dashboard/src/ or shared/interfaces.ts) for references to the url or endpoint_url field on Asset"
+        },
+        {
+          "text": "coverage_section_lists_files: The Coverage section (or equivalent) names at least 5 specific file paths that were actually inspected"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I renamed the `enumerate_applications` stage to `map_application_endpoints` in info_gathering/pipeline.py. Check coherence.",
+      "expected_output": "A structured coherence report verifying the stage rename rippled into playbooks.py PIPELINE_STAGES, E2E seed fixtures (current_phase), dashboard stage display components, and any checkpoint resume logic. Should flag anywhere the old name persists.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "report_has_structured_format: Report contains the Phase 5 format with a 'Coherence Check Report' header and at least two of: 'Auto-Fixed', 'Needs Manual Review', 'Verified Clean', 'Coverage' sections"
+        },
+        {
+          "text": "checks_playbooks_py: Report explicitly reads or greps shared/lib_webbh/playbooks.py and reports whether the stage name appears there"
+        },
+        {
+          "text": "checks_e2e_tests: Report checks dashboard/e2e/ for references to the old stage name (enumerate_applications) or new stage name (map_application_endpoints)"
+        },
+        {
+          "text": "checks_both_stage_names: Report searches for both the old name 'enumerate_applications' AND the new name 'map_application_endpoints' to determine which is present where"
+        },
+        {
+          "text": "identifies_pipeline_current_state: Report determines the actual current state of workers/info_gathering/pipeline.py (which stage name is actually there now) rather than assuming"
+        },
+        {
+          "text": "coverage_section_lists_files: The Coverage section (or equivalent) names at least 5 specific file paths that were actually inspected"
+        }
+      ]
+    }
+  ]
+}

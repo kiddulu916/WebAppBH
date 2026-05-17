@@ -1,0 +1,25 @@
+{
+  "eval_id": 2,
+  "eval_name": "db-field-rename-check",
+  "prompt": "I renamed the `url` field to `endpoint_url` on the Asset model. Make sure everything is consistent.",
+  "assertions": [
+    {
+      "text": "report_has_structured_format: Report contains the Phase 5 format with a 'Coherence Check Report' header and at least two of: 'Auto-Fixed', 'Needs Manual Review', 'Verified Clean', 'Coverage' sections"
+    },
+    {
+      "text": "searches_worker_files: Report searches worker files (workers/) for references to the Asset model's url or endpoint_url field — not just describes that it should check workers, but actually reports findings"
+    },
+    {
+      "text": "checks_schema_sql: Report explicitly checks shared/schema.sql for the Asset table's url/endpoint_url column"
+    },
+    {
+      "text": "checks_database_py: Report explicitly checks shared/lib_webbh/database.py Asset ORM model for field name"
+    },
+    {
+      "text": "checks_dashboard_types: Report checks dashboard TypeScript types (dashboard/src/ or shared/interfaces.ts) for references to the url or endpoint_url field on Asset"
+    },
+    {
+      "text": "coverage_section_lists_files: The Coverage section (or equivalent) names at least 5 specific file paths that were actually inspected"
+    }
+  ]
+}

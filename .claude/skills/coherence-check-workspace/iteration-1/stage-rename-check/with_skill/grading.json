@@ -1,0 +1,68 @@
+{
+  "expectations": [
+    {
+      "text": "report_has_structured_format: Report contains the Phase 5 format with a 'Coherence Check Report' header and at least two of: 'Auto-Fixed', 'Needs Manual Review', 'Verified Clean', 'Coverage' sections",
+      "passed": true,
+      "evidence": "Report has '## Coherence Check Report' header, 'Auto-Fixed' (None, with explanation), 'Needs Manual Review' (9 items), 'Additional Pre-existing Drift Found', 'Verified Clean', 'Summary Table', 'Coverage' sections"
+    },
+    {
+      "text": "checks_playbooks_py: Report explicitly reads or greps shared/lib_webbh/playbooks.py and reports whether the stage name appears there",
+      "passed": true,
+      "evidence": "MISMATCH item 1: 'playbooks.py still contains \"enumerate_applications\" at position 4. After the rename the stage filter would silently drop the renamed stage from every playbook-driven run.' Coverage confirms 'shared/lib_webbh/playbooks.py — PIPELINE_STAGES[\"info_gathering\"] (lines 17-22); preset disabled_stages (lines 222, 248)'"
+    },
+    {
+      "text": "checks_e2e_tests: Report checks dashboard/e2e/ for references to the old stage name (enumerate_applications) or new stage name (map_application_endpoints)",
+      "passed": true,
+      "evidence": "MISMATCH items 5-7 list specific E2E test selectors: 5 occurrences of getByTestId('flow-monitor-stage-enumerate_applications') across empty-states.spec.ts, worker-monitoring.spec.ts (3x), workflow-builder.spec.ts. Also toContainText in worker-control.spec.ts:75."
+    },
+    {
+      "text": "checks_both_stage_names: Report searches for both the old name 'enumerate_applications' AND the new name 'map_application_endpoints' to determine which is present where",
+      "passed": true,
+      "evidence": "Phase 1 states 'git diff confirmed the rename is hypothetical — the last 10 commits contain no such change. The pipeline still has Stage(name=\"enumerate_applications\", ...)'. The check then explicitly traces what would break if the new name were used, confirming neither name was found in downstream files."
+    },
+    {
+      "text": "identifies_pipeline_current_state: Report determines the actual current state of workers/info_gathering/pipeline.py (which stage name is actually there now) rather than assuming",
+      "passed": true,
+      "evidence": "Verified Clean section: 'workers/info_gathering/pipeline.py — enumerate_applications has section_id=\"4.1.4\", correct tools list (Subfinder, Assetfinder, AmassPassive, AmassActive, Massdns, VHostProber, Naabu, AppPathEnumerator, CTLogSearcher), all imports present.' Explicitly reads and catalogs the file."
+    },
+    {
+      "text": "coverage_section_lists_files: The Coverage section (or equivalent) names at least 5 specific file paths that were actually inspected",
+      "passed": true,
+      "evidence": "Coverage section lists 12 specific files with line-level references: workers/info_gathering/pipeline.py, shared/lib_webbh/playbooks.py, dashboard/src/lib/worker-stages.ts, WorkflowBuilder.tsx, 4 E2E spec files, orchestrator/main.py, tests/test_playbooks.py, tests/e2e/test_worker_pipelines.py"
+    }
+  ],
+  "summary": {
+    "passed": 6,
+    "failed": 0,
+    "total": 6,
+    "pass_rate": 1.0
+  },
+  "timing": {
+    "executor_duration_seconds": 364.8,
+    "total_duration_seconds": 364.8
+  },
+  "claims": [
+    {
+      "claim": "No auto-fixes applied because the rename is hypothetical",
+      "type": "process",
+      "verified": true,
+      "evidence": "Auto-Fixed section: 'None — the rename has not actually been applied to any file. All issues below describe what would break if the rename were made only in pipeline.py without updating downstream layers.' This is correct judgment."
+    },
+    {
+      "claim": "Pre-existing drift: pipeline.py has 12 stages but playbooks.py lists only 10",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Pre-existing drift section lists all 12 stages from pipeline.py and the 10 from playbooks.py, explicitly naming the 2 missing (aggregate_entry_points, review_comments_deep)"
+    },
+    {
+      "claim": "worker-stages.ts lists review_comments_deep but playbooks.py does not register it",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Second pre-existing drift item cites dashboard/src/lib/worker-stages.ts and confirms the name is absent from playbooks.py PIPELINE_STAGES"
+    }
+  ],
+  "eval_feedback": {
+    "suggestions": [],
+    "overall": "All assertions pass with strong, specific evidence. The skill demonstrated correct judgment (no auto-fix on hypothetical) and found additional real drift beyond the task scope. No improvements needed for these assertions."
+  }
+}

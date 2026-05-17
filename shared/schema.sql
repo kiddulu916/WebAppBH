@@ -55,14 +55,17 @@ CREATE INDEX IF NOT EXISTS ix_targets_priority ON targets (priority);
 -- 3. assets
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS assets (
-    id          SERIAL PRIMARY KEY,
-    target_id   INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
-    asset_type  VARCHAR(50)  NOT NULL,
-    asset_value VARCHAR(500) NOT NULL,
-    source_tool VARCHAR(100),
-    tech        JSONB,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                  SERIAL PRIMARY KEY,
+    target_id           INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+    asset_type          VARCHAR(50)  NOT NULL,
+    asset_value         VARCHAR(500) NOT NULL,
+    source_tool         VARCHAR(100),
+    tech                JSONB,
+    scope_classification VARCHAR(20) NOT NULL DEFAULT 'pending',
+    associated_with_id  INTEGER REFERENCES assets(id) ON DELETE SET NULL,
+    association_method  VARCHAR(50),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS ix_assets_target_id ON assets (target_id);
@@ -200,10 +203,11 @@ CREATE TABLE IF NOT EXISTS job_state (
     id                 SERIAL PRIMARY KEY,
     target_id          INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
     container_name     VARCHAR(255) NOT NULL,
-    current_phase      VARCHAR(100),
-    status             VARCHAR(20) NOT NULL,
-    last_seen          TIMESTAMPTZ,
-    last_tool_executed VARCHAR(100),
+    current_phase        VARCHAR(100),
+    last_completed_stage VARCHAR(100),
+    status               VARCHAR(20) NOT NULL,
+    last_seen            TIMESTAMPTZ,
+    last_tool_executed   VARCHAR(100),
 
     -- Stage tracking columns (M1)
     current_section_id VARCHAR(20),

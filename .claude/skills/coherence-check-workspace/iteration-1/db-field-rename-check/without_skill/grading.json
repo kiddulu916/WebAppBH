@@ -1,0 +1,72 @@
+{
+  "expectations": [
+    {
+      "text": "report_has_structured_format: Report contains the Phase 5 format with a 'Coherence Check Report' header and at least two of: 'Auto-Fixed', 'Needs Manual Review', 'Verified Clean', 'Coverage' sections",
+      "passed": false,
+      "evidence": "Report uses 'Executive Summary', 'Findings by Layer', 'Root Cause Analysis', 'Gaps/Inconsistencies Found', 'Recommendation' structure — not the Phase 5 schema. No 'Coherence Check Report' header, no 'Auto-Fixed' or 'Verified Clean' sections."
+    },
+    {
+      "text": "searches_worker_files: Report searches worker files (workers/) for references to the Asset model's url or endpoint_url field — not just describes that it should check workers, but actually reports findings",
+      "passed": true,
+      "evidence": "Section 5 'Workers (18 active workers)' shows specific file references with line numbers: attack_surface_analyzer.py:111, application_mapper.py:93, architecture_modeler.py:48, input_validation/base_tool.py:263, error_handling/tools/error_prober.py:33, mobile_worker/base_tool.py:129"
+    },
+    {
+      "text": "checks_schema_sql: Report explicitly checks shared/schema.sql for the Asset table's url/endpoint_url column",
+      "passed": true,
+      "evidence": "Section 2 'Database Schema — shared/schema.sql' shows the full CREATE TABLE DDL for assets table and confirms no url/endpoint_url column. Also correctly notes url column exists on cloud_assets table (line 131)."
+    },
+    {
+      "text": "checks_database_py: Report explicitly checks shared/lib_webbh/database.py Asset ORM model for field name",
+      "passed": true,
+      "evidence": "Section 1 'ORM Model — shared/lib_webbh/database.py' lists all Asset model columns (lines 243-255) and confirms no url or endpoint_url field."
+    },
+    {
+      "text": "checks_dashboard_types: Report checks dashboard TypeScript types (dashboard/src/ or shared/interfaces.ts) for references to the url or endpoint_url field on Asset",
+      "passed": true,
+      "evidence": "Section 4 'TypeScript Interface — shared/interfaces.ts' shows the Asset interface fields and confirms no url field. Also notes CloudAsset interface correctly has url:string|null."
+    },
+    {
+      "text": "coverage_section_lists_files: The Coverage section (or equivalent) names at least 5 specific file paths that were actually inspected",
+      "passed": false,
+      "evidence": "No dedicated Coverage section. Files are discussed inline within their respective Finding sections, but there is no consolidated inventory of inspected paths."
+    }
+  ],
+  "summary": {
+    "passed": 4,
+    "failed": 2,
+    "total": 6,
+    "pass_rate": 0.667
+  },
+  "timing": {
+    "executor_duration_seconds": 309.8,
+    "total_duration_seconds": 309.8
+  },
+  "claims": [
+    {
+      "claim": "All 18 workers are consistent — no worker reads asset.url or asset.endpoint_url",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Section 5 shows representative worker patterns all use asset_value or asset_type string comparisons, not a url field. Workers section states 'No worker reads asset.url or asset.endpoint_url.'"
+    },
+    {
+      "claim": "The only endpoint_url occurrence is in test function name test_analyzer_categorizes_api_endpoint_urls",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Section 'The Only endpoint_url Occurrence' lists 4 hits, all traceable to the same test function name — not a model field reference."
+    },
+    {
+      "claim": "Real schema drift missed: schema.sql assets table missing 3 ORM columns",
+      "type": "quality",
+      "verified": true,
+      "evidence": "The without-skill agent listed the assets DDL (8 columns) but did not compare it against the full ORM column set. The ORM has scope_classification, associated_with_id, association_method that are missing from schema.sql — these were found by the with-skill agent but not by this baseline."
+    }
+  ],
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "reason": "The most important finding gap — schema.sql missing 3 ORM columns — is not captured by any assertion. The without-skill agent checked both files but didn't compare them systematically. An assertion like 'Report finds any ORM-vs-DDL column discrepancy on the Asset model' would directly measure the skill's primary advantage over the baseline."
+      }
+    ],
+    "overall": "The baseline is thorough on the hypothetical scenario but misses the systematic ORM-vs-DDL cross-check. This is the clearest discriminator between with-skill and without-skill behavior."
+  }
+}

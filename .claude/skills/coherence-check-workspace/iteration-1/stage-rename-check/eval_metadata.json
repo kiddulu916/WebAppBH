@@ -1,0 +1,25 @@
+{
+  "eval_id": 3,
+  "eval_name": "stage-rename-check",
+  "prompt": "I renamed the `enumerate_applications` stage to `map_application_endpoints` in info_gathering/pipeline.py. Check coherence.",
+  "assertions": [
+    {
+      "text": "report_has_structured_format: Report contains the Phase 5 format with a 'Coherence Check Report' header and at least two of: 'Auto-Fixed', 'Needs Manual Review', 'Verified Clean', 'Coverage' sections"
+    },
+    {
+      "text": "checks_playbooks_py: Report explicitly reads or greps shared/lib_webbh/playbooks.py and reports whether the stage name appears there"
+    },
+    {
+      "text": "checks_e2e_tests: Report checks dashboard/e2e/ for references to the old stage name (enumerate_applications) or new stage name (map_application_endpoints)"
+    },
+    {
+      "text": "checks_both_stage_names: Report searches for both the old name 'enumerate_applications' AND the new name 'map_application_endpoints' to determine which is present where"
+    },
+    {
+      "text": "identifies_pipeline_current_state: Report determines the actual current state of workers/info_gathering/pipeline.py (which stage name is actually there now) rather than assuming"
+    },
+    {
+      "text": "coverage_section_lists_files: The Coverage section (or equivalent) names at least 5 specific file paths that were actually inspected"
+    }
+  ]
+}

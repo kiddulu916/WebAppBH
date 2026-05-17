@@ -82,14 +82,14 @@ STAGES = [
         AppPathEnumerator,
         CTLogSearcher,
     ]),
-    Stage(name="review_comments", section_id="4.1.5", tools=[
+    Stage(name="review_comments", section_id="4.1.5a", tools=[
         CommentHarvester, MetadataExtractor,
         JsSecretScanner, SourceMapProber, RedirectBodyInspector,
     ]),
-    Stage(name="identify_entry_points",  section_id="4.1.6", tools=[FormMapper, Paramspider, Httpx, WebSocketProber]),
-    Stage(name="aggregate_entry_points", section_id="4.1.6", tools=[EntryPointAggregator]),
+    Stage(name="identify_entry_points",  section_id="4.1.6a", tools=[FormMapper, Paramspider, Httpx, WebSocketProber]),
+    Stage(name="aggregate_entry_points", section_id="4.1.6b", tools=[EntryPointAggregator]),
     Stage(name="map_execution_paths", section_id="4.1.7", tools=[Katana, Hakrawler]),
-    Stage(name="review_comments_deep", section_id="4.1.5", tools=[
+    Stage(name="review_comments_deep", section_id="4.1.5b", tools=[
         CommentHarvester, MetadataExtractor,
         JsSecretScanner, SourceMapProber, RedirectBodyInspector,
     ]),

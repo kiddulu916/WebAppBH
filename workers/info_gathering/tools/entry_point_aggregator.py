@@ -1,6 +1,7 @@
 # workers/info_gathering/tools/entry_point_aggregator.py
 """EntryPointAggregator — per-endpoint response header capture + parameter consolidation."""
 
+import asyncio
 from urllib.parse import parse_qsl, urlparse
 
 import aiohttp
@@ -11,6 +12,7 @@ from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 _CUSTOM_PREFIXES = ("x-", "cf-")
 _NAMED_HEADERS = frozenset({"server", "content-type", "allow", "www-authenticate"})
+_MAX_CONCURRENT = 10
 
 
 class EntryPointAggregator(InfoGatheringTool):
@@ -34,25 +36,38 @@ class EntryPointAggregator(InfoGatheringTool):
                 if await self.scope_check(target_id, a.asset_value, scope_manager)
             ]
 
-        obs_count = 0
-        param_count = 0
-
+        sem = asyncio.Semaphore(_MAX_CONCURRENT)
         async with aiohttp.ClientSession() as http:
-            for asset in assets:
-                await self.acquire_rate_limit(rate_limiter)
-                obs_data = await self._capture_headers(http, asset.asset_value)
-                if obs_data:
-                    await self.save_observation(
-                        asset_id=asset.id,
-                        tech_stack=obs_data,
-                        status_code=obs_data.get("status_code"),
-                    )
-                    obs_count += 1
-                if asset.source_tool == "paramspider":
-                    written = await self._consolidate_query_params(asset)
-                    param_count += written
+            results = await asyncio.gather(
+                *(self._process_asset(http, asset, rate_limiter, sem) for asset in assets)
+            )
 
+        obs_count = sum(r[0] for r in results)
+        param_count = sum(r[1] for r in results)
         return {"found": obs_count, "parameters": param_count}
+
+    async def _process_asset(
+        self,
+        http: aiohttp.ClientSession,
+        asset: Asset,
+        rate_limiter,
+        sem: asyncio.Semaphore,
+    ) -> tuple[int, int]:
+        async with sem:
+            await self.acquire_rate_limit(rate_limiter)
+            obs_data = await self._capture_headers(http, asset.asset_value)
+            obs_written = 0
+            if obs_data:
+                await self.save_observation(
+                    asset_id=asset.id,
+                    tech_stack=obs_data,
+                    status_code=obs_data.get("status_code"),
+                )
+                obs_written = 1
+            param_written = 0
+            if asset.source_tool == "paramspider":
+                param_written = await self._consolidate_query_params(asset)
+            return (obs_written, param_written)
 
     async def _capture_headers(
         self, session: aiohttp.ClientSession, url: str,
@@ -85,7 +100,7 @@ class EntryPointAggregator(InfoGatheringTool):
         cookies = list(headers.getall("Set-Cookie", []))
         auth_required = (
             resp.status in (401, 403)
-            or "www-authenticate" in {k.lower() for k in headers}
+            or headers.get("www-authenticate") is not None
         )
         allow = headers.get("Allow", "")
         methods = [m.strip() for m in allow.split(",")] if allow else []
@@ -102,23 +117,23 @@ class EntryPointAggregator(InfoGatheringTool):
         params = parse_qsl(urlparse(asset.asset_value).query, keep_blank_values=True)
         if not params:
             return 0
-        written = 0
+        names = [name for name, _ in params]
         async with get_session() as session:
-            for name, value in params:
-                existing = (await session.execute(
-                    select(Parameter).where(
+            existing_names = set(
+                (await session.execute(
+                    select(Parameter.param_name).where(
                         Parameter.asset_id == asset.id,
-                        Parameter.param_name == name,
+                        Parameter.param_name.in_(names),
                     )
-                )).scalar_one_or_none()
-                if existing is not None:
-                    continue
+                )).scalars().all()
+            )
+            new_params = [(n, v) for n, v in params if n not in existing_names]
+            for name, value in new_params:
                 session.add(Parameter(
                     asset_id=asset.id,
                     param_name=name,
                     param_value=value or None,
                     source_url=asset.asset_value,
                 ))
-                written += 1
             await session.commit()
-        return written
+        return len(new_params)
