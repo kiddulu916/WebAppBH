@@ -23,6 +23,7 @@ from lib_webbh import (
     get_session,
     setup_logger,
 )
+from lib_webbh.path_tree import PathTreeBuilder
 from lib_webbh.scope import ScopeManager
 
 logger = setup_logger("info-gathering-tool")
@@ -117,6 +118,24 @@ class InfoGatheringTool(ABC):
             session.add(asset)
             await session.commit()
             await session.refresh(asset)
+
+            # Populate path hierarchy for URL-valued assets
+            if asset_value.startswith(("http://", "https://")):
+                try:
+                    await PathTreeBuilder.upsert(
+                        target_id=target_id,
+                        asset_id=asset.id,
+                        url=asset_value,
+                        node_type=asset_type,
+                        source_tool=source_tool,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "PathTreeBuilder.upsert failed",
+                        asset_value=asset_value,
+                        error=str(exc),
+                    )
+
             return asset.id
 
     async def save_observation(self, asset_id: int, tech_stack: dict | None = None,
