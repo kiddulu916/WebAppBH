@@ -64,3 +64,23 @@ async def test_info_gathering_pipeline_stages(pipeline_result):
 async def test_info_gathering_job_state(client, pipeline_result):
     target_id, _ = pipeline_result
     await assert_job_completed(client, target_id, WORKER, LAST_STAGE)
+
+
+async def test_info_gathering_fingerprint_framework_aggregator_ran(pipeline_result):
+    """Verify the Stage 8 post-stage hook ran: at least one probe executed
+    and the FrameworkFingerprintAggregator wrote its summary observation."""
+    _, report = pipeline_result
+    stage_events = [
+        e for e in report.raw_events
+        if e.get("event") == "STAGE_COMPLETE"
+        and e.get("stage") == "fingerprint_framework"
+    ]
+    assert len(stage_events) == 1, "fingerprint_framework STAGE_COMPLETE not received"
+    stats = stage_events[0].get("stats", {})
+    assert stats.get("probes", 0) >= 1, (
+        "Stage 8 should have run >=1 probe; "
+        f"got stats={stats}"
+    )
+    assert stats.get("summary_written") is True, (
+        "FrameworkFingerprintAggregator.write_summary must write a summary observation"
+    )
