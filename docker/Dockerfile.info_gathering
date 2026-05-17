@@ -19,6 +19,9 @@ RUN go install github.com/projectdiscovery/katana/cmd/katana@latest
 RUN go install github.com/tomnomnom/assetfinder@latest
 RUN go install github.com/tomnomnom/waybackurls@latest
 RUN go install github.com/hakluke/hakrawler@latest
+RUN go install -v github.com/owasp-amass/amass/v4/...@latest
+RUN go install github.com/rverton/webanalyze/cmd/webanalyze@latest
+RUN go install github.com/ffuf/ffuf/v2/cmd/ffuf@latest
 
 # Stage 2 (WSTG-INFO-02) tooling
 RUN go install -v github.com/projectdiscovery/tlsx/cmd/tlsx@latest \
@@ -32,6 +35,7 @@ RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main
 # Python tools
 RUN pip install --no-cache-dir paramspider || true
 RUN pip install --no-cache-dir wafw00f==2.2.0
+RUN pip install --no-cache-dir python-Wappalyzer || true
 
 # Copy worker code
 COPY workers/info_gathering/ /app/workers/info_gathering/
