@@ -61,8 +61,11 @@ class FrameworkFileProber(InfoGatheringTool):
                                 matched.append({"path": path, "slot": slot,
                                                 "vendor": vendor, "path_type": path_type,
                                                 "status": str(resp.status)})
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    "framework_file_prober path probe failed",
+                    host=host, path=path, error=str(exc),
+                )
 
         await asyncio.gather(*[_probe(p, sl, v, pt) for p, sl, v, pt in _PROBE_PATHS])
 

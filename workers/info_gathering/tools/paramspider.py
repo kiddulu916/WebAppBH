@@ -1,7 +1,9 @@
 # workers/info_gathering/tools/paramspider.py
 """Paramspider wrapper — parameter discovery from web archives."""
 
-from workers.info_gathering.base_tool import InfoGatheringTool
+import json
+
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 
 class Paramspider(InfoGatheringTool):
@@ -9,16 +11,17 @@ class Paramspider(InfoGatheringTool):
 
     async def execute(self, target_id: int, **kwargs):
         target = kwargs.get("target")
+        asset_id = kwargs.get("asset_id")
         if not target:
             return
 
         cmd = ["paramspider", "-d", target.base_domain, "--json"]
         try:
             stdout = await self.run_subprocess(cmd, timeout=600)
-        except Exception:
+        except Exception as exc:
+            logger.error("paramspider subprocess failed", domain=target.base_domain, error=str(exc))
             return
 
-        import json
         for line in stdout.strip().splitlines():
             line = line.strip()
             if not line:
@@ -28,12 +31,11 @@ class Paramspider(InfoGatheringTool):
                 url = data.get("url", "")
                 params = data.get("params", [])
                 if url:
-                    await self.save_asset(target_id, "url", url, "paramspider")
-                    for param in params:
+                    url_asset_id = await self.save_asset(target_id, "url", url, "paramspider")
+                    if url_asset_id and params:
                         await self.save_observation(
-                            target_id, "parameter",
-                            {"url": url, "param": param},
-                            "paramspider"
+                            asset_id=url_asset_id,
+                            tech_stack={"_source": "paramspider", "url": url, "params": params},
                         )
             except json.JSONDecodeError:
                 if "=" in line:

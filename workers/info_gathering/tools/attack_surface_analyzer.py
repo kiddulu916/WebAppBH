@@ -3,13 +3,14 @@
 
 from lib_webbh import Asset, Location, Observation, Parameter, get_session
 from sqlalchemy import select
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 
 class AttackSurfaceAnalyzer(InfoGatheringTool):
     """Analyze the attack surface to identify high-value targets and prioritize testing."""
 
     async def execute(self, target_id: int, **kwargs):
+        asset_id = kwargs.get("asset_id")
         stats = {"found": 0, "mapped": 0}
 
         try:
@@ -57,20 +58,17 @@ class AttackSurfaceAnalyzer(InfoGatheringTool):
                 ),
             }
 
-            await self.save_observation(
-                target_id,
-                "attack_surface_analysis",
-                analysis,
-                "attack_surface_analyzer",
-            )
+            if asset_id:
+                await self.save_observation(
+                    asset_id=asset_id,
+                    tech_stack={"_source": "attack_surface_analyzer", **analysis},
+                )
 
             stats["found"] = len(high_value)
             stats["mapped"] = len(priorities)
 
-        except Exception as e:
-            logger = getattr(self, "log", None)
-            if logger:
-                logger.error(f"AttackSurfaceAnalyzer failed: {e}")
+        except Exception as exc:
+            logger.error("attack_surface_analyzer failed", target_id=target_id, error=str(exc))
 
         return stats
 

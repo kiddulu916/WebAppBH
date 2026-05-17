@@ -127,7 +127,8 @@ class RedirectBodyInspector(InfoGatheringTool):
                     if status not in range(300, 400):
                         return
                     body = await resp.text(errors="replace")
-        except Exception:
+        except Exception as exc:
+            logger.debug("redirect_body_inspector fetch failed", url=url, error=str(exc))
             return
 
         await self.save_observation(

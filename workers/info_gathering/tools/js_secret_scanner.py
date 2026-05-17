@@ -169,7 +169,8 @@ class JsSecretScanner(InfoGatheringTool):
                             Path(path).write_text(content, encoding="utf-8")
                             downloaded.append(path)
                             path_to_asset[path] = asset_id
-                except Exception:
+                except Exception as exc:
+                    logger.debug("js_secret_scanner download failed", url=url, error=str(exc))
                     continue
         return downloaded, path_to_asset
 

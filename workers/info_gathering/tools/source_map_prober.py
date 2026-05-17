@@ -134,5 +134,6 @@ class SourceMapProber(InfoGatheringTool):
                     allow_redirects=False,
                 ) as resp:
                     return resp.status == 200
-        except Exception:
+        except Exception as exc:
+            logger.debug("source_map_prober probe failed", map_url=map_url, error=str(exc))
             return False

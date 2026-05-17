@@ -4,7 +4,7 @@
 import re
 import aiohttp
 
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 
 class CommentHarvester(InfoGatheringTool):
@@ -12,7 +12,8 @@ class CommentHarvester(InfoGatheringTool):
 
     async def execute(self, target_id: int, **kwargs):
         target = kwargs.get("target")
-        if not target:
+        asset_id = kwargs.get("asset_id")
+        if not target or not asset_id:
             return
 
         url = f"https://{target.base_domain}"
@@ -24,12 +25,11 @@ class CommentHarvester(InfoGatheringTool):
                         comments = self._extract_comments(html)
                         if comments:
                             await self.save_observation(
-                                target_id, "comments",
-                                {"url": url, "comments": comments[:100]},
-                                "comment_harvester"
+                                asset_id=asset_id,
+                                tech_stack={"_source": "comment_harvester", "url": url, "comments": comments[:100]},
                             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error("comment_harvester failed", url=url, error=str(exc))
 
     def _extract_comments(self, html: str) -> list[str]:
         """Extract HTML and JS comments."""

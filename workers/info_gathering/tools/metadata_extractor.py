@@ -7,7 +7,7 @@ import json
 import tempfile
 import os
 
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 
 class MetadataExtractor(InfoGatheringTool):
@@ -44,7 +44,8 @@ class MetadataExtractor(InfoGatheringTool):
                             asset_id=asset_id_obs,
                             tech_stack={"_source": "metadata_extractor", "metadata": metadata},
                         )
-            except Exception:
+            except Exception as exc:
+                logger.error("metadata_extractor failed for url", url=url, error=str(exc))
                 continue
 
     async def _extract_metadata(self, url: str) -> dict:
@@ -71,10 +72,10 @@ class MetadataExtractor(InfoGatheringTool):
                                 data = json.loads(stdout_bytes.decode("utf-8", errors="replace"))
                                 return data[0] if data else {}
                         except asyncio.TimeoutError:
-                            pass
+                            logger.warning("metadata_extractor exiftool timed out", url=url)
                         finally:
                             if os.path.exists(tmp_path):
                                 os.unlink(tmp_path)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error("metadata_extractor _extract_metadata failed", url=url, error=str(exc))
         return {}

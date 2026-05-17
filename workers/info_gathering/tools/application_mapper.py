@@ -3,13 +3,14 @@
 
 from lib_webbh import Asset, Location, Observation, Parameter, get_session
 from sqlalchemy import select
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 
 class ApplicationMapper(InfoGatheringTool):
     """Analyze all gathered info to create a comprehensive application map."""
 
     async def execute(self, target_id: int, **kwargs):
+        asset_id = kwargs.get("asset_id")
         stats = {"found": 0, "mapped": 0}
 
         try:
@@ -57,20 +58,17 @@ class ApplicationMapper(InfoGatheringTool):
                 },
             }
 
-            await self.save_observation(
-                target_id,
-                "application_map",
-                app_map,
-                "application_mapper",
-            )
+            if asset_id:
+                await self.save_observation(
+                    asset_id=asset_id,
+                    tech_stack={"_source": "application_mapper", **app_map},
+                )
 
             stats["found"] = len(entry_points)
             stats["mapped"] = len(execution_paths)
 
-        except Exception as e:
-            logger = getattr(self, "log", None)
-            if logger:
-                logger.error(f"ApplicationMapper failed: {e}")
+        except Exception as exc:
+            logger.error("application_mapper failed", target_id=target_id, error=str(exc))
 
         return stats
 
@@ -131,7 +129,8 @@ class ApplicationMapper(InfoGatheringTool):
                     if domain not in path_groups:
                         path_groups[domain] = []
                     path_groups[domain].append(path)
-            except Exception:
+            except Exception as exc:
+                logger.debug("application_mapper url parse failed", url=url, error=str(exc))
                 continue
 
         for domain, domain_paths in path_groups.items():
