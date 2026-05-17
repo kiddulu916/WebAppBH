@@ -1,0 +1,86 @@
+{
+  "wordpress": {
+    "probe_paths": [
+      "/wp-login.php",
+      "/wp-includes/js/jquery/jquery.min.js",
+      "/wp-includes/css/buttons.css",
+      "/wp-includes/images/rss.png"
+    ],
+    "versions": {
+      "6.4.2": {
+        "/wp-includes/js/jquery/jquery.min.js": "9e0cf26ebce5b0d94f7df0a0e4a1b6d3",
+        "/wp-includes/css/buttons.css": "a1d4e9c7f2b8e3c5d6a0f1b2c3d4e5f6"
+      },
+      "6.3.1": {
+        "/wp-includes/js/jquery/jquery.min.js": "8a1bc234def56789012345678901234a",
+        "/wp-includes/css/buttons.css": "b2e5f8a1c4d7e0f3b6c9d2e5f8a1c4d7"
+      },
+      "6.2.2": {
+        "/wp-includes/js/jquery/jquery.min.js": "7b2cd345ef6789012345678901234b5c",
+        "/wp-includes/css/buttons.css": "c3f6a9b2d5e8f1a4b7c0d3e6f9a2b5c8"
+      }
+    }
+  },
+  "drupal": {
+    "probe_paths": [
+      "/core/CHANGELOG.txt",
+      "/core/misc/drupal.js",
+      "/core/themes/claro/claro.info.yml"
+    ],
+    "versions": {
+      "10.1.6": {
+        "/core/misc/drupal.js": "a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4",
+        "/core/CHANGELOG.txt": "b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5"
+      },
+      "10.0.11": {
+        "/core/misc/drupal.js": "b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3",
+        "/core/CHANGELOG.txt": "c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6"
+      }
+    }
+  },
+  "joomla": {
+    "probe_paths": [
+      "/administrator/index.php",
+      "/libraries/joomla/version.php",
+      "/includes/version.php"
+    ],
+    "versions": {
+      "4.3.4": {
+        "/libraries/joomla/version.php": "d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7"
+      },
+      "4.2.9": {
+        "/libraries/joomla/version.php": "e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8"
+      }
+    }
+  },
+  "magento": {
+    "probe_paths": [
+      "/pub/static/version",
+      "/magento_version",
+      "/app/etc/config.php"
+    ],
+    "versions": {
+      "2.4.6": {
+        "/pub/static/version": "f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9"
+      },
+      "2.4.5": {
+        "/pub/static/version": "a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0"
+      }
+    }
+  },
+  "typo3": {
+    "probe_paths": [
+      "/typo3/index.php",
+      "/typo3conf/ext/",
+      "/typo3/sysext/core/Resources/Public/Icons/T3Icons/typo3.svg"
+    ],
+    "versions": {
+      "12.4.3": {
+        "/typo3/sysext/core/Resources/Public/Icons/T3Icons/typo3.svg": "b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1"
+      },
+      "11.5.30": {
+        "/typo3/sysext/core/Resources/Public/Icons/T3Icons/typo3.svg": "c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2"
+      }
+    }
+  }
+}
