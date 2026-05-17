@@ -165,7 +165,7 @@ def _check_container_logs(container_name: str, tail: int = 500) -> bool:
             timeout=30,
         )
     except subprocess.TimeoutExpired:
-        return True  # can't check, assume clean
+        return False  # unresponsive container is not clean
 
     combined = result.stdout + result.stderr
     for line in combined.splitlines():
@@ -190,6 +190,12 @@ class SSEMonitor:
         stage_timeouts: dict[str, int],
         default_stage_timeout: int = 300,
     ) -> PipelineReport:
+        """Run the SSE monitor for a pipeline.
+
+        stage_assertions keys MUST be ordered to match the pipeline's stage
+        emission order. Out-of-order STAGE_COMPLETE events are silently
+        discarded and will cause the monitor to hang waiting for the already-seen stage.
+        """
         report = PipelineReport()
         event_queue: asyncio.Queue[dict] = asyncio.Queue()
 
@@ -211,59 +217,58 @@ class SSEMonitor:
                                 pass
             await event_queue.put({"event": "_EOF"})
 
-        assertion_client = httpx.AsyncClient(
+        async with httpx.AsyncClient(
             base_url=_BASE_URL,
             headers={"X-API-KEY": self._api_key, "Content-Type": "application/json"},
             timeout=30.0,
-        )
-        reader_task = asyncio.create_task(_reader())
-        try:
-            for stage_name, assertion in stage_assertions.items():
-                timeout_s = stage_timeouts.get(stage_name, default_stage_timeout)
-                stage_start = time.monotonic()
-
-                while True:
-                    remaining = timeout_s - (time.monotonic() - stage_start)
-                    if remaining <= 0:
-                        raise StageTimeoutError(stage_name, time.monotonic() - stage_start)
-                    try:
-                        event = await asyncio.wait_for(event_queue.get(), timeout=remaining)
-                    except asyncio.TimeoutError:
-                        raise StageTimeoutError(stage_name, time.monotonic() - stage_start)
-
-                    report.raw_events.append(event)
-                    event_type = event.get("event", "")
-
-                    if any(kw in event_type.lower() for kw in _ERROR_KEYWORDS):
-                        report.errors.append(event)
-
-                    if event_type == "_EOF":
-                        return report
-
-                    if event_type == "STAGE_COMPLETE" and event.get("stage") == stage_name:
-                        report.completed_stages.append(stage_name)
-                        report.stage_durations[stage_name] = time.monotonic() - stage_start
-                        if assertion is not None:
-                            await assertion(assertion_client, target_id)
-                        break
-
-            # Drain until PIPELINE_COMPLETE (up to 60s)
+        ) as assertion_client:
+            reader_task = asyncio.create_task(_reader())
             try:
-                while True:
-                    event = await asyncio.wait_for(event_queue.get(), timeout=60)
-                    if event.get("event") in ("PIPELINE_COMPLETE", "_EOF"):
-                        break
-            except asyncio.TimeoutError:
-                pass
+                for stage_name, assertion in stage_assertions.items():
+                    timeout_s = stage_timeouts.get(stage_name, default_stage_timeout)
+                    stage_start = time.monotonic()
 
-            report.container_logs_clean = _check_container_logs(worker)
-        finally:
-            reader_task.cancel()
-            try:
-                await reader_task
-            except (asyncio.CancelledError, Exception):
-                pass
-            await assertion_client.aclose()
+                    while True:
+                        remaining = timeout_s - (time.monotonic() - stage_start)
+                        if remaining <= 0:
+                            raise StageTimeoutError(stage_name, time.monotonic() - stage_start)
+                        try:
+                            event = await asyncio.wait_for(event_queue.get(), timeout=remaining)
+                        except asyncio.TimeoutError:
+                            raise StageTimeoutError(stage_name, time.monotonic() - stage_start)
+
+                        report.raw_events.append(event)
+                        event_type = event.get("event", "")
+
+                        if any(kw in event_type.lower() for kw in _ERROR_KEYWORDS):
+                            report.errors.append(event)
+
+                        if event_type == "_EOF":
+                            return report
+
+                        if event_type == "STAGE_COMPLETE" and event.get("stage") == stage_name:
+                            report.completed_stages.append(stage_name)
+                            report.stage_durations[stage_name] = time.monotonic() - stage_start
+                            if assertion is not None:
+                                await assertion(assertion_client, target_id)
+                            break
+
+                # Drain until PIPELINE_COMPLETE (up to 60s)
+                try:
+                    while True:
+                        event = await asyncio.wait_for(event_queue.get(), timeout=60)
+                        if event.get("event") in ("PIPELINE_COMPLETE", "_EOF"):
+                            break
+                except asyncio.TimeoutError:
+                    pass
+
+                report.container_logs_clean = _check_container_logs(worker)
+            finally:
+                reader_task.cancel()
+                try:
+                    await reader_task
+                except (asyncio.CancelledError, Exception):
+                    pass
 
         return report
 
