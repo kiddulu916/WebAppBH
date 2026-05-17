@@ -25,8 +25,19 @@ RUN go install -v github.com/projectdiscovery/tlsx/cmd/tlsx@latest \
     && mv /root/go/bin/tlsx /usr/local/bin/tlsx
 
 # WSTG-INFO-05 secret scanning tools
-RUN go install github.com/gitleaks/gitleaks/v8@latest \
-    && mv /root/go/bin/gitleaks /usr/local/bin/gitleaks
+RUN git clone https://github.com/gitleaks/gitleaks.git && \
+    cd gitleaks && \
+    make build && \
+    ln -s /app/gitleaks/gitleaks /usr/local/bin/gitleaks && \
+    pip install pre-commit && \
+    echo "repos:
+        - repo: https://github.com/gitleaks/gitleaks
+          rev: v8.24.2
+          hooks:
+            - id: gitleaks" > .pre-commit-config.yaml && \
+    pre-commit autoupdate && \
+    pre-commit install && \
+    cd ..
 RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
     | sh -s -- -b /usr/local/bin
 
