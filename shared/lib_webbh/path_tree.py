@@ -16,10 +16,7 @@ class PathTreeBuilder:
         E.g. "https://example.com/a/b/c" -> [("/a","a"),("/a/b","b"),("/a/b/c","c")]
         Strips trailing slashes. Returns [] for URLs with no meaningful path.
         """
-        try:
-            parsed = urlparse(url)
-        except Exception:
-            return []
+        parsed = urlparse(url)
 
         # Require a scheme and a netloc; bare strings like "not-a-url" are rejected.
         if not parsed.scheme or not parsed.netloc:
