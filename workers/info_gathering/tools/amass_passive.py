@@ -1,7 +1,7 @@
 # workers/info_gathering/tools/amass_passive.py
 """AmassPassive wrapper — passive subdomain enumeration via Amass."""
 
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 
 class AmassPassive(InfoGatheringTool):
@@ -15,7 +15,8 @@ class AmassPassive(InfoGatheringTool):
         cmd = ["amass", "enum", "-passive", "-d", target.base_domain]
         try:
             stdout = await self.run_subprocess(cmd, timeout=900)
-        except Exception:
+        except Exception as exc:
+            logger.error("amass_passive failed", domain=target.base_domain, error=str(exc))
             return
 
         for line in stdout.strip().splitlines():

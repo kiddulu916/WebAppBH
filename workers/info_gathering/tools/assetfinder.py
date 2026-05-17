@@ -1,7 +1,7 @@
 # workers/info_gathering/tools/assetfinder.py
 """Assetfinder wrapper — passive subdomain discovery."""
 
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 
 class Assetfinder(InfoGatheringTool):
@@ -15,7 +15,8 @@ class Assetfinder(InfoGatheringTool):
         cmd = ["assetfinder", "--subs-only", target.base_domain]
         try:
             stdout = await self.run_subprocess(cmd)
-        except Exception:
+        except Exception as exc:
+            logger.error("assetfinder failed", domain=target.base_domain, error=str(exc))
             return
 
         for line in stdout.strip().splitlines():

@@ -3,7 +3,7 @@
 
 import json
 
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 
 class Subfinder(InfoGatheringTool):
@@ -17,10 +17,10 @@ class Subfinder(InfoGatheringTool):
         cmd = ["subfinder", "-d", target.base_domain, "-silent", "-json"]
         try:
             stdout = await self.run_subprocess(cmd)
-        except Exception:
+        except Exception as exc:
+            logger.error("subfinder failed", domain=target.base_domain, error=str(exc))
             return
 
-        results = []
         for line in stdout.strip().splitlines():
             line = line.strip()
             if not line:
@@ -29,9 +29,7 @@ class Subfinder(InfoGatheringTool):
                 data = json.loads(line)
                 host = data.get("host", "")
                 if host:
-                    results.append(host)
+                    await self.save_asset(target_id, "subdomain", host, "subfinder")
             except json.JSONDecodeError:
-                results.append(line)
-
-        for host in results:
-            await self.save_asset(target_id, "subdomain", host, "subfinder")
+                if line:
+                    await self.save_asset(target_id, "subdomain", line, "subfinder")

@@ -4,7 +4,7 @@
 import tempfile
 import os
 
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 
 class Massdns(InfoGatheringTool):
@@ -31,13 +31,17 @@ class Massdns(InfoGatheringTool):
         if not domains:
             return
 
+        RESOLVERS = "/app/workers/info_gathering/resolvers.txt"
+        if not os.path.exists(RESOLVERS):
+            logger.error("massdns: resolvers file not found", path=RESOLVERS)
+            return
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("\n".join(domains))
             input_file = f.name
 
         try:
-            cmd = ["massdns", "-r", "/app/workers/info_gathering/resolvers.txt",
-                   "-t", "A", "-o", "S", input_file]
+            cmd = ["massdns", "-r", RESOLVERS, "-t", "A", "-o", "S", input_file]
             stdout = await self.run_subprocess(cmd, timeout=300)
 
             for line in stdout.strip().splitlines():
@@ -46,6 +50,8 @@ class Massdns(InfoGatheringTool):
                     hostname = parts[0].rstrip(".")
                     ip = parts[2]
                     await self.save_asset(target_id, "ip", ip, "massdns")
+        except Exception as exc:
+            logger.error("massdns failed", error=str(exc))
         finally:
             if os.path.exists(input_file):
                 os.unlink(input_file)
