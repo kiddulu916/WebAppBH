@@ -748,9 +748,9 @@ class PathNode(TimestampMixin, Base):
     __tablename__ = "path_nodes"
     __table_args__ = (
         UniqueConstraint("target_id", "full_path", name="uq_path_nodes_target_path"),
-        Index("idx_path_nodes_target", "target_id"),
-        Index("idx_path_nodes_parent", "parent_id"),
-        Index("idx_path_nodes_asset", "asset_id"),
+        Index("ix_path_nodes_target", "target_id"),
+        Index("ix_path_nodes_parent", "parent_id"),
+        Index("ix_path_nodes_asset", "asset_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -761,8 +761,8 @@ class PathNode(TimestampMixin, Base):
     parent_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("path_nodes.id", ondelete="CASCADE"), nullable=True
     )
-    path_segment: Mapped[str] = mapped_column(Text, nullable=False)
-    full_path: Mapped[str] = mapped_column(Text, nullable=False)
+    path_segment: Mapped[str] = mapped_column(Text)
+    full_path: Mapped[str] = mapped_column(Text)
     node_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     source_tool: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
@@ -772,5 +772,5 @@ class PathNode(TimestampMixin, Base):
         "PathNode", remote_side="PathNode.id", back_populates="children"
     )
     children: Mapped[list["PathNode"]] = relationship(
-        "PathNode", back_populates="parent", cascade="all, delete-orphan"
+        "PathNode", back_populates="parent", passive_deletes=True
     )
