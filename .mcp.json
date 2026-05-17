@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "bash",
+      "args": ["dashboard/scripts/start-playwright-mcp.sh"],
+      "description": "Playwright MCP for interactive dashboard testing"
+    }
+  }
+}
