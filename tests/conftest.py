@@ -211,6 +211,11 @@ class SSEMonitor:
                                 pass
             await event_queue.put({"event": "_EOF"})
 
+        assertion_client = httpx.AsyncClient(
+            base_url=_BASE_URL,
+            headers={"X-API-KEY": self._api_key, "Content-Type": "application/json"},
+            timeout=30.0,
+        )
         reader_task = asyncio.create_task(_reader())
         try:
             for stage_name, assertion in stage_assertions.items():
@@ -239,7 +244,7 @@ class SSEMonitor:
                         report.completed_stages.append(stage_name)
                         report.stage_durations[stage_name] = time.monotonic() - stage_start
                         if assertion is not None:
-                            await assertion(target_id)
+                            await assertion(assertion_client, target_id)
                         break
 
             # Drain until PIPELINE_COMPLETE (up to 60s)
@@ -258,6 +263,7 @@ class SSEMonitor:
                 await reader_task
             except (asyncio.CancelledError, Exception):
                 pass
+            await assertion_client.aclose()
 
         return report
 
