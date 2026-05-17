@@ -205,20 +205,21 @@ class Pipeline(CheckpointMixin):
                 }
         return raw
 
+    @staticmethod
+    def _vendors_from_signals(signals: dict) -> list[str]:
+        return list({
+            s["value"]
+            for k, sigs in signals.items()
+            if not k.startswith("_") and isinstance(sigs, list)
+            for s in sigs if isinstance(s, dict) and s.get("value")
+        })
+
     def _stage8_raw_from_results(self, results: list) -> dict[str, Any]:
         """Extract per-probe data for FrameworkFingerprintAggregator.emit_disclosures."""
         raw: dict[str, Any] = {}
         for r in results:
             if not isinstance(r, ProbeResult) or r.error is not None:
                 continue
-
-            def _all_vendors(signals: dict) -> list[str]:
-                return list({
-                    s["value"]
-                    for k, sigs in signals.items()
-                    if not k.startswith("_") and isinstance(sigs, list)
-                    for s in sigs if isinstance(s, dict) and s.get("value")
-                })
 
             if r.probe in ("header_framework", "meta_generator"):
                 raw[r.probe] = {
@@ -229,10 +230,10 @@ class Pipeline(CheckpointMixin):
                         if not k.startswith("_") and isinstance(sigs, list)
                         for s in sigs if isinstance(s, dict) and s.get("version")
                     ],
-                    "all_vendors": _all_vendors(r.signals),
+                    "all_vendors": self._vendors_from_signals(r.signals),
                 }
             elif r.probe in ("wappalyzer", "webanalyze", "cookie_framework"):
-                raw[r.probe] = {"obs_id": r.obs_id, "all_vendors": _all_vendors(r.signals)}
+                raw[r.probe] = {"obs_id": r.obs_id, "all_vendors": self._vendors_from_signals(r.signals)}
             elif r.probe == "framework_files":
                 raw["framework_files"] = {
                     "obs_id": r.obs_id,
