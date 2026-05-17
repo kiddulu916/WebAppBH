@@ -18,10 +18,10 @@ class SecurityTrailsSearcher(InfoGatheringTool):
     """
 
     async def execute(self, target_id: int, **kwargs) -> dict:
-        api_key = os.environ.get("SECURITYTRAILS_API_KEY", "")
+        api_key = os.environ.get("SECURITYTRAILS_API_KEY")
         if not api_key:
-            logger.info("SecurityTrailsSearcher skipped — no SECURITYTRAILS_API_KEY configured")
-            return {"skipped": True, "reason": "no_api_key"}
+            logger.warning("securitytrails_searcher: SECURITYTRAILS_API_KEY not set, skipping")
+            return
 
         domain = kwargs.get("domain")
         scope_manager = kwargs.get("scope_manager")

@@ -19,12 +19,11 @@ class CensysSearcher(InfoGatheringTool):
     """
 
     async def execute(self, target_id: int, **kwargs) -> dict:
-        api_id = os.environ.get("CENSYS_API_ID", "")
+        api_id = os.environ.get("CENSYS_API_ID")
+        if not api_id:
+            logger.warning("censys_searcher: CENSYS_API_ID not set, skipping")
+            return
         api_secret = os.environ.get("CENSYS_API_SECRET", "")
-
-        if not api_secret:
-            logger.info("CensysSearcher skipped — no CENSYS_API_SECRET configured")
-            return {"skipped": True, "reason": "no_api_key"}
 
         domain = kwargs.get("domain")
         scope_manager = kwargs.get("scope_manager")
