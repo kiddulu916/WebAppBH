@@ -223,4 +223,13 @@ export const apiClient = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+
+  getCampaigns: () =>
+    req<{
+      campaigns: Array<{
+        id: number;
+        name: string;
+        status: string;
+      }>;
+    }>("/campaigns"),
 };

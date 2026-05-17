@@ -20,7 +20,7 @@ export default defineConfig({
     {
       // Standard suite: seeded-data tests, fast, runs in CI by default
       name: "chromium",
-      testIgnore: ["**/flows/live-pipeline-journey.spec.ts"],
+      testIgnore: ["**/flows/live-*.spec.ts"],
       use: {
         ...devices["Desktop Chrome"],
         launchOptions: {
@@ -32,7 +32,7 @@ export default defineConfig({
       // Live-pipeline suite: real tool execution against testphp.vulnweb.com.
       // Run explicitly with: npx playwright test --project=live
       name: "live",
-      testMatch: ["**/flows/live-pipeline-journey.spec.ts"],
+      testMatch: ["**/flows/live-*.spec.ts"],
       use: {
         ...devices["Desktop Chrome"],
         actionTimeout: 900_000,
