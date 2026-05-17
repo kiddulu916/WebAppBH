@@ -81,6 +81,9 @@ from lib_webbh.rate_limiter import RateLimiter, RateRule, parse_rate_rule
 # Pipeline checkpoint mixin
 from lib_webbh.pipeline_checkpoint import CheckpointMixin
 
+# Path tree builder
+from lib_webbh.path_tree import PathTreeBuilder
+
 # Adaptive scan intelligence
 from lib_webbh.scan_intelligence import (
     fingerprint_tech_stack,
@@ -165,4 +168,5 @@ __all__ = [
     "RateRule",
     "parse_rate_rule",
     "CheckpointMixin",
+    "PathTreeBuilder",
 ]
