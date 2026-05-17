@@ -12,10 +12,10 @@ import { apiClient } from "../../helpers/api-client";
 test.describe("Live Pipeline Journey", () => {
   test.setTimeout(900_000); // 15 min — real tools are slow
 
-  let targetId: number;
+  const targetIds: number[] = [];
 
   test.afterAll(async () => {
-    if (targetId) await apiClient.deleteTarget(targetId).catch(() => {});
+    for (const id of targetIds) await apiClient.deleteTarget(id).catch(() => {});
   });
 
   test("info_gathering: C2 console shows running worker, assets appear after completion", async ({
@@ -28,7 +28,7 @@ test.describe("Live Pipeline Journey", () => {
       base_domain: "testphp.vulnweb.com",
       playbook: "e2e_info_gathering",
     });
-    targetId = res.target_id;
+    targetIds.push(res.target_id);
 
     // Navigate to dashboard root and pick the new target
     await page.goto("/");
@@ -42,13 +42,13 @@ test.describe("Live Pipeline Journey", () => {
       timeout: 15_000,
     });
 
-    // Wait for the worker to appear as RUNNING in the grid
+    // Wait for the worker to appear as RUNNING in the grid (60s — well before first stage completes)
     await page.waitForFunction(
       () => {
         const grid = document.querySelector('[data-testid="c2-worker-grid"]');
         return grid?.textContent?.toLowerCase().includes("running");
       },
-      { timeout: 120_000 },
+      { timeout: 60_000 },
     );
 
     // Phase pipeline should be visible and updating
@@ -56,13 +56,13 @@ test.describe("Live Pipeline Journey", () => {
       timeout: 30_000,
     });
 
-    // Wait for COMPLETED status in the worker grid (pipeline finished)
+    // Wait for COMPLETED status in the worker grid (780s — fits within 900s test timeout)
     await page.waitForFunction(
       () => {
         const grid = document.querySelector('[data-testid="c2-worker-grid"]');
         return grid?.textContent?.toLowerCase().includes("completed");
       },
-      { timeout: 840_000 }, // 14 min remaining budget
+      { timeout: 780_000 },
     );
 
     // Navigate to assets and verify real findings were stored
@@ -87,7 +87,7 @@ test.describe("Live Pipeline Journey", () => {
       base_domain: "testphp.vulnweb.com",
       playbook: "e2e_input_validation",
     });
-    targetId = res.target_id;
+    targetIds.push(res.target_id);
 
     await page.goto("/");
     await page
@@ -95,13 +95,13 @@ test.describe("Live Pipeline Journey", () => {
       .click({ timeout: 15_000 });
     await page.waitForURL("**/campaign/c2");
 
-    // Wait for COMPLETED
+    // Wait for COMPLETED (780s — fits within 900s test timeout with room for navigation)
     await page.waitForFunction(
       () => {
         const grid = document.querySelector('[data-testid="c2-worker-grid"]');
         return grid?.textContent?.toLowerCase().includes("completed");
       },
-      { timeout: 840_000 },
+      { timeout: 780_000 },
     );
 
     // Navigate to findings
