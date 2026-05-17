@@ -1929,21 +1929,656 @@ git commit -m "ci: add GitHub Actions e2e workflow"
 
 ---
 
+## Task 21: Fix workflow-builder.spec.ts playbook count assertion
+
+**Files:**
+- Modify: `dashboard/e2e/tests/workflow-builder.spec.ts:33`
+
+Task 1 adds 11 `e2e_*` playbooks to `BUILTIN_PLAYBOOKS`, increasing the options in the
+playbook selector from 5 (4 built-in + placeholder) to 16 (15 total + placeholder).
+The brittle `toHaveCount(5)` assertion will fail. Replace it with named-option assertions.
+
+- [ ] **Step 1: Update the playbook count assertion in workflow-builder.spec.ts**
+
+Replace lines 31–34 in `dashboard/e2e/tests/workflow-builder.spec.ts`:
+
+```typescript
+    // Should have built-in options
+    await expect(select.locator("option")).toHaveCount(5); // 4 built-in + "Select..."
+```
+
+with:
+
+```typescript
+    // Verify the four core built-in playbooks are present by value (count is
+    // flexible — e2e_* test playbooks may also appear depending on API filtering).
+    for (const name of ["wide_recon", "deep_webapp", "api_focused", "cloud_first"]) {
+      await expect(select.locator(`option[value="${name}"]`)).toHaveCount(1);
+    }
+```
+
+- [ ] **Step 2: Run the workflow-builder spec to confirm the fix**
+
+```bash
+cd dashboard && npx playwright test e2e/tests/workflow-builder.spec.ts --project=chromium 2>&1 | tail -20
+```
+
+Expected: all 5 tests pass.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add dashboard/e2e/tests/workflow-builder.spec.ts
+git commit -m "fix(e2e): update workflow-builder playbook assertion for e2e_* playbook additions"
+```
+
+---
+
+## Task 22: live-pipeline-journey.spec.ts
+
+This is the Type A test: a real `e2e_info_gathering` pipeline runs against
+`testphp.vulnweb.com`, and the Playwright browser watches the C2 console update
+in real-time via SSE. After completion the assets page is verified.
+
+**Files:**
+- Create: `dashboard/e2e/tests/flows/live-pipeline-journey.spec.ts`
+
+- [ ] **Step 1: Create the live pipeline journey spec**
+
+```typescript
+/**
+ * Live Pipeline Journey — Type A e2e test.
+ *
+ * Runs a real info_gathering pipeline against testphp.vulnweb.com and verifies
+ * the dashboard updates in real-time via SSE, then shows findings afterward.
+ *
+ * Timeout: 15 minutes. Requires full stack with workers running.
+ */
+import { test, expect } from "../../helpers/fixtures";
+import { apiClient } from "../../helpers/api-client";
+
+test.describe("Live Pipeline Journey", () => {
+  test.setTimeout(900_000); // 15 min — real tools are slow
+
+  let targetId: number;
+
+  test.afterAll(async () => {
+    if (targetId) await apiClient.deleteTarget(targetId).catch(() => {});
+  });
+
+  test("info_gathering: C2 console shows running worker, assets appear after completion", async ({
+    page,
+  }) => {
+    await apiClient.killAll().catch(() => {});
+
+    const res = await apiClient.createTarget({
+      company_name: "E2E-LivePipeline",
+      base_domain: "testphp.vulnweb.com",
+      playbook: "e2e_info_gathering",
+    });
+    targetId = res.target_id;
+
+    // Navigate to dashboard root and pick the new target
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: /testphp\.vulnweb\.com/ })
+      .click({ timeout: 15_000 });
+    await page.waitForURL("**/campaign/c2");
+
+    // C2 worker grid must be visible before pipeline starts
+    await expect(page.getByTestId("c2-worker-grid")).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Wait for the worker to appear as RUNNING in the grid
+    await page.waitForFunction(
+      () => {
+        const grid = document.querySelector('[data-testid="c2-worker-grid"]');
+        return grid?.textContent?.toLowerCase().includes("running");
+      },
+      { timeout: 120_000 },
+    );
+
+    // Phase pipeline should be visible and updating
+    await expect(page.getByTestId("c2-phase-pipeline")).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // Wait for COMPLETED status in the worker grid (pipeline finished)
+    await page.waitForFunction(
+      () => {
+        const grid = document.querySelector('[data-testid="c2-worker-grid"]');
+        return grid?.textContent?.toLowerCase().includes("completed");
+      },
+      { timeout: 840_000 }, // 14 min remaining budget
+    );
+
+    // Navigate to assets and verify real findings were stored
+    await page.getByRole("link", { name: /assets/i }).click();
+    await page.waitForURL("**/campaign/assets", { timeout: 10_000 });
+
+    const table = page.getByTestId("assets-table");
+    await expect(table).toBeVisible({ timeout: 15_000 });
+    // testphp.vulnweb.com exposes discoverable assets — at least one row must exist
+    await expect(page.getByTestId("asset-row").first()).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+
+  test("input_validation: vulnerabilities page shows real findings after pipeline", async ({
+    page,
+  }) => {
+    await apiClient.killAll().catch(() => {});
+
+    const res = await apiClient.createTarget({
+      company_name: "E2E-LiveVulns",
+      base_domain: "testphp.vulnweb.com",
+      playbook: "e2e_input_validation",
+    });
+    targetId = res.target_id;
+
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: /testphp\.vulnweb\.com/ })
+      .click({ timeout: 15_000 });
+    await page.waitForURL("**/campaign/c2");
+
+    // Wait for COMPLETED
+    await page.waitForFunction(
+      () => {
+        const grid = document.querySelector('[data-testid="c2-worker-grid"]');
+        return grid?.textContent?.toLowerCase().includes("completed");
+      },
+      { timeout: 840_000 },
+    );
+
+    // Navigate to findings
+    await page.getByRole("link", { name: /findings/i }).click();
+    await page.waitForURL("**/campaign/findings", { timeout: 10_000 });
+
+    // testphp.vulnweb.com has known SQLi and XSS — at least one finding must appear
+    await expect(page.getByTestId("finding-row").first()).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+});
+```
+
+- [ ] **Step 2: Run dry-run to confirm spec is syntactically valid (skip execution)**
+
+```bash
+cd dashboard && npx playwright test e2e/tests/flows/live-pipeline-journey.spec.ts --list 2>&1
+```
+
+Expected: lists 2 tests with no parse errors.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add dashboard/e2e/tests/flows/live-pipeline-journey.spec.ts
+git commit -m "feat(e2e): add live-pipeline-journey Playwright spec (Type A)"
+```
+
+---
+
+## Task 23: sse-stage-progression.spec.ts
+
+Type A verification that SSE `STAGE_COMPLETE` events cause the UI to update
+without a page reload. Uses the `__campaignStore` injection pattern already
+established in `sse-live-updates.spec.ts` — no real pipeline needed here.
+
+**Files:**
+- Create: `dashboard/e2e/tests/sse-stage-progression.spec.ts`
+
+- [ ] **Step 1: Create the spec**
+
+```typescript
+/**
+ * SSE Stage Progression — verifies STAGE_COMPLETE events update the C2 UI
+ * without a page reload. Uses the exposed __campaignStore to inject events,
+ * mirroring the real SSE path through useEventStream.
+ */
+import { test, expect } from "../helpers/fixtures";
+import { apiClient } from "../helpers/api-client";
+import { factories } from "../helpers/seed-factories";
+
+test.describe("SSE Stage Progression", () => {
+  let targetId: number;
+  let baseDomain: string;
+
+  test.beforeAll(async () => {
+    await apiClient.killAll().catch(() => {});
+    const data = factories.target();
+    baseDomain = data.base_domain;
+    const res = await apiClient.createTarget(data);
+    targetId = res.target_id;
+    await apiClient.seedTestData(targetId);
+  });
+
+  test.afterAll(async () => {
+    if (targetId) await apiClient.deleteTarget(targetId).catch(() => {});
+  });
+
+  test("STAGE_COMPLETE event updates phase pipeline without page reload", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(baseDomain) }).click();
+    await page.waitForURL("**/campaign/c2");
+
+    await expect(page.getByTestId("c2-phase-pipeline")).toBeVisible({ timeout: 10_000 });
+
+    // Wait for Zustand store to be exposed
+    await page.waitForFunction(
+      () => !!(window as unknown as Record<string, unknown>).__campaignStore,
+      null,
+      { timeout: 10_000 },
+    );
+
+    // Track reloads — we must NOT reload on SSE events
+    let reloadCount = 0;
+    page.on("load", () => reloadCount++);
+    const baseline = reloadCount;
+
+    // Inject a STAGE_COMPLETE event for the first info_gathering stage
+    await page.evaluate(() => {
+      const store = (window as unknown as Record<string, unknown>).__campaignStore as {
+        getState: () => { pushEvent: (evt: Record<string, unknown>) => void };
+      };
+      store.getState().pushEvent({
+        event: "STAGE_COMPLETE",
+        stage: "search_engine_recon",
+        stats: { assets_found: 5 },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // Phase pipeline should reflect the completed stage
+    await expect(page.getByTestId("c2-phase-pipeline")).toContainText(
+      /search_engine_recon|Search Engine/i,
+      { timeout: 5_000 },
+    );
+
+    // No full reload occurred
+    expect(reloadCount).toBe(baseline);
+  });
+
+  test("PIPELINE_COMPLETE event marks worker as completed in worker grid", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(baseDomain) }).click();
+    await page.waitForURL("**/campaign/c2");
+
+    await expect(page.getByTestId("c2-worker-grid")).toBeVisible({ timeout: 10_000 });
+
+    await page.waitForFunction(
+      () => !!(window as unknown as Record<string, unknown>).__campaignStore,
+      null,
+      { timeout: 10_000 },
+    );
+
+    // Inject PIPELINE_COMPLETE
+    await page.evaluate(() => {
+      const store = (window as unknown as Record<string, unknown>).__campaignStore as {
+        getState: () => { pushEvent: (evt: Record<string, unknown>) => void };
+      };
+      store.getState().pushEvent({
+        event: "PIPELINE_COMPLETE",
+        target_id: 0,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // Worker grid should reflect the terminal state
+    await expect(page.getByTestId("c2-worker-grid")).toContainText(
+      /completed|done/i,
+      { timeout: 5_000 },
+    );
+  });
+
+  test("STAGE_ERROR event surfaces in C2 UI without crash", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: new RegExp(baseDomain) }).click();
+    await page.waitForURL("**/campaign/c2");
+
+    await expect(page.getByTestId("c2-phase-pipeline")).toBeVisible({ timeout: 10_000 });
+
+    await page.waitForFunction(
+      () => !!(window as unknown as Record<string, unknown>).__campaignStore,
+      null,
+      { timeout: 10_000 },
+    );
+
+    // Track JS errors on the page
+    const pageErrors: string[] = [];
+    page.on("pageerror", (err) => pageErrors.push(err.message));
+
+    await page.evaluate(() => {
+      const store = (window as unknown as Record<string, unknown>).__campaignStore as {
+        getState: () => { pushEvent: (evt: Record<string, unknown>) => void };
+      };
+      store.getState().pushEvent({
+        event: "STAGE_ERROR",
+        stage: "web_server_fingerprint",
+        error: "connection refused",
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // Page must not crash — C2 components still visible
+    await expect(page.getByTestId("c2-phase-pipeline")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByTestId("c2-worker-grid")).toBeVisible({ timeout: 3_000 });
+
+    // No JS exceptions thrown
+    expect(pageErrors).toHaveLength(0);
+  });
+});
+```
+
+- [ ] **Step 2: List tests to confirm syntax**
+
+```bash
+cd dashboard && npx playwright test e2e/tests/sse-stage-progression.spec.ts --list 2>&1
+```
+
+Expected: lists 3 tests, no parse errors.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add dashboard/e2e/tests/sse-stage-progression.spec.ts
+git commit -m "feat(e2e): add sse-stage-progression Playwright spec (injected events)"
+```
+
+---
+
+## Task 24: Playwright MCP server integration + playwright.config.ts update
+
+The Playwright MCP server (`@playwright/mcp`) exposes browser automation as MCP
+tools, allowing AI agents to interactively navigate, snapshot, and debug the
+dashboard during development. This task wires it up alongside the standard test runner.
+
+**Files:**
+- Modify: `dashboard/e2e/playwright.config.ts`
+- Create: `dashboard/scripts/start-playwright-mcp.sh`
+
+- [ ] **Step 1: Add a `live` project to playwright.config.ts for long-running tests**
+
+Replace the full contents of `dashboard/e2e/playwright.config.ts`:
+
+```typescript
+import { defineConfig, devices } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./tests",
+  globalSetup: "./global-setup.ts",
+  globalTeardown: "./global-teardown.ts",
+  timeout: 30_000,
+  retries: 1,
+  workers: 1,
+  fullyParallel: false,
+
+  use: {
+    baseURL: "http://localhost:3000",
+    trace: "on-first-retry",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
+  },
+
+  projects: [
+    {
+      // Standard suite: seeded-data tests, fast, runs in CI by default
+      name: "chromium",
+      testIgnore: ["**/flows/live-pipeline-journey.spec.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        launchOptions: {
+          args: ["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"],
+        },
+      },
+    },
+    {
+      // Live-pipeline suite: real tool execution against testphp.vulnweb.com.
+      // Run explicitly with: npx playwright test --project=live
+      name: "live",
+      testMatch: ["**/flows/live-pipeline-journey.spec.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        actionTimeout: 900_000,
+        launchOptions: {
+          args: ["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"],
+        },
+      },
+    },
+  ],
+
+  reporter: [["html", { open: "never" }], ["list"]],
+});
+```
+
+- [ ] **Step 2: Install the Playwright MCP package**
+
+```bash
+cd dashboard && npm install --save-dev @playwright/mcp
+```
+
+- [ ] **Step 3: Create scripts/start-playwright-mcp.sh**
+
+```bash
+mkdir -p dashboard/scripts
+```
+
+Create `dashboard/scripts/start-playwright-mcp.sh`:
+
+```bash
+#!/usr/bin/env bash
+# Start the Playwright MCP server for interactive AI-agent testing.
+# Use this during development to let Claude Code drive the dashboard UI
+# via the mcp__plugin_playwright_playwright__* tools.
+#
+# Usage: bash dashboard/scripts/start-playwright-mcp.sh
+# Then invoke Playwright MCP tools in your Claude Code session.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "[mcp] Starting Playwright MCP server on port 8931..."
+npx @playwright/mcp --port 8931 \
+  --browser chromium \
+  --no-sandbox \
+  --base-url "http://localhost:3000"
+```
+
+```bash
+chmod +x dashboard/scripts/start-playwright-mcp.sh
+```
+
+- [ ] **Step 4: Add MCP server entry to project .claude/settings.json**
+
+Open `.claude/settings.json` and add the Playwright MCP server to the `mcpServers` block so Claude Code can use it for interactive frontend testing:
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "bash",
+      "args": ["dashboard/scripts/start-playwright-mcp.sh"],
+      "description": "Playwright MCP for interactive dashboard testing"
+    }
+  }
+}
+```
+
+> **How to use during development:** Start the full stack (`docker compose up -d`), then run `bash dashboard/scripts/start-playwright-mcp.sh`. In Claude Code, use `mcp__plugin_playwright_playwright__browser_navigate`, `browser_snapshot`, and `browser_click` to explore the live dashboard, discover real `data-testid` values, and prototype test selectors before writing spec code.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add dashboard/e2e/playwright.config.ts dashboard/scripts/start-playwright-mcp.sh .claude/settings.json dashboard/package.json dashboard/package-lock.json
+git commit -m "feat(e2e): add live playwright project, Playwright MCP server script"
+```
+
+---
+
+## Task 25: Update GitHub Actions to run Playwright suite
+
+**Files:**
+- Modify: `.github/workflows/e2e.yml`
+
+- [ ] **Step 1: Add dashboard Playwright steps to the workflow**
+
+Replace the full contents of `.github/workflows/e2e.yml`:
+
+```yaml
+name: E2E Test Suite
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  backend-e2e:
+    name: Backend E2E (pytest + SSEMonitor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install pytest pytest-asyncio httpx
+
+      - name: Start stack
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.test.yml \
+            up -d --build
+        env:
+          OLLAMA_AVAILABLE: "true"
+
+      - name: Wait for orchestrator health
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8001/api/v1/health && exit 0
+            echo "Waiting for stack... attempt $i"
+            sleep 10
+          done
+          echo "Stack did not become healthy" && exit 1
+
+      - name: Run backend e2e suite
+        run: pytest tests/e2e/ --e2e -v --timeout=7200
+        env:
+          WEB_APP_BH_API_KEY: ${{ secrets.WEB_APP_BH_API_KEY }}
+          OLLAMA_AVAILABLE: "true"
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v
+
+  frontend-e2e:
+    name: Frontend E2E (Playwright — seeded data)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dashboard dependencies
+        run: cd dashboard && npm ci
+
+      - name: Install Playwright browsers
+        run: cd dashboard && npx playwright install --with-deps chromium
+
+      - name: Start stack (postgres + redis + orchestrator + dashboard)
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.test.yml \
+            up -d --build \
+            postgres redis orchestrator dashboard
+        env:
+          ENABLE_TEST_SEED: "true"
+
+      - name: Wait for services
+        run: |
+          for svc in "http://localhost:8001/api/v1/health" "http://localhost:3000"; do
+            for i in $(seq 1 24); do
+              curl -sf "$svc" && break
+              echo "Waiting for $svc... attempt $i"
+              sleep 5
+            done
+          done
+
+      - name: Run Playwright suite (chromium project — seeded data only)
+        run: cd dashboard && npx playwright test --project=chromium
+        env:
+          WEB_APP_BH_API_KEY: ${{ secrets.WEB_APP_BH_API_KEY }}
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: dashboard/playwright-report/
+          retention-days: 7
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v
+```
+
+> **Note:** The `live` Playwright project (real pipeline against testphp.vulnweb.com) is intentionally excluded from CI — it requires workers to run for up to 15 minutes. Run it locally with `npx playwright test --project=live` after starting the full stack.
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add .github/workflows/e2e.yml
+git commit -m "ci: split e2e workflow into backend-e2e and frontend-e2e jobs"
+```
+
+---
+
 ## Self-Review Notes
 
 **Spec coverage check:**
-- ✅ Section 2 (file structure): all 20 files covered across tasks
+- ✅ Section 2 (file structure): all 20 files covered across tasks 1–20
 - ✅ Section 3 (stack fixture): Task 2 — lifecycle, health wait, yield, teardown
 - ✅ Section 3.3 (SSEMonitor): Task 3 — full implementation with per-stage timeouts
 - ✅ Section 3.4 (helpers): Task 4 — create_target, assert_assets, assert_vulnerabilities, assert_job_completed, cleanup_target
-- ✅ Section 4 (per-worker pattern): Tasks 5-18 — pipeline_result fixture + 2 tests per file
+- ✅ Section 4 (per-worker pattern): Tasks 5–18 — pipeline_result fixture + 2 tests per file
 - ✅ Section 5 (worker assertion tables): baked into each task's STAGE_ASSERTIONS dict
 - ✅ Section 6 (error detection): SSEMonitor collects error events + _check_container_logs
-- ✅ Section 7 (timeouts + CI): STAGE_TIMEOUTS per worker + Task 20 workflow
-- ✅ Section 8 (target): `testphp.vulnweb.com` as default, `TEST_TARGET_DOMAIN` env override in `create_target` if needed
+- ✅ Section 7 (timeouts + CI): STAGE_TIMEOUTS per worker + Task 20/25 workflows
+- ✅ Section 8 (target): `testphp.vulnweb.com` as default
 - ✅ Section 9 (what gets deleted): Task 1
+- ✅ Playwright frontend (Type A): Tasks 22–23 — live-pipeline-journey.spec.ts + sse-stage-progression.spec.ts
+- ✅ Playwright frontend (Type B): existing `dashboard/e2e/` suite preserved; Task 21 fixes the broken assertion
+- ✅ Playwright MCP server: Task 24 — start script, Claude Code MCP config, usage notes
 
 **Potential issues to watch during implementation:**
 1. The actual docker container names (e.g., `info_gathering` vs `webbh-info_gathering-1`) — run `docker ps` after stack start and verify container names match what `_check_container_logs` passes to `docker logs`.
 2. The `DELETE /api/v1/targets/{id}` endpoint kills running containers — verify cleanup completes before next test's `create_target` to avoid 409.
-3. `wide_recon` tests (chain_worker, reporting_worker, reasoning_worker) use all workers — run these last to avoid the long wait impacting earlier fast tests. pytest runs files alphabetically by default; rename files with a `z_` prefix if ordering matters.
+3. `wide_recon` tests (chain_worker, reporting_worker, reasoning_worker) use all workers — run these last. pytest runs files alphabetically; rename with `z_` prefix if ordering matters.
+4. The `live` Playwright project is excluded from CI by `testIgnore` — only the `chromium` project (seeded data) runs in CI. Run `--project=live` locally for the real-pipeline UI tests.
+5. The `__campaignStore` injection pattern (Tasks 22–23) depends on the Zustand store being exposed on `window` — verify this is set in the Next.js app during development builds.
