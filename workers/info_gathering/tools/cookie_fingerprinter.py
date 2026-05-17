@@ -38,6 +38,7 @@ class CookieFingerprinter(InfoGatheringTool):
             return ProbeResult(probe="cookie_framework", obs_id=None, signals={},
                                error="missing host or asset_id")
         try:
+            await self.acquire_rate_limit(kwargs.get("rate_limiter"))
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"https://{host}",

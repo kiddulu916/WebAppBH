@@ -8,7 +8,10 @@ import ipaddress
 import os
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import Any, Optional  # noqa: F401
+from typing import TYPE_CHECKING, Any, Optional  # noqa: F401
+
+if TYPE_CHECKING:
+    from workers.info_gathering.fingerprint_aggregator import ProbeResult
 
 from sqlalchemy import select
 
@@ -36,7 +39,7 @@ class InfoGatheringTool(ABC):
     worker_type = "info_gathering"
 
     @abstractmethod
-    async def execute(self, target_id: int, **kwargs) -> dict[str, Any] | None:
+    async def execute(self, target_id: int, **kwargs) -> dict[str, Any] | ProbeResult | None:
         """Run this tool against the target. Must be implemented by subclasses."""
         ...
 
