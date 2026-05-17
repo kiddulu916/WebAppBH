@@ -2,10 +2,9 @@
 """Wappalyzer wrapper — technology detection (WSTG 4.1.8)."""
 from __future__ import annotations
 
-import json
 from typing import Any
 
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 from workers.info_gathering.fingerprint_aggregator import ProbeResult
 
 _TECH_SLOTS: dict[str, str] = {
@@ -21,37 +20,37 @@ _TECH_SLOTS: dict[str, str] = {
 
 
 class Wappalyzer(InfoGatheringTool):
-    """Technology detection using Wappalyzer CLI (WSTG 4.1.8)."""
+    """Technology detection using python-Wappalyzer library (WSTG 4.1.8)."""
 
     async def execute(self, target_id: int, **kwargs: Any) -> ProbeResult:
+        import asyncio
         host = kwargs.get("host")
         asset_id = kwargs.get("asset_id")
         if not host or not asset_id:
             return ProbeResult(probe="wappalyzer", obs_id=None, signals={},
                                error="missing host or asset_id")
         try:
-            stdout = await self.run_subprocess(
-                ["wappalyzer", f"https://{host}"], timeout=300,
-                rate_limiter=kwargs.get("rate_limiter"),
+            from Wappalyzer import Wappalyzer as WapLib, WebPage
+            webpage = await asyncio.get_event_loop().run_in_executor(
+                None, WebPage.new_from_url, f"https://{host}"
+            )
+            wappalyzer = WapLib.latest()
+            techs = await asyncio.get_event_loop().run_in_executor(
+                None, wappalyzer.analyze, webpage
             )
         except Exception as exc:
+            logger.error("wappalyzer failed", host=host, error=str(exc))
             return ProbeResult(probe="wappalyzer", obs_id=None, signals={}, error=str(exc))
-        try:
-            data = json.loads(stdout)
-        except json.JSONDecodeError:
-            return ProbeResult(probe="wappalyzer", obs_id=None, signals={}, error="invalid json")
 
-        techs = data.get("technologies", [])
+        tech_names = list(techs) if isinstance(techs, (set, list)) else list(techs.keys())
         signals: dict[str, Any] = {"framework": [], "cms": [], "language": []}
-        for tech in techs:
-            name = tech.get("name", "")
+        for name in tech_names:
             slot = _TECH_SLOTS.get(name)
             if slot:
                 signals[slot].append({"src": "wappalyzer", "value": name, "w": 0.6})
 
         obs_id = await self.save_observation(
             asset_id=asset_id,
-            tech_stack={"_probe": "wappalyzer", "host": host,
-                        "technologies": [t.get("name", "") for t in techs]},
+            tech_stack={"_probe": "wappalyzer", "host": host, "technologies": tech_names},
         )
         return ProbeResult(probe="wappalyzer", obs_id=obs_id, signals=signals)

@@ -3,7 +3,7 @@
 
 import json
 
-from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.base_tool import InfoGatheringTool, logger
 
 
 class Naabu(InfoGatheringTool):
@@ -11,13 +11,19 @@ class Naabu(InfoGatheringTool):
 
     async def execute(self, target_id: int, **kwargs):
         target = kwargs.get("target")
-        if not target:
+        asset_id = kwargs.get("asset_id")
+        if not target or not asset_id:
             return
 
         cmd = ["naabu", "-host", target.base_domain, "-json", "-silent"]
         try:
             stdout = await self.run_subprocess(cmd, timeout=600)
-        except Exception:
+        except Exception as exc:
+            logger.error(
+                "naabu failed",
+                target=target.base_domain,
+                error=str(exc),
+            )
             return
 
         for line in stdout.strip().splitlines():
@@ -26,13 +32,13 @@ class Naabu(InfoGatheringTool):
                 continue
             try:
                 data = json.loads(line)
-                host = data.get("host", "")
                 port = data.get("port")
-                if host and port:
-                    await self.save_observation(
-                        target_id, "port_scan",
-                        {"host": host, "port": port, "protocol": "tcp"},
-                        "naabu"
+                if port:
+                    await self.save_location(
+                        asset_id=asset_id,
+                        port=int(port),
+                        protocol="tcp",
+                        state="open",
                     )
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, ValueError):
                 continue

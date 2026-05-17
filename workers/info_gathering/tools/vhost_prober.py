@@ -18,32 +18,31 @@ class VHostProber(InfoGatheringTool):
         from lib_webbh import get_session
         from sqlalchemy import select
 
-        # Get discovered subdomains
         async with get_session() as session:
-            stmt = select(Asset.asset_value).where(
+            stmt = select(Asset.id, Asset.asset_value).where(
                 Asset.target_id == target_id,
                 Asset.asset_type == "subdomain",
             )
             result = await session.execute(stmt)
-            subdomains = [row[0] for row in result.all()]
+            subdomains = [(row[0], row[1]) for row in result.all()]
 
         if len(subdomains) < 2:
             return
 
-        # Probe each subdomain for unique responses
         base_url = f"https://{target.base_domain}"
-        for subdomain in subdomains:
+        for sub_asset_id, subdomain in subdomains:
             try:
-                async with aiohttp.ClientSession() as session:
+                async with aiohttp.ClientSession() as http_session:
                     headers = {"Host": subdomain}
-                    async with session.get(base_url, headers=headers,
-                                          timeout=aiohttp.ClientTimeout(total=10),
-                                          allow_redirects=False) as resp:
+                    async with http_session.get(
+                        base_url, headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                        allow_redirects=False,
+                    ) as resp:
                         if resp.status in (200, 301, 302, 403):
                             await self.save_observation(
-                                target_id, "vhost",
-                                {"host": subdomain, "status": resp.status},
-                                "vhost_prober"
+                                asset_id=sub_asset_id,
+                                tech_stack={"vhost": subdomain, "status": resp.status},
                             )
             except Exception:
                 continue
