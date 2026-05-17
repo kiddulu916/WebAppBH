@@ -64,8 +64,12 @@ from .tools.waybackurls import Waybackurls
 from .tools.webanalyze import Webanalyze
 from .tools.websocket_prober import WebSocketProber
 from .tools.whatweb import WhatWeb
+from .tools.header_framework_probe import HeaderFrameworkProbe
+from .tools.meta_generator_probe import MetaGeneratorProbe
+from .tools.framework_file_prober import FrameworkFileProber
 
 from workers.info_gathering.fingerprint_aggregator import FingerprintAggregator, ProbeResult
+from workers.info_gathering.framework_fingerprint_aggregator import FrameworkFingerprintAggregator
 from workers.info_gathering.tools.execution_path_analyzer import ExecutionPathAnalyzer, CrawlResult
 
 STAGES = [
@@ -93,7 +97,10 @@ STAGES = [
         CommentHarvester, MetadataExtractor,
         JsSecretScanner, SourceMapProber, RedirectBodyInspector,
     ]),
-    Stage(name="fingerprint_framework", section_id="4.1.8", tools=[Wappalyzer, CookieFingerprinter, Webanalyze]),
+    Stage(name="fingerprint_framework", section_id="4.1.8", tools=[
+        Wappalyzer, CookieFingerprinter, Webanalyze,
+        HeaderFrameworkProbe, MetaGeneratorProbe, FrameworkFileProber,
+    ]),
     Stage(name="map_architecture", section_id="4.1.9", tools=[Waybackurls, ArchitectureModeler]),
     Stage(name="map_application", section_id="4.1.10", tools=[ApplicationMapper, AttackSurfaceAnalyzer]),
 ]
@@ -103,6 +110,7 @@ STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}
 # WSTG-INFO-02 section id — matched in run() to gate FingerprintAggregator invocation.
 _STAGE2_SECTION = "4.1.2"
 _STAGE7_SECTION = "4.1.7"
+_STAGE8_SECTION = "4.1.8"
 
 logger = setup_logger("info-gathering-pipeline")
 
@@ -197,6 +205,42 @@ class Pipeline(CheckpointMixin):
                 }
         return raw
 
+    def _stage8_raw_from_results(self, results: list) -> dict[str, Any]:
+        """Extract per-probe data for FrameworkFingerprintAggregator.emit_disclosures."""
+        raw: dict[str, Any] = {}
+        for r in results:
+            if not isinstance(r, ProbeResult) or r.error is not None:
+                continue
+
+            def _all_vendors(signals: dict) -> list[str]:
+                return list({
+                    s["value"]
+                    for k, sigs in signals.items()
+                    if not k.startswith("_") and isinstance(sigs, list)
+                    for s in sigs if isinstance(s, dict) and s.get("value")
+                })
+
+            if r.probe in ("header_framework", "meta_generator"):
+                raw[r.probe] = {
+                    "obs_id": r.obs_id,
+                    "version_signals": [
+                        {"vendor": s["value"], "version": s["version"], "slot": k}
+                        for k, sigs in r.signals.items()
+                        if not k.startswith("_") and isinstance(sigs, list)
+                        for s in sigs if isinstance(s, dict) and s.get("version")
+                    ],
+                    "all_vendors": _all_vendors(r.signals),
+                }
+            elif r.probe in ("wappalyzer", "webanalyze", "cookie_framework"):
+                raw[r.probe] = {"obs_id": r.obs_id, "all_vendors": _all_vendors(r.signals)}
+            elif r.probe == "framework_files":
+                raw["framework_files"] = {
+                    "obs_id": r.obs_id,
+                    "admin_paths": r.signals.get("_admin_paths", []),
+                    "info_file_paths": r.signals.get("_info_file_paths", []),
+                }
+        return raw
+
     def _stats_from_results(self, results: list) -> dict[str, Any]:
         """Derive the legacy SSE-event stats shape from a stage's results list."""
         stats = {"found": 0, "vulnerable": 0}
@@ -273,6 +317,22 @@ class Pipeline(CheckpointMixin):
                     if r.error is None
                 )
                 stats["summary_written"] = summary_obs_id is not None
+
+            if stage.section_id == _STAGE8_SECTION:
+                agg8 = FrameworkFingerprintAggregator(
+                    asset_id=asset_id, target_id=self.target_id,
+                )
+                probe_results8 = [r for r in results if isinstance(r, ProbeResult)]
+                summary_obs_id8 = await agg8.write_summary(probe_results8)
+                fingerprint8 = {
+                    slot: agg8._score_slot(slot, probe_results8)
+                    for slot in ("framework", "cms", "language")
+                }
+                raw8 = self._stage8_raw_from_results(probe_results8)
+                vuln_ids8 = await agg8.emit_disclosures(fingerprint8, raw8)
+                stats["probes"] = len(probe_results8)
+                stats["summary_written"] = summary_obs_id8 is not None
+                stats["vulns"] = len(vuln_ids8)
 
             self.log.info(f"Stage complete: {stage.name}", extra={"stats": stats})
             await push_task(f"events:{self.target_id}", {
