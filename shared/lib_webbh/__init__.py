@@ -24,6 +24,7 @@ from lib_webbh.database import (
     VulnerabilityInsight,
     ToolHitRate,
     MutationOutcome,
+    PathNode,
 )
 
 # Scope
@@ -116,6 +117,7 @@ __all__ = [
     "VulnerabilityInsight",
     "ToolHitRate",
     "MutationOutcome",
+    "PathNode",
     "ScopeManager",
     "ScopeResult",
     "record_scope_violation",

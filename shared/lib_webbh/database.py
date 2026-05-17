@@ -740,3 +740,37 @@ class MutationOutcome(TimestampMixin, Base):
     bypassed: Mapped[bool] = mapped_column(Boolean, default=False)
     total_attempts: Mapped[int] = mapped_column(Integer, default=1)
     successful_attempts: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class PathNode(TimestampMixin, Base):
+    """Directory/file hierarchy node derived from URL-valued assets."""
+
+    __tablename__ = "path_nodes"
+    __table_args__ = (
+        UniqueConstraint("target_id", "full_path", name="uq_path_nodes_target_path"),
+        Index("idx_path_nodes_target", "target_id"),
+        Index("idx_path_nodes_parent", "parent_id"),
+        Index("idx_path_nodes_asset", "asset_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(Integer, ForeignKey("targets.id", ondelete="CASCADE"))
+    asset_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("assets.id", ondelete="SET NULL"), nullable=True
+    )
+    parent_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("path_nodes.id", ondelete="CASCADE"), nullable=True
+    )
+    path_segment: Mapped[str] = mapped_column(Text, nullable=False)
+    full_path: Mapped[str] = mapped_column(Text, nullable=False)
+    node_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    source_tool: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    target: Mapped["Target"] = relationship("Target")
+    asset: Mapped[Optional["Asset"]] = relationship("Asset")
+    parent: Mapped[Optional["PathNode"]] = relationship(
+        "PathNode", remote_side="PathNode.id", back_populates="children"
+    )
+    children: Mapped[list["PathNode"]] = relationship(
+        "PathNode", back_populates="parent", cascade="all, delete-orphan"
+    )
