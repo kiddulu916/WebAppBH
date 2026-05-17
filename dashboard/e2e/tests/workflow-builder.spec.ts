@@ -29,8 +29,11 @@ test.describe("Workflow Builder", () => {
     const select = page.getByTestId("flow-playbook-select");
     await expect(select).toBeVisible({ timeout: 10_000 });
 
-    // Should have built-in options
-    await expect(select.locator("option")).toHaveCount(5); // 4 built-in + "Select..."
+    // Verify the four core built-in playbooks are present by value (count is
+    // flexible — e2e_* test playbooks may also appear depending on API filtering).
+    for (const name of ["wide_recon", "deep_webapp", "api_focused", "cloud_first"]) {
+      await expect(select.locator(`option[value="${name}"]`)).toHaveCount(1);
+    }
   });
 
   test("selecting playbook shows stage cards with toggles", async ({ page }) => {
