@@ -1,15 +1,24 @@
 # workers/info_gathering/tools/cookie_fingerprinter.py
-"""CookieFingerprinter wrapper — analyze cookies for technology fingerprinting."""
+"""CookieFingerprinter — cookie-based technology fingerprinting (WSTG 4.1.8)."""
+from __future__ import annotations
+
+from typing import Any
 
 import aiohttp
 
 from workers.info_gathering.base_tool import InfoGatheringTool
+from workers.info_gathering.fingerprint_aggregator import ProbeResult
+
+_COOKIE_TECH_SLOTS: dict[str, str] = {
+    "PHP": "language", "Java": "language", "ASP.NET": "language",
+    "Django": "framework", "Rails": "framework", "Laravel": "framework",
+    "Spring": "framework", "WordPress": "cms", "Drupal": "cms",
+}
 
 
 class CookieFingerprinter(InfoGatheringTool):
-    """Analyze cookies to fingerprint technologies and frameworks."""
+    """Cookie-name-based framework fingerprinting (WSTG 4.1.8)."""
 
-    # Known cookie patterns for technology detection
     COOKIE_PATTERNS = {
         "PHP": ["PHPSESSID"],
         "Java": ["JSESSIONID"],
@@ -19,37 +28,41 @@ class CookieFingerprinter(InfoGatheringTool):
         "Laravel": ["laravel_session", "XSRF-TOKEN"],
         "WordPress": ["wordpress_logged_in", "wp-settings"],
         "Drupal": ["Drupal.visitor"],
-        "Spring": ["JSESSIONID", "SPRING_SECURITY_REMEMBER_ME_COOKIE"],
+        "Spring": ["SPRING_SECURITY_REMEMBER_ME_COOKIE"],
     }
 
-    async def execute(self, target_id: int, **kwargs):
-        target = kwargs.get("target")
-        if not target:
-            return
-
-        url = f"https://{target.base_domain}"
+    async def execute(self, target_id: int, **kwargs: Any) -> ProbeResult:
+        host = kwargs.get("host")
+        asset_id = kwargs.get("asset_id")
+        if not host or not asset_id:
+            return ProbeResult(probe="cookie_framework", obs_id=None, signals={},
+                               error="missing host or asset_id")
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                async with session.get(
+                    f"https://{host}",
+                    timeout=aiohttp.ClientTimeout(total=15),
+                    allow_redirects=True,
+                ) as resp:
                     cookies = resp.cookies
-                    if cookies:
-                        detected_tech = self._analyze_cookies(cookies)
-                        if detected_tech:
-                            await self.save_observation(
-                                target_id, "cookie_fingerprint",
-                                {"host": target.base_domain, "technologies": detected_tech},
-                                "cookie_fingerprinter"
-                            )
-        except Exception:
-            pass
+        except Exception as exc:
+            return ProbeResult(probe="cookie_framework", obs_id=None, signals={}, error=str(exc))
+
+        detected = self._analyze_cookies(cookies)
+        signals: dict[str, Any] = {"framework": [], "cms": [], "language": []}
+        for tech_name in detected:
+            slot = _COOKIE_TECH_SLOTS.get(tech_name, "framework")
+            signals[slot].append({"src": "cookie_framework", "value": tech_name, "w": 0.5})
+
+        obs_id = await self.save_observation(
+            asset_id=asset_id,
+            tech_stack={"_probe": "cookie_framework", "host": host, "technologies": detected},
+        )
+        return ProbeResult(probe="cookie_framework", obs_id=obs_id, signals=signals)
 
     def _analyze_cookies(self, cookies) -> list[str]:
-        """Analyze cookies against known patterns."""
-        detected = []
-        cookie_names = set(cookies.keys())
-
+        detected, cookie_names = [], set(cookies.keys())
         for tech, patterns in self.COOKIE_PATTERNS.items():
             if any(p in cookie_names for p in patterns):
                 detected.append(tech)
-
         return detected
