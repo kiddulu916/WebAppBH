@@ -1,1 +1,0 @@
-# tests/test_error_handling/__init__.py

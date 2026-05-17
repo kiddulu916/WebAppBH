@@ -17,8 +17,8 @@ PIPELINE_STAGES: dict[str, list[str]] = {
     "info_gathering": [
         "search_engine_recon", "web_server_fingerprint", "web_server_metafiles",
         "enumerate_applications", "review_comments", "identify_entry_points",
-        "map_execution_paths", "fingerprint_framework", "map_architecture",
-        "map_application",
+        "aggregate_entry_points", "map_execution_paths", "review_comments_deep",
+        "fingerprint_framework", "map_architecture", "map_application",
     ],
     "config_mgmt": [
         "network_config", "platform_config", "file_extension_handling",
@@ -277,6 +277,24 @@ BUILTIN_PLAYBOOKS: dict[str, PlaybookConfig] = {
 }
 
 DEFAULT_PLAYBOOK = "wide_recon"
+
+# ---------------------------------------------------------------------------
+# E2E test playbooks — one worker at a time (for automated test suite)
+# ---------------------------------------------------------------------------
+_E2E_STANDALONE_WORKERS = [
+    "info_gathering", "config_mgmt", "identity_mgmt", "authentication",
+    "authorization", "session_mgmt", "input_validation", "error_handling",
+    "cryptography", "business_logic", "client_side",
+]
+
+for _e2e_worker in _E2E_STANDALONE_WORKERS:
+    BUILTIN_PLAYBOOKS[f"e2e_{_e2e_worker}"] = PlaybookConfig(
+        name=f"e2e_{_e2e_worker}",
+        description=f"E2E test playbook: runs only {_e2e_worker}",
+        workers=_build_all_workers(
+            disabled_workers=[w for w in _ALL_WORKERS if w != _e2e_worker],
+        ),
+    )
 
 
 def get_playbook(name: str) -> PlaybookConfig:
