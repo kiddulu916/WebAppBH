@@ -21,7 +21,7 @@ RUN go install github.com/tomnomnom/waybackurls@latest
 RUN go install github.com/hakluke/hakrawler@latest
 RUN go install -v github.com/owasp-amass/amass/v4/...@latest
 RUN go install github.com/rverton/webanalyze/cmd/webanalyze@latest
-RUN go install github.com/ffuf/ffuf/v2/cmd/ffuf@latest
+RUN go install github.com/ffuf/ffuf@latest
 
 # Stage 2 (WSTG-INFO-02) tooling
 RUN go install -v github.com/projectdiscovery/tlsx/cmd/tlsx@latest \
