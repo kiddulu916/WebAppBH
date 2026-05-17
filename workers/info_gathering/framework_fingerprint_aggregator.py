@@ -90,7 +90,12 @@ class FrameworkFingerprintAggregator:
             return obs.id
 
     def _probe_sources_for_vendor(self, vendor: str, raw: dict[str, Any]) -> set[str]:
-        """Return set of probe names in raw that detected vendor."""
+        """Return set of probe names in raw that detected vendor.
+
+        framework_files is intentionally excluded: path probes confirm file existence
+        but don't carry versioned vendor attribution, so they don't contribute to
+        the corroboration gate. Their findings are emitted unconditionally in Pass 3.
+        """
         sources: set[str] = set()
         for key in ("header_framework", "meta_generator", "wappalyzer",
                     "webanalyze", "cookie_framework"):

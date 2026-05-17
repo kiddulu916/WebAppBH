@@ -44,6 +44,7 @@ class FrameworkFileProber(InfoGatheringTool):
             return ProbeResult(probe="framework_files", obs_id=None, signals={},
                                error="missing host or asset_id")
 
+        await self.acquire_rate_limit(kwargs.get("rate_limiter"))
         matched: list[dict[str, str]] = []
         sem = asyncio.Semaphore(_CONCURRENCY)
 

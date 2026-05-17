@@ -324,7 +324,11 @@ class Pipeline(CheckpointMixin):
                     asset_id=asset_id, target_id=self.target_id,
                 )
                 probe_results8 = [r for r in results if isinstance(r, ProbeResult)]
-                summary_obs_id8 = await agg8.write_summary(probe_results8)
+                summary_obs_id8: int | None = None
+                try:
+                    summary_obs_id8 = await agg8.write_summary(probe_results8)
+                except Exception as exc:
+                    self.log.warning("stage8 write_summary failed", error=str(exc))
                 fingerprint8 = {
                     slot: agg8._score_slot(slot, probe_results8)
                     for slot in ("framework", "cms", "language")
