@@ -3,7 +3,7 @@ FROM webbh-base:latest
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    nmap libpcap-dev git wget golang whatweb make gcc libc6-dev && \
+    nmap libpcap-dev git wget golang whatweb make python3-pip build-essential gcc libc6-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # Build massdns from source (not in standard Debian repos)
@@ -25,19 +25,7 @@ RUN go install -v github.com/projectdiscovery/tlsx/cmd/tlsx@latest \
     && mv /root/go/bin/tlsx /usr/local/bin/tlsx
 
 # WSTG-INFO-05 secret scanning tools
-RUN git clone https://github.com/gitleaks/gitleaks.git && \
-    cd gitleaks && \
-    make build && \
-    ln -s /app/gitleaks/gitleaks /usr/local/bin/gitleaks && \
-    pip install pre-commit && \
-    echo "repos:
-        - repo: https://github.com/gitleaks/gitleaks
-          rev: v8.24.2
-          hooks:
-            - id: gitleaks" > .pre-commit-config.yaml && \
-    pre-commit autoupdate && \
-    pre-commit install && \
-    cd ..
+RUN go install github.com/zricethezav/gitleaks/v8@latest
 RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
     | sh -s -- -b /usr/local/bin
 
