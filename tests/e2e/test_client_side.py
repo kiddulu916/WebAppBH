@@ -46,9 +46,11 @@ STAGE_TIMEOUTS = {
 @pytest.fixture(scope="module")
 async def pipeline_result(client, sse_monitor):
     target_id = await create_target(client, PLAYBOOK, "E2E-ClientSide")
-    report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
-    yield target_id, report
-    await cleanup_target(client, target_id)
+    try:
+        report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
+        yield target_id, report
+    finally:
+        await cleanup_target(client, target_id)
 
 
 async def test_client_side_pipeline_stages(pipeline_result):

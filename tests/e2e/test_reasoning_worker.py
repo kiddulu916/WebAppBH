@@ -46,10 +46,12 @@ async def _wait_for_info_gathering(client, target_id: int, timeout: int = _PRERE
 @pytest.fixture(scope="module")
 async def pipeline_result(client, sse_monitor):
     target_id = await create_target(client, PLAYBOOK, "E2E-ReasoningWorker")
-    await _wait_for_info_gathering(client, target_id)
-    report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
-    yield target_id, report
-    await cleanup_target(client, target_id)
+    try:
+        await _wait_for_info_gathering(client, target_id)
+        report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
+        yield target_id, report
+    finally:
+        await cleanup_target(client, target_id)
 
 
 async def test_reasoning_worker_pipeline_stages(pipeline_result):
