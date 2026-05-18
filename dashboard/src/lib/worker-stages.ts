@@ -21,8 +21,9 @@ export const WORKER_STAGES: Record<string, { id: string; name: string; stageName
     { id: "12", name: "Map Application", stageName: "map_application", sectionId: "WSTG-INFO-10" },
   ],
   config_mgmt: [
-    { id: "1", name: "Network Configuration", stageName: "network_config", sectionId: "WSTG-CONF-01" },
-    { id: "2", name: "Platform Configuration", stageName: "platform_config", sectionId: "WSTG-CONF-02" },
+    { id: "1",  name: "Network Configuration", stageName: "network_config",           sectionId: "WSTG-CONF-01" },
+    { id: "1b", name: "Credential Testing",    stageName: "network_config_cred_test", sectionId: "WSTG-CONF-01" },
+    { id: "2",  name: "Platform Configuration", stageName: "platform_config",         sectionId: "WSTG-CONF-02" },
     { id: "3", name: "File Extension Handling", stageName: "file_extension_handling", sectionId: "WSTG-CONF-03" },
     { id: "4", name: "Backup Files", stageName: "backup_files", sectionId: "WSTG-CONF-04" },
     { id: "5", name: "API Discovery", stageName: "api_discovery", sectionId: "WSTG-CONF-05" },

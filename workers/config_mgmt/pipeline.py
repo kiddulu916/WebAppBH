@@ -1,4 +1,4 @@
-"""Config management pipeline: 11 sequential stages with checkpointing."""
+"""Config management pipeline: 12 sequential stages with checkpointing."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from lib_webbh.scope import ScopeManager
 from workers.config_mgmt.base_tool import ConfigMgmtTool
 from workers.config_mgmt.tools import (
     NetworkConfigTester,
+    AdminInterfaceFinder,
+    DefaultCredentialTester,
     PlatformFingerprinter,
     FileExtensionTester,
     BackupFileFinder,
@@ -36,8 +38,9 @@ class Stage:
 
 
 STAGES = [
-    Stage("network_config", [NetworkConfigTester]),
-    Stage("platform_config", [PlatformFingerprinter]),
+    Stage("network_config",           [NetworkConfigTester, AdminInterfaceFinder]),
+    Stage("network_config_cred_test", [DefaultCredentialTester]),
+    Stage("platform_config",          [PlatformFingerprinter]),
     Stage("file_extension_handling", [FileExtensionTester]),
     Stage("backup_files", [BackupFileFinder, FfufTool]),
     Stage("api_discovery", [ApiDiscoveryTool]),
