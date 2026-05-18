@@ -58,12 +58,12 @@ test.describe("Empty States", () => {
     await page.getByRole("link", { name: "Phase Flow" }).click();
     // Config side should show empty state (no playbook selected by user)
     await expect(page.getByTestId("flow-empty-config")).toBeVisible({ timeout: 10_000 });
-    // Monitor may show execution stages (createTarget auto-starts a job)
-    // so accept either empty-monitor or actual monitor stage entries
+    // Monitor shows either the empty state (before first API response) or worker
+    // cards once the execution API returns — accept either.
     await expect(
       page.getByTestId("flow-empty-monitor")
-        .or(page.getByTestId("flow-monitor-stage-enumerate_applications"))
-    ).toBeVisible({ timeout: 5_000 });
+        .or(page.getByTestId("flow-monitor-worker-info_gathering"))
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test("graph page shows empty state", async ({ page }) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Activity, Settings, RotateCcw } from "lucide-react";
 import PipelineGrid from "@/components/pipeline/PipelineGrid";
 import WorkerDetailDrawer from "@/components/pipeline/WorkerDetailDrawer";
@@ -12,8 +12,10 @@ import CampaignTimeline from "@/components/c2/CampaignTimeline";
 import SettingsDrawer from "@/components/c2/SettingsDrawer";
 import DiffTimeline from "@/components/c2/DiffTimeline";
 import ScopeDriftAlerts from "@/components/c2/ScopeDriftAlerts";
+import AssetTree, { type TreeNode } from "@/components/c2/AssetTree";
+import AssetDetailDrawer from "@/components/c2/AssetDetailDrawer";
 import { useCampaignStore } from "@/stores/campaign";
-import { api, type PlaybookRow } from "@/lib/api";
+import { api, type PlaybookRow, type AssetWithLocations } from "@/lib/api";
 import type { JobState } from "@/types/schema";
 
 /* ------------------------------------------------------------------ */
@@ -75,6 +77,9 @@ export default function C2Page() {
   const setJobs = useCampaignStore((s) => s.setJobs);
 
   const [localJobs, setLocalJobs] = useState<JobState[]>([]);
+  const [assets, setAssets] = useState<AssetWithLocations[]>([]);
+  const [selectedAsset, setSelectedAsset] = useState<AssetWithLocations | null>(null);
+  const processedEventCountRef = useRef(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rerunOpen, setRerunOpen] = useState(false);
   const [rerunMode, setRerunMode] = useState<"menu" | "pick">("menu");
@@ -116,6 +121,28 @@ export default function C2Page() {
     }
     return result;
   }, [jobs]);
+
+  const treeRoots = useMemo<TreeNode[]>(
+    () =>
+      assets.map((a) => ({
+        id: `asset-${a.id}`,
+        label: a.asset_value,
+        type: (["domain", "subdomain", "ip", "port", "endpoint", "param"].includes(
+          a.asset_type,
+        )
+          ? a.asset_type
+          : "subdomain") as TreeNode["type"],
+      })),
+    [assets],
+  );
+
+  const handleAssetSelect = useCallback(
+    (nodeId: string) => {
+      const id = parseInt(nodeId.replace("asset-", ""), 10);
+      setSelectedAsset(assets.find((a) => a.id === id) ?? null);
+    },
+    [assets],
+  );
 
   /* ---- Fetch job states periodically ---- */
   const refreshJobs = useCallback(async () => {
@@ -164,10 +191,17 @@ export default function C2Page() {
     return () => clearInterval(interval);
   }, [activeTarget, refreshJobs]);
 
+  useEffect(() => {
+    if (!activeTarget) { setAssets([]); processedEventCountRef.current = 0; return; }
+    api.getAllAssets(activeTarget.id).then(setAssets).catch(() => {});
+  }, [activeTarget]);
+
   /* ---- Merge SSE events ---- */
   useEffect(() => {
     if (!activeTarget || events.length === 0) return;
-    const newEvents = events.slice(0);
+    const newEvents = events.slice(processedEventCountRef.current);
+    processedEventCountRef.current = events.length;
+    if (newEvents.length === 0) return;
 
     // Handle KILL_ALL — refresh jobs to show KILLED statuses
     const killEvents = newEvents.filter((e) => e.event === "KILL_ALL");
@@ -190,6 +224,35 @@ export default function C2Page() {
     if (cleanEvents.length > 0) {
       setLocalJobs([]);
       setJobs([]);
+    }
+
+    // Handle NEW_ASSET — add to local asset tree
+    for (const e of newEvents) {
+      if (e.event !== "NEW_ASSET") continue;
+      const value = e.asset_value as string | undefined;
+      const type = e.asset_type as string | undefined;
+      if (!value) continue;
+      setAssets((prev) => {
+        if (prev.some((a) => a.asset_value === value)) return prev;
+        return [
+          ...prev,
+          {
+            id: -Date.now(),
+            target_id: activeTarget.id,
+            asset_type: type ?? "subdomain",
+            asset_value: value,
+            source_tool: null,
+            created_at: (e.timestamp as string | undefined) ?? new Date().toISOString(),
+            updated_at: null,
+            tech: null,
+            scope_classification: "pending",
+            associated_with_id: null,
+            association_method: null,
+            locations: [],
+            observations: [],
+          },
+        ];
+      });
     }
   }, [events, activeTarget, setJobs]);
 
@@ -292,6 +355,14 @@ export default function C2Page() {
         />
       </div>
 
+      {/* Asset Tree */}
+      {assets.length > 0 && (
+        <div data-testid="c2-asset-tree" className="rounded-lg border border-border bg-bg-secondary p-4">
+          <div className="section-label mb-3">ASSETS ({assets.length})</div>
+          <AssetTree roots={treeRoots} onSelect={handleAssetSelect} />
+        </div>
+      )}
+
       {/* Worker Job Cards */}
       {workerJobCards.length > 0 && (
         <div data-testid="c2-worker-grid" className="rounded-lg border border-border bg-bg-secondary p-4">
@@ -390,6 +461,12 @@ export default function C2Page() {
         targetId={activeTarget.id}
         currentProfile={activeTarget.target_profile}
         hasActiveJobs={hasActiveJobs}
+      />
+
+      {/* Asset Detail Drawer */}
+      <AssetDetailDrawer
+        asset={selectedAsset}
+        onClose={() => setSelectedAsset(null)}
       />
     </div>
   );

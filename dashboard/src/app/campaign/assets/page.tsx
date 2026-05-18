@@ -16,9 +16,13 @@ import {
   MinusSquare,
   ShieldCheck,
   ShieldOff,
+  ChevronDown,
+  ChevronUp,
+  Network,
 } from "lucide-react";
 import { api, type AssetWithLocations } from "@/lib/api";
 import { useCampaignStore } from "@/stores/campaign";
+import type { Vulnerability, CloudAsset } from "@/types/schema";
 
 /* ── Constants ── */
 
@@ -104,6 +108,12 @@ export default function AssetsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
 
+  /* ── Inline expand state ── */
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"locations" | "vulns" | "cloud">("locations");
+  const [detailVulns, setDetailVulns] = useState<Record<number, Vulnerability[]>>({});
+  const [detailCloud, setDetailCloud] = useState<Record<number, CloudAsset[]>>({});
+
   /* ── Progress state ── */
   const [loadedCount, setLoadedCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
@@ -178,6 +188,29 @@ export default function AssetsPage() {
       }
     },
     [selected],
+  );
+
+  const handleExpand = useCallback(
+    (e: React.MouseEvent, id: number) => {
+      e.stopPropagation();
+      if (expandedId === id) {
+        setExpandedId(null);
+        return;
+      }
+      setExpandedId(id);
+      setActiveTab("locations");
+      if (!detailVulns[id]) {
+        api.getAssetVulnerabilities(id)
+          .then((res) => setDetailVulns((prev) => ({ ...prev, [id]: res.vulnerabilities })))
+          .catch(() => {});
+      }
+      if (!detailCloud[id]) {
+        api.getAssetCloud(id)
+          .then((res) => setDetailCloud((prev) => ({ ...prev, [id]: res.cloud_assets })))
+          .catch(() => {});
+      }
+    },
+    [expandedId, detailVulns, detailCloud],
   );
 
   /* ── Filtering + sorting ── */
@@ -442,65 +475,165 @@ export default function AssetsPage() {
               <SortHeader label="Ports" field="ports" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Source Tool" field="source_tool" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Discovered" field="created_at" current={sortKey} dir={sortDir} onSort={toggleSort} />
+              <th className="w-8 px-2 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {paged.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
+                <td colSpan={8} className="px-4 py-8 text-center text-text-muted">
                   No assets match the current filters.
                 </td>
               </tr>
             ) : (
               paged.map((row) => {
                 const ports = formatPorts(row.locations);
+                const isExpanded = expandedId === row.id;
 
                 return (
-                  <tr
-                    key={row.id}
-                    data-testid={`asset-row-${row.id}`}
-                    onClick={() => router.push(`/campaign/assets/${row.id}`)}
-                    className={`cursor-pointer bg-bg-secondary transition-colors hover:bg-bg-tertiary ${
-                      isSelected(row.id) ? "ring-1 ring-inset ring-neon-blue/30" : ""
-                    }`}
-                  >
-                    <td className="px-2 py-2.5">
-                      <button
-                        data-testid={`asset-checkbox-${row.id}`}
-                        onClick={(e) => { e.stopPropagation(); toggleSelect(row.id); }}
-                        className="rounded p-0.5 hover:bg-bg-surface transition-colors"
-                      >
-                        {selected.has(row.id) ? (
-                          <CheckSquare className="h-4 w-4 text-neon-blue" />
-                        ) : (
-                          <Square className="h-4 w-4 text-text-muted" />
-                        )}
-                      </button>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className={`inline-block rounded border px-2 py-0.5 text-xs font-medium ${
-                        TYPE_BADGE[row.asset_type] ?? TYPE_BADGE.url
-                      }`}>
-                        {row.asset_type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-text-primary">{row.asset_value}</td>
-                    <td className="px-4 py-2.5">
-                      <span data-testid={`asset-scope-badge-${row.id}`}
-                        className={`inline-block rounded border px-2 py-0.5 text-xs font-medium ${
-                          CLASSIFICATION_BADGE[row.scope_classification ?? "pending"] ?? CLASSIFICATION_BADGE.undetermined
+                  <>
+                    <tr
+                      key={row.id}
+                      data-testid={`asset-row-${row.id}`}
+                      onClick={() => router.push(`/campaign/assets/${row.id}`)}
+                      className={`cursor-pointer bg-bg-secondary transition-colors hover:bg-bg-tertiary ${
+                        isSelected(row.id) ? "ring-1 ring-inset ring-neon-blue/30" : ""
+                      }`}
+                    >
+                      <td className="px-2 py-2.5">
+                        <button
+                          data-testid={`asset-checkbox-${row.id}`}
+                          onClick={(e) => { e.stopPropagation(); toggleSelect(row.id); }}
+                          className="rounded p-0.5 hover:bg-bg-surface transition-colors"
+                        >
+                          {selected.has(row.id) ? (
+                            <CheckSquare className="h-4 w-4 text-neon-blue" />
+                          ) : (
+                            <Square className="h-4 w-4 text-text-muted" />
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className={`inline-block rounded border px-2 py-0.5 text-xs font-medium ${
+                          TYPE_BADGE[row.asset_type] ?? TYPE_BADGE.url
                         }`}>
-                        {(row.scope_classification ?? "pending").replace(/_/g, " ")}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-text-secondary">{ports.display}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-text-secondary">
-                      {row.source_tool ?? "—"}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-text-muted">
-                      {relativeTime(row.created_at)}
-                    </td>
-                  </tr>
+                          {row.asset_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-text-primary">{row.asset_value}</td>
+                      <td className="px-4 py-2.5">
+                        <span data-testid={`asset-scope-badge-${row.id}`}
+                          className={`inline-block rounded border px-2 py-0.5 text-xs font-medium ${
+                            CLASSIFICATION_BADGE[row.scope_classification ?? "pending"] ?? CLASSIFICATION_BADGE.undetermined
+                          }`}>
+                          {(row.scope_classification ?? "pending").replace(/_/g, " ")}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-text-secondary">{ports.display}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-text-secondary">
+                        {row.source_tool ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-text-muted">
+                        {relativeTime(row.created_at)}
+                      </td>
+                      <td className="px-2 py-2.5">
+                        <button
+                          data-testid={`asset-expand-btn-${row.id}`}
+                          onClick={(e) => handleExpand(e, row.id)}
+                          className="rounded p-0.5 text-text-muted transition-colors hover:bg-bg-surface hover:text-text-primary"
+                          aria-label={isExpanded ? "Collapse details" : "Expand details"}
+                        >
+                          {isExpanded
+                            ? <ChevronUp className="h-4 w-4" />
+                            : <ChevronDown className="h-4 w-4" />}
+                        </button>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr key={`${row.id}-detail`} className="bg-bg-tertiary">
+                        <td colSpan={8} className="px-4 py-3">
+                          <div data-testid={`asset-detail-panel-${row.id}`}>
+                            {/* Tab bar */}
+                            <div className="mb-3 flex gap-1 border-b border-border pb-2">
+                              {(["locations", "vulns", "cloud"] as const).map((tab) => (
+                                <button
+                                  key={tab}
+                                  data-testid={`asset-tab-${tab}`}
+                                  onClick={() => setActiveTab(tab)}
+                                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                                    activeTab === tab
+                                      ? "bg-accent/10 text-accent"
+                                      : "text-text-muted hover:bg-bg-surface hover:text-text-primary"
+                                  }`}
+                                >
+                                  {tab === "locations" ? "Locations" : tab === "vulns" ? "Vulnerabilities" : "Cloud"}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Tab content */}
+                            {activeTab === "locations" && (
+                              <div className="space-y-1.5">
+                                {row.locations.length === 0 ? (
+                                  <p className="text-xs text-text-muted">No locations discovered.</p>
+                                ) : (
+                                  row.locations.map((loc) => (
+                                    <div key={loc.id} className="flex items-center gap-2 rounded border border-border bg-bg-secondary px-3 py-1.5">
+                                      <Network className="h-3 w-3 text-neon-blue" />
+                                      <span className="font-mono text-xs text-text-primary">{loc.port}</span>
+                                      <span className="text-[10px] text-text-muted">/</span>
+                                      <span className="font-mono text-xs text-text-secondary">{loc.protocol ?? "tcp"}</span>
+                                      {loc.service && (
+                                        <span className="rounded bg-neon-blue-glow px-1.5 py-0.5 font-mono text-[10px] text-neon-blue">{loc.service}</span>
+                                      )}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            )}
+
+                            {activeTab === "vulns" && (
+                              <div className="space-y-1.5">
+                                {!detailVulns[row.id] ? (
+                                  <p className="text-xs text-text-muted">Loading…</p>
+                                ) : detailVulns[row.id].length === 0 ? (
+                                  <p className="text-xs text-text-muted">No vulnerabilities linked to this asset.</p>
+                                ) : (
+                                  detailVulns[row.id].map((v) => (
+                                    <div key={v.id} className="flex items-center justify-between rounded border border-border bg-bg-secondary px-3 py-1.5">
+                                      <span className="text-xs text-text-primary">{v.title}</span>
+                                      <span className={`text-xs font-semibold ${
+                                        v.severity === "critical" ? "text-danger" :
+                                        v.severity === "high" ? "text-neon-orange" :
+                                        v.severity === "medium" ? "text-warning" : "text-text-muted"
+                                      }`}>{v.severity}</span>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            )}
+
+                            {activeTab === "cloud" && (
+                              <div className="space-y-1.5">
+                                {!detailCloud[row.id] ? (
+                                  <p className="text-xs text-text-muted">Loading…</p>
+                                ) : detailCloud[row.id].length === 0 ? (
+                                  <p className="text-xs text-text-muted">No cloud assets for this target.</p>
+                                ) : (
+                                  detailCloud[row.id].map((c) => (
+                                    <div key={c.id} className="flex items-center justify-between rounded border border-border bg-bg-secondary px-3 py-1.5">
+                                      <span className="font-mono text-xs text-text-primary">{c.asset_type}</span>
+                                      <span className="text-xs text-text-muted">{c.provider}</span>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 );
               })
             )}

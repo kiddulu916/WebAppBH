@@ -61,13 +61,19 @@ test.describe("Workflow Builder", () => {
     const select = page.getByTestId("flow-playbook-select");
     await expect(select.locator("option")).not.toHaveCount(1, { timeout: 10_000 });
     await select.selectOption("wide_recon");
-    await expect(page.getByTestId("flow-stage-card-subdomain_takeover")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId("flow-stage-card-web_server_fingerprint")).toBeVisible({ timeout: 5_000 });
 
-    // Toggle off subdomain_takeover
-    await page.getByTestId("flow-stage-toggle-subdomain_takeover").click({ force: true });
+    // Toggle off — the fixed sidebar covers left-column elements at their coordinates, so use
+    // direct element.click() which dispatches to the element itself, not the topmost at its coords.
+    await page.evaluate(() => {
+      const toggle = document.querySelector(
+        '[data-testid="flow-stage-toggle-web_server_fingerprint"]',
+      ) as HTMLButtonElement | null;
+      toggle?.click();
+    });
 
     // Card should have opacity-50 styling (disabled state)
-    const card = page.getByTestId("flow-stage-card-subdomain_takeover");
+    const card = page.getByTestId("flow-stage-card-web_server_fingerprint");
     await expect(card).toHaveClass(/opacity-50/, { timeout: 5_000 });
   });
 
