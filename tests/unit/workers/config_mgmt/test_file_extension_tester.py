@@ -194,3 +194,104 @@ async def test_is_iis_detected_false_when_no_asset():
     mock_session.execute = AsyncMock(return_value=mock_result)
 
     assert await tester._is_iis_detected(mock_session, target_id=1) is False
+
+
+# ── execute() integration ─────────────────────────────────────────────────────
+
+async def test_execute_returns_stats_with_findings(monkeypatch):
+    """execute() finds /index.php returning raw source and reports a finding."""
+    tester = FileExtensionTester()
+
+    # Cooldown check → not in cooldown
+    monkeypatch.setattr(tester, "check_cooldown", AsyncMock(return_value=False))
+
+    # Global semaphore — acquire/release are no-ops
+    mock_sem = MagicMock()
+    mock_sem.acquire = AsyncMock()
+    mock_sem.release = MagicMock()
+    monkeypatch.setattr(
+        "workers.config_mgmt.tools.file_extension_tester.get_semaphore",
+        lambda _: mock_sem,
+    )
+
+    # push_task → no-op
+    monkeypatch.setattr(
+        "workers.config_mgmt.tools.file_extension_tester.push_task",
+        AsyncMock(),
+    )
+
+    # get_session: shared mock for both DB-query call and job_state update call.
+    # scalar_one_or_none() returns None for both (no assets, no job_state row).
+    session = MagicMock()
+    empty_scalars = MagicMock()
+    empty_scalars.all.return_value = []
+    empty_result = MagicMock()
+    empty_result.scalars.return_value = empty_scalars
+    empty_result.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=empty_result)
+    session.commit = AsyncMock()
+
+    def fake_get_session():
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(return_value=session)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx
+
+    monkeypatch.setattr(
+        "workers.config_mgmt.tools.file_extension_tester.get_session",
+        fake_get_session,
+    )
+
+    # httpx.AsyncClient: /index.php returns PHP source; all other URLs return 404
+    resp_php = MagicMock()
+    resp_php.status_code = 200
+    resp_php.text = "<?php echo 'hello'; ?>"
+    resp_php.headers = {"content-type": "text/plain"}
+
+    resp_404 = MagicMock()
+    resp_404.status_code = 404
+    resp_404.text = ""
+    resp_404.headers = {"content-type": "text/html"}
+
+    async def fake_get(url):
+        return resp_php if url.endswith("/index.php") else resp_404
+
+    mock_client = MagicMock()
+    mock_client.get = fake_get
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    monkeypatch.setattr(
+        "workers.config_mgmt.tools.file_extension_tester.httpx.AsyncClient",
+        lambda **kwargs: mock_client,
+    )
+
+    # _process_result → always new (True)
+    monkeypatch.setattr(tester, "_process_result", AsyncMock(return_value=True))
+
+    target = MagicMock(target_value="https://example.com")
+    stats = await tester.execute(
+        target=target,
+        scope_manager=MagicMock(),
+        target_id=1,
+        container_name="config_mgmt",
+    )
+
+    assert stats["found"] >= 1
+    assert stats["new"] >= 1
+    assert stats["in_scope"] >= 1
+    assert stats["skipped_cooldown"] is False
+
+
+async def test_execute_skips_on_cooldown(monkeypatch):
+    tester = FileExtensionTester()
+    monkeypatch.setattr(tester, "check_cooldown", AsyncMock(return_value=True))
+
+    stats = await tester.execute(
+        target=MagicMock(target_value="https://example.com"),
+        scope_manager=MagicMock(),
+        target_id=1,
+        container_name="config_mgmt",
+    )
+
+    assert stats == {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": True}

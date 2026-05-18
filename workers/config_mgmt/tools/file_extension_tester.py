@@ -183,3 +183,172 @@ class FileExtensionTester(ConfigMgmtTool):
         )
         result = await session.execute(stmt)
         return result.scalar_one_or_none() is not None
+
+    # ── Main lifecycle ────────────────────────────────────────────────────────
+    async def execute(
+        self,
+        target,
+        scope_manager: ScopeManager,
+        target_id: int,
+        container_name: str,
+        headers: dict | None = None,
+    ) -> dict:
+        log = logger.bind(target_id=target_id, tool=self.name)
+
+        if await self.check_cooldown(target_id, container_name):
+            log.info(f"Skipping {self.name} — within cooldown period")
+            return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": True}
+
+        sem = get_semaphore(self.weight_class)
+        await sem.acquire()
+        try:
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS",
+                "container": container_name,
+                "tool": self.name,
+                "progress": 0,
+                "message": f"{self.name} started",
+            })
+
+            target_url = getattr(target, "target_value", str(target))
+            base_url = (
+                target_url
+                if target_url.startswith(("http://", "https://"))
+                else f"https://{target_url}"
+            )
+
+            async with get_session() as session:
+                db_stems = await self._fetch_path_stems(session, target_id)
+                iis_detected = await self._is_iis_detected(session, target_id)
+
+            path_stems = list(dict.fromkeys(db_stems + CURATED_STEMS))
+            findings = await self._run_test_matrix(base_url, path_stems, iis_detected, headers)
+
+            found = len(findings)
+            new_count = in_scope_count = 0
+            for finding in findings:
+                inserted = await self._process_result(finding, scope_manager, target_id, log)
+                if inserted is not None:
+                    in_scope_count += 1
+                    if inserted:
+                        new_count += 1
+
+            async with get_session() as session:
+                stmt = select(JobState).where(
+                    JobState.target_id == target_id,
+                    JobState.container_name == container_name,
+                )
+                result = await session.execute(stmt)
+                job = result.scalar_one_or_none()
+                if job:
+                    job.last_tool_executed = self.name
+                    job.last_seen = datetime.utcnow()
+                    await session.commit()
+
+            stats = {
+                "found": found,
+                "in_scope": in_scope_count,
+                "new": new_count,
+                "skipped_cooldown": False,
+            }
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS",
+                "container": container_name,
+                "tool": self.name,
+                "progress": 100,
+                "message": (
+                    f"{self.name}: {new_count} new, "
+                    f"{in_scope_count} in scope, {found} total"
+                ),
+            })
+            log.info(f"{self.name} complete", extra=stats)
+            return stats
+
+        finally:
+            sem.release()
+
+    # ── HTTP test matrix ──────────────────────────────────────────────────────
+    async def _run_test_matrix(
+        self,
+        base_url: str,
+        path_stems: list[str],
+        iis_detected: bool,
+        headers: dict | None,
+    ) -> list[dict]:
+        """Run all extension probes concurrently, return list of findings."""
+        inner_sem = asyncio.Semaphore(_HTTP_CONCURRENCY)
+        tasks: list = []
+
+        async with httpx.AsyncClient(
+            verify=False,
+            follow_redirects=False,
+            timeout=10,
+            headers=headers or {},
+        ) as client:
+            for stem in path_stems:
+                for category, exts in _EXTENSION_CATEGORIES:
+                    for ext in exts:
+                        tasks.append(
+                            self._probe(client, inner_sem, base_url, stem, ext, category)
+                        )
+
+            if iis_detected:
+                for stem in path_stems:
+                    short = _generate_short_name(stem)
+                    if short:
+                        for bypass_ext in _WIN83_BYPASS_EXTS:
+                            url = base_url.rstrip("/") + "/" + short + "~1" + bypass_ext
+                            tasks.append(self._probe_win83(client, inner_sem, url))
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        return [r for r in results if r is not None and not isinstance(r, Exception)]
+
+    async def _probe(
+        self,
+        client: httpx.AsyncClient,
+        sem: asyncio.Semaphore,
+        base_url: str,
+        stem: str,
+        ext: str,
+        category: str,
+    ) -> dict | None:
+        url = base_url.rstrip("/") + stem + ext
+        async with sem:
+            try:
+                resp = await client.get(url)
+            except (httpx.RequestError, asyncio.TimeoutError):
+                return None
+
+        if resp.status_code != 200:
+            return None
+
+        return self._analyze_response(url, stem, ext, category, resp)
+
+    async def _probe_win83(
+        self,
+        client: httpx.AsyncClient,
+        sem: asyncio.Semaphore,
+        url: str,
+    ) -> dict | None:
+        async with sem:
+            try:
+                resp = await client.get(url)
+            except (httpx.RequestError, asyncio.TimeoutError):
+                return None
+
+        if resp.status_code != 200:
+            return None
+
+        return {
+            "vulnerability": {
+                "name": f"Windows 8.3 filename bypass: {url}",
+                "severity": "high",
+                "description": (
+                    f"{url} returned HTTP 200 via Windows 8.3 short filename. "
+                    "Access controls on the canonical path may be bypassed."
+                ),
+                "location": url,
+                "section_id": "WSTG-CONF-03",
+            }
+        }
