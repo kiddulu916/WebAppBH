@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 from sqlalchemy import select
 
-from lib_webbh import JobState, Observation, get_session, push_task, setup_logger
+from lib_webbh import Asset, JobState, get_session, push_task, setup_logger
 from lib_webbh.scope import ScopeManager
 from workers.config_mgmt.base_tool import ConfigMgmtTool
 from workers.config_mgmt.concurrency import get_semaphore
@@ -166,10 +166,10 @@ class DefaultCredentialTester(ConfigMgmtTool):
             })
 
             async with get_session() as session:
-                stmt = select(Observation).where(
-                    Observation.target_id == target_id,
-                    Observation.observation_type == "admin_interface",
-                    Observation.source_tool == "admin_interface_finder",
+                stmt = select(Asset).where(
+                    Asset.target_id == target_id,
+                    Asset.asset_type == "admin_interface",
+                    Asset.source_tool == "admin_interface_finder",
                 )
                 result = await session.execute(stmt)
                 admin_interfaces = result.scalars().all()
@@ -181,10 +181,9 @@ class DefaultCredentialTester(ConfigMgmtTool):
             cred_rate_limit = int(os.environ.get("CONF_CRED_RATE_LIMIT", "3"))
             all_results = []
 
-            for obs in admin_interfaces:
-                url = obs.value
-                details = obs.details or {}
-                path = details.get("path", "/admin")
+            for asset in admin_interfaces:
+                url = asset.asset_value
+                path = urlparse(url).path or "/admin"
 
                 parsed = urlparse(url)
                 host = parsed.hostname or ""

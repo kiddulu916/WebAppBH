@@ -16,7 +16,6 @@ from lib_webbh import (
     Alert,
     JobState,
     Location,
-    Observation,
     Parameter,
     Vulnerability,
     get_session,
@@ -257,17 +256,15 @@ class ConfigMgmtTool(InfrastructureMixin, ABC):
     async def _process_vulnerability(self, item, target_id, log) -> bool | None:
         """Process a vulnerability result."""
         vuln_data = item["vulnerability"]
-        vuln_name = vuln_data.get("name", "")
+        title = vuln_data.get("name", "")
         severity = vuln_data.get("severity", "info")
         description = vuln_data.get("description", "")
-        location = vuln_data.get("location", "")
+        cvss_score = vuln_data.get("cvss_score")
 
         async with get_session() as session:
-            # Check for duplicate
             stmt = select(Vulnerability).where(
                 Vulnerability.target_id == target_id,
-                Vulnerability.name == vuln_name,
-                Vulnerability.location == location,
+                Vulnerability.title == title,
             )
             result = await session.execute(stmt)
             if result.scalar_one_or_none() is not None:
@@ -275,53 +272,61 @@ class ConfigMgmtTool(InfrastructureMixin, ABC):
 
             vuln = Vulnerability(
                 target_id=target_id,
-                name=vuln_name,
+                title=title,
                 severity=severity,
                 description=description,
-                location=location,
+                cvss_score=cvss_score,
                 source_tool=self.name,
+                section_id="WSTG-CONF-01",
+                worker_type="config_mgmt",
             )
             session.add(vuln)
             await session.commit()
 
-            # Emit event
             await push_task(f"events:{target_id}", {
                 "event": "NEW_VULNERABILITY",
                 "target_id": target_id,
-                "name": vuln_name,
+                "name": title,
                 "severity": severity,
-                "location": location,
                 "source_tool": self.name,
             })
 
             return True
 
     async def _process_observation(self, item, target_id, log) -> bool | None:
-        """Process an observation result."""
+        """Store an observation as an Asset row (asset_type=obs_type, asset_value=value).
+
+        The Observation model is tied to HTTP page observations via asset_id;
+        config_mgmt security observations are stored as Asset rows so that
+        downstream tools (DefaultCredentialTester) can query them by target_id
+        and asset_type.
+        """
         obs_data = item["observation"]
         obs_type = obs_data.get("type", "")
         value = obs_data.get("value", "")
         details = obs_data.get("details", {})
 
+        # asset_value is limited to 500 chars; truncate long banners/URLs
+        asset_value = value[:500]
+
         async with get_session() as session:
-            # Check for duplicate
-            stmt = select(Observation).where(
-                Observation.target_id == target_id,
-                Observation.observation_type == obs_type,
-                Observation.value == value,
+            stmt = select(Asset).where(
+                Asset.target_id == target_id,
+                Asset.asset_type == obs_type,
+                Asset.asset_value == asset_value,
             )
             result = await session.execute(stmt)
             if result.scalar_one_or_none() is not None:
                 return False
 
-            obs = Observation(
+            asset = Asset(
                 target_id=target_id,
-                observation_type=obs_type,
-                value=value,
-                details=details,
+                asset_type=obs_type,
+                asset_value=asset_value,
                 source_tool=self.name,
+                tech=details if details else None,
             )
-            session.add(obs)
+            session.add(asset)
             await session.commit()
 
             return True
