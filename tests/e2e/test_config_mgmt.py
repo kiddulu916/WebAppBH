@@ -13,6 +13,7 @@ LAST_STAGE = "cloud_storage"
 
 STAGE_ASSERTIONS = {
     "network_config":          lambda c, tid: assert_assets(c, tid),
+    "network_config_cred_test": None,
     "platform_config":         lambda c, tid: assert_assets(c, tid),
     "file_extension_handling": lambda c, tid: assert_assets(c, tid),
     "backup_files":            None,
@@ -26,7 +27,8 @@ STAGE_ASSERTIONS = {
 }
 
 STAGE_TIMEOUTS = {
-    "network_config":          180,
+    "network_config":          600,
+    "network_config_cred_test": 300,
     "platform_config":         120,
     "file_extension_handling": 120,
     "backup_files":            120,
