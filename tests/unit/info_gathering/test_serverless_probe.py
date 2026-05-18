@@ -29,6 +29,8 @@ async def test_wstg_serverless_probe_detects_aws_lambda():
     tech = save_obs.call_args[1]["tech_stack"]
     assert tech["detected"] is True
     assert tech["platform"] == "aws_lambda"
+    assert "x-amz-request-id" in tech["matched_headers"]
+    assert "x-amz-executed-version" in tech["matched_headers"]
 
 
 @pytest.mark.asyncio
@@ -41,6 +43,7 @@ async def test_wstg_serverless_probe_detects_vercel():
          patch.object(tool, "save_observation", new=save_obs):
         await tool.execute(target_id=1, host="example.com", asset_id=99)
     tech = save_obs.call_args[1]["tech_stack"]
+    assert tech["detected"] is True
     assert tech["platform"] == "vercel"
 
 
@@ -55,6 +58,7 @@ async def test_wstg_serverless_probe_no_serverless_detected():
         await tool.execute(target_id=1, host="example.com", asset_id=99)
     tech = save_obs.call_args[1]["tech_stack"]
     assert tech["detected"] is False
+    assert tech["platform"] == "none"
 
 
 @pytest.mark.asyncio
