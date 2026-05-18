@@ -19,6 +19,29 @@ _DB_PATH = Path(__file__).parent.parent / "data" / "cms_fingerprints.json"
 _CONCURRENCY = 5
 _ACCESSIBLE = frozenset({200, 301, 302})
 
+
+async def _fetch_path(
+    sess: "aiohttp.ClientSession",
+    host: str,
+    path: str,
+    sem: asyncio.Semaphore,
+    confirmed_paths: list[str],
+    fetched_bodies: dict[str, bytes],
+) -> None:
+    """Fetch one probe path; append to confirmed_paths/fetched_bodies on success."""
+    try:
+        async with sem:
+            async with sess.get(
+                f"https://{host}{path}",
+                timeout=aiohttp.ClientTimeout(total=10),
+                allow_redirects=False,
+            ) as resp:
+                if resp.status in _ACCESSIBLE:
+                    confirmed_paths.append(path)
+                    fetched_bodies[path] = await resp.read()
+    except Exception as exc:
+        logger.debug("cms_fingerprinter probe failed", host=host, path=path, error=str(exc))
+
 # Canonical display names for known CMS keys (lowercase key → display name).
 # Used when the DB entry lacks a "display_name" field.
 _CMS_DISPLAY_NAMES: dict[str, str] = {
@@ -61,23 +84,11 @@ class CMSFingerprinter(InfoGatheringTool):
             confirmed_paths: list[str] = []
             fetched_bodies: dict[str, bytes] = {}
 
-            async def _fetch(path: str) -> None:
-                try:
-                    async with sem:
-                        async with aiohttp.ClientSession() as sess:
-                            async with sess.get(
-                                f"https://{host}{path}",
-                                timeout=aiohttp.ClientTimeout(total=10),
-                                allow_redirects=False,
-                            ) as resp:
-                                if resp.status in _ACCESSIBLE:
-                                    confirmed_paths.append(path)
-                                    fetched_bodies[path] = await resp.read()
-                except Exception as exc:
-                    logger.debug("cms_fingerprinter probe failed",
-                                 host=host, path=path, error=str(exc))
-
-            await asyncio.gather(*[_fetch(p) for p in probe_paths])
+            async with aiohttp.ClientSession() as sess:
+                await asyncio.gather(*[
+                    _fetch_path(sess, host, p, sem, confirmed_paths, fetched_bodies)
+                    for p in probe_paths
+                ])
 
             if not confirmed_paths:
                 continue
