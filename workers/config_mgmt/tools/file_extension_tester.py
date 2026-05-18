@@ -129,6 +129,7 @@ class FileExtensionTester(ConfigMgmtTool):
         elif category == "document":
             if not has_credentials:
                 return None
+            severity = "critical"
         else:
             severity = "medium"
 
@@ -165,7 +166,7 @@ class FileExtensionTester(ConfigMgmtTool):
                 stem, _ = os.path.splitext(path)
                 if stem and stem not in ("/", "") and stem not in stems:
                     stems.append(stem)
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 pass
         return stems
 
