@@ -17,7 +17,7 @@ export const WORKER_STAGES: Record<string, { id: string; name: string; stageName
     { id: "8", name: "Map Execution Paths", stageName: "map_execution_paths", sectionId: "WSTG-INFO-07" },
     { id: "9", name: "Review Comments (Deep)", stageName: "review_comments_deep", sectionId: "WSTG-INFO-05" },
     { id: "10", name: "Fingerprint Framework", stageName: "fingerprint_framework", sectionId: "WSTG-INFO-08" },
-    { id: "11", name: "Map Architecture", stageName: "map_architecture", sectionId: "WSTG-INFO-09" },
+    { id: "11", name: "Map Architecture", stageName: "map_architecture", sectionId: "WSTG-INFO-10" },
     { id: "12", name: "Map Application", stageName: "map_application", sectionId: "WSTG-INFO-10" },
   ],
   config_mgmt: [

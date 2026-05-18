@@ -67,6 +67,11 @@ from .tools.whatweb import WhatWeb
 from .tools.header_framework_probe import HeaderFrameworkProbe
 from .tools.meta_generator_probe import MetaGeneratorProbe
 from .tools.framework_file_prober import FrameworkFileProber
+from .tools.cms_fingerprinter import CMSFingerprinter
+from .tools.cdn_probe import CDNProbe
+from .tools.load_balancer_probe import LoadBalancerProbe
+from .tools.serverless_probe import ServerlessProbe
+from .tools.reverse_proxy_probe import ReverseProxyProbe
 
 from workers.info_gathering.fingerprint_aggregator import FingerprintAggregator, ProbeResult
 from workers.info_gathering.framework_fingerprint_aggregator import FrameworkFingerprintAggregator
@@ -100,8 +105,12 @@ STAGES = [
     Stage(name="fingerprint_framework", section_id="4.1.8", tools=[
         Wappalyzer, CookieFingerprinter, Webanalyze,
         HeaderFrameworkProbe, MetaGeneratorProbe, FrameworkFileProber,
+        CMSFingerprinter,
     ]),
-    Stage(name="map_architecture", section_id="4.1.9", tools=[Waybackurls, ArchitectureModeler]),
+    Stage(name="map_architecture", section_id="4.1.10", tools=[
+        Waybackurls, ArchitectureModeler,
+        CDNProbe, LoadBalancerProbe, ServerlessProbe, ReverseProxyProbe,
+    ]),
     Stage(name="map_application", section_id="4.1.10", tools=[ApplicationMapper, AttackSurfaceAnalyzer]),
 ]
 
