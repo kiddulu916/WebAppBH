@@ -7,7 +7,7 @@ import pytest
 def _make_session(headers: dict[str, str]) -> MagicMock:
     mock_resp = MagicMock()
     mock_resp.status = 200
-    mock_resp.headers = {k.lower(): v for k, v in headers.items()}
+    mock_resp.headers = headers  # raw case; production code lowercases via resp.headers.items()
     mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
     mock_resp.__aexit__ = AsyncMock(return_value=None)
     mock_sess = MagicMock()
@@ -21,7 +21,7 @@ def _make_session(headers: dict[str, str]) -> MagicMock:
 async def test_wstg_serverless_probe_detects_aws_lambda():
     from workers.info_gathering.tools.serverless_probe import ServerlessProbe
     tool = ServerlessProbe()
-    session = _make_session({"x-amz-request-id": "abc123", "x-amz-executed-version": "$LATEST"})
+    session = _make_session({"X-Amz-Request-Id": "abc123", "X-Amz-Executed-Version": "$LATEST"})
     save_obs = AsyncMock(return_value=30)
     with patch("aiohttp.ClientSession", return_value=session), \
          patch.object(tool, "save_observation", new=save_obs):
