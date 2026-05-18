@@ -1,6 +1,8 @@
 # Config management tools package
 
 from .network_config_tester import NetworkConfigTester
+from .admin_interface_finder import AdminInterfaceFinder
+from .default_credential_tester import DefaultCredentialTester
 from .platform_fingerprinter import PlatformFingerprinter
 from .file_extension_tester import FileExtensionTester
 from .backup_file_finder import BackupFileFinder
@@ -15,6 +17,8 @@ from .cloud_storage_auditor import CloudStorageAuditor
 
 __all__ = [
     "NetworkConfigTester",
+    "AdminInterfaceFinder",
+    "DefaultCredentialTester",
     "PlatformFingerprinter",
     "FileExtensionTester",
     "BackupFileFinder",

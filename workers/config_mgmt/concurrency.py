@@ -15,25 +15,20 @@ class WeightClass(Enum):
 
 # Tool weight configuration
 TOOL_WEIGHTS = {
-    "Nmap": WeightClass.HEAVY,
-    "NetworkConfigAuditor": WeightClass.LIGHT,
-    "PlatformAuditor": WeightClass.LIGHT,
-    "ExtensionProber": WeightClass.LIGHT,
-    "FfufTool": WeightClass.HEAVY,
-    "BackupScanner": WeightClass.LIGHT,
-    "AdminFinder": WeightClass.LIGHT,
-    "DefaultCredChecker": WeightClass.LIGHT,
-    "MethodTester": WeightClass.LIGHT,
-    "HstsAuditor": WeightClass.LIGHT,
-    "CrossDomainPolicyParser": WeightClass.LIGHT,
-    "PermissionProber": WeightClass.LIGHT,
-    "SubjackTool": WeightClass.LIGHT,
-    "CnameChecker": WeightClass.LIGHT,
-    "BucketFinder": WeightClass.LIGHT,
-    "S3Scanner": WeightClass.LIGHT,
-    "AzureBlobProber": WeightClass.LIGHT,
-    "GcpBucketProber": WeightClass.LIGHT,
-    "TrufflehogTool": WeightClass.HEAVY,
+    "network_config_tester":      WeightClass.LIGHT,
+    "admin_interface_finder":     WeightClass.HEAVY,
+    "default_credential_tester":  WeightClass.HEAVY,
+    "platform_fingerprinter":     WeightClass.LIGHT,
+    "file_extension_tester":      WeightClass.LIGHT,
+    "backup_file_finder":         WeightClass.LIGHT,
+    "FfufTool":                   WeightClass.HEAVY,  # ffuf_tool.py sets name = "FfufTool"
+    "api_discovery_tool":         WeightClass.LIGHT,
+    "http_method_tester":         WeightClass.LIGHT,
+    "hsts_tester":                WeightClass.LIGHT,
+    "rpc_tester":                 WeightClass.LIGHT,
+    "file_inclusion_tester":      WeightClass.LIGHT,
+    "subdomain_takeover_checker": WeightClass.LIGHT,
+    "cloud_storage_auditor":      WeightClass.LIGHT,
 }
 
 
