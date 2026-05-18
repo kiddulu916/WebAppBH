@@ -82,14 +82,15 @@ async def test_wstg_load_balancer_probe_detects_via_header_variance():
 
     def _request(method, url, *, timeout, allow_redirects=False):
         nonlocal call_count
+        idx = min(call_count, len(via_values) - 1)
+        call_count += 1
         mock_resp = MagicMock()
         mock_resp.status = 200
         mock_resp.headers = MagicMock()
         mock_resp.headers.getall = MagicMock(return_value=[])
         mock_resp.headers.get = MagicMock(side_effect=lambda k, d=None: (
-            via_values[min(call_count, len(via_values) - 1)] if k == "x-served-by" else d
+            via_values[idx] if k == "x-served-by" else d
         ))
-        call_count += 1
         mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_resp.__aexit__ = AsyncMock(return_value=None)
         return mock_resp

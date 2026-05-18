@@ -18,10 +18,6 @@ _COOKIE_SIGNATURES: list[tuple[str, str]] = [
     (r"^BIGipServer",  "f5"),
     (r"^AWSALB$",      "aws_alb"),
     (r"^AWSALBCORS$",  "aws_alb"),
-    (r"^TS[0-9a-f]+$", "f5_apm"),
-    (r"^NSC_",         "netscaler"),
-    (r"^visid_incap_", "incapsula"),
-    (r"^incap_ses_",   "incapsula"),
 ]
 
 
