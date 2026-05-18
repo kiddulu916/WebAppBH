@@ -132,3 +132,65 @@ def test_analyze_response_config_is_medium():
     )
     assert result is not None
     assert result["vulnerability"]["severity"] == "medium"
+
+
+# ── _fetch_path_stems ─────────────────────────────────────────────────────────
+
+async def test_fetch_path_stems_extracts_unique_stems():
+    tester = FileExtensionTester()
+    mock_assets = [
+        MagicMock(asset_value="https://example.com/admin/login.php"),
+        MagicMock(asset_value="https://example.com/api/v1/users.json"),
+        MagicMock(asset_value="https://example.com/admin/login.php"),  # duplicate
+    ]
+    mock_scalars = MagicMock()
+    mock_scalars.all.return_value = mock_assets
+    mock_result = MagicMock()
+    mock_result.scalars.return_value = mock_scalars
+
+    mock_session = MagicMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    stems = await tester._fetch_path_stems(mock_session, target_id=1)
+
+    assert "/admin/login" in stems
+    assert "/api/v1/users" in stems
+    assert stems.count("/admin/login") == 1  # deduplicated
+
+
+async def test_fetch_path_stems_returns_empty_on_no_assets():
+    tester = FileExtensionTester()
+    mock_scalars = MagicMock()
+    mock_scalars.all.return_value = []
+    mock_result = MagicMock()
+    mock_result.scalars.return_value = mock_scalars
+
+    mock_session = MagicMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    stems = await tester._fetch_path_stems(mock_session, target_id=1)
+    assert stems == []
+
+
+# ── _is_iis_detected ──────────────────────────────────────────────────────────
+
+async def test_is_iis_detected_true_when_asset_exists():
+    tester = FileExtensionTester()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = MagicMock()  # non-None = found
+
+    mock_session = MagicMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    assert await tester._is_iis_detected(mock_session, target_id=1) is True
+
+
+async def test_is_iis_detected_false_when_no_asset():
+    tester = FileExtensionTester()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+
+    mock_session = MagicMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    assert await tester._is_iis_detected(mock_session, target_id=1) is False

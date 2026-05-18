@@ -149,3 +149,36 @@ class FileExtensionTester(ConfigMgmtTool):
                 "section_id": "WSTG-CONF-03",
             }
         }
+
+    # ── DB helpers ────────────────────────────────────────────────────────────
+    async def _fetch_path_stems(self, session, target_id: int) -> list[str]:
+        """Extract unique path stems from prior-stage asset discoveries."""
+        stmt = select(Asset).where(
+            Asset.target_id == target_id,
+            Asset.asset_type.in_(["url", "page", "endpoint"]),
+        )
+        result = await session.execute(stmt)
+        stems: list[str] = []
+        for asset in result.scalars().all():
+            try:
+                path = urlparse(asset.asset_value).path
+                stem, _ = os.path.splitext(path)
+                if stem and stem not in ("/", "") and stem not in stems:
+                    stems.append(stem)
+            except Exception:
+                pass
+        return stems
+
+    async def _is_iis_detected(self, session, target_id: int) -> bool:
+        """Return True if IIS was detected in the platform_config stage."""
+        stmt = (
+            select(Asset)
+            .where(
+                Asset.target_id == target_id,
+                Asset.asset_type == "server_software",
+                Asset.asset_value.ilike("%IIS%"),
+            )
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none() is not None
