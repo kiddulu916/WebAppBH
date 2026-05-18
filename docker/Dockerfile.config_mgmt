@@ -18,7 +18,9 @@ ENV PIP_DEFAULT_TIMEOUT=300
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    libpq5 && \
+    libpq5 \
+    nmap \
+    hydra && \
     rm -rf /var/lib/apt/lists/*
 
 # Go binaries
