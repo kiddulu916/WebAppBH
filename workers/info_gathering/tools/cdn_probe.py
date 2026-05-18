@@ -1,6 +1,7 @@
 """CDNProbe — CDN detection via response headers and ASN lookup (WSTG-INFO-10)."""
 from __future__ import annotations
 
+import asyncio
 import re
 import socket
 from typing import Any
@@ -24,7 +25,7 @@ _HEADER_SIGNATURES: list[tuple[str, str | None, str]] = [
     ("x-ms-ref",        None,            "azure_cdn"),
     ("x-sucuri-id",     None,            "sucuri"),
     ("x-sucuri-cache",  None,            "sucuri"),
-    ("x-cache",         r"HIT from a",   "akamai"),
+    ("x-cache",         r"akamaitechnologies", "akamai"),
     ("server",          r"AkamaiGHost",  "akamai"),
     ("via",             r"(?i)akamai",   "akamai"),
 ]
@@ -53,55 +54,55 @@ class CDNProbe(InfoGatheringTool):
         await self.acquire_rate_limit(kwargs.get("rate_limiter"))
         provider: str | None = None
         signals: list[str] = []
+        ips: list[str] = []
 
-        # Phase 1: header-based detection
-        try:
-            async with aiohttp.ClientSession() as sess:
+        async with aiohttp.ClientSession() as sess:
+            # Phase 1: header-based detection
+            try:
                 async with sess.get(
                     f"https://{host}",
                     timeout=aiohttp.ClientTimeout(total=10),
                     allow_redirects=True,
                 ) as resp:
                     headers = {k.lower(): v for k, v in resp.headers.items()}
-        except Exception as exc:
-            logger.warning("cdn_probe header fetch failed", host=host, error=str(exc))
-            headers = {}
-
-        for hdr, pattern, cdn in _HEADER_SIGNATURES:
-            val = headers.get(hdr)
-            if val is None:
-                continue
-            if pattern is None or re.search(pattern, val):
-                provider = cdn
-                signals.append(f"header:{hdr}")
-                break
-
-        # Phase 2: ASN-based detection (only if headers inconclusive)
-        ips: list[str] = []
-        if provider is None:
-            try:
-                info = socket.getaddrinfo(host, 80)
-                ips = list({entry[4][0] for entry in info})
             except Exception as exc:
-                logger.debug("cdn_probe DNS resolution failed", host=host, error=str(exc))
+                logger.warning("cdn_probe header fetch failed", host=host, error=str(exc))
+                headers = {}
 
-            for ip in ips[:2]:
+            for hdr, pattern, cdn in _HEADER_SIGNATURES:
+                val = headers.get(hdr)
+                if val is None:
+                    continue
+                if pattern is None or re.search(pattern, val):
+                    provider = cdn
+                    signals.append(f"header:{hdr}")
+                    break
+
+            # Phase 2: ASN-based detection (only if headers inconclusive)
+            if provider is None:
                 try:
-                    async with aiohttp.ClientSession() as sess:
+                    loop = asyncio.get_event_loop()
+                    info = await loop.run_in_executor(None, socket.getaddrinfo, host, 80)
+                    ips = list({entry[4][0] for entry in info})
+                except Exception as exc:
+                    logger.debug("cdn_probe DNS resolution failed", host=host, error=str(exc))
+
+                for ip in ips[:2]:
+                    try:
                         async with sess.get(
                             f"https://ipinfo.io/{ip}/org",
                             timeout=aiohttp.ClientTimeout(total=8),
                         ) as resp:
                             org = (await resp.text()).lower()
-                    for asn_substr, cdn in _ASN_SIGNATURES:
-                        if asn_substr in org:
-                            provider = cdn
-                            signals.append(f"asn:{org.strip()}")
-                            break
-                except Exception as exc:
-                    logger.debug("cdn_probe ASN lookup failed", ip=ip, error=str(exc))
-                if provider:
-                    break
+                        for asn_substr, cdn in _ASN_SIGNATURES:
+                            if asn_substr in org:
+                                provider = cdn
+                                signals.append(f"asn:{org.strip()}")
+                                break
+                    except Exception as exc:
+                        logger.debug("cdn_probe ASN lookup failed", ip=ip, error=str(exc))
+                    if provider:
+                        break
 
         await self.save_observation(
             asset_id=asset_id,

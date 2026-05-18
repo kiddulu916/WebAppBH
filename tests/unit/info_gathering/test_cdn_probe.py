@@ -36,7 +36,6 @@ async def test_wstg_cdn_probe_detects_cloudflare_via_header():
     session = _make_session({"cf-ray": "abc123-LHR"})
     save_obs = AsyncMock(return_value=10)
     with patch("aiohttp.ClientSession", return_value=session), \
-         patch("socket.getaddrinfo", return_value=[(None, None, None, None, ("1.2.3.4", 0))]), \
          patch.object(tool, "save_observation", new=save_obs):
         await tool.execute(target_id=1, host="example.com", asset_id=99)
     call_args = save_obs.call_args
@@ -52,7 +51,6 @@ async def test_wstg_cdn_probe_detects_fastly_via_header():
     session = _make_session({"x-served-by": "cache-lhr1234-LHR"})
     save_obs = AsyncMock(return_value=11)
     with patch("aiohttp.ClientSession", return_value=session), \
-         patch("socket.getaddrinfo", return_value=[(None, None, None, None, ("1.2.3.4", 0))]), \
          patch.object(tool, "save_observation", new=save_obs):
         await tool.execute(target_id=1, host="example.com", asset_id=99)
     tech = save_obs.call_args[1]["tech_stack"]
@@ -66,11 +64,16 @@ async def test_wstg_cdn_probe_no_cdn_detected():
     session = _make_session({"server": "nginx"}, org_text="AS12345 Some ISP")
     save_obs = AsyncMock(return_value=12)
     with patch("aiohttp.ClientSession", return_value=session), \
-         patch("socket.getaddrinfo", return_value=[(None, None, None, None, ("1.2.3.4", 0))]), \
+         patch("asyncio.get_event_loop") as mock_loop, \
          patch.object(tool, "save_observation", new=save_obs):
+        mock_loop.return_value.run_in_executor = AsyncMock(
+            return_value=[(None, None, None, None, ("1.2.3.4", 0))]
+        )
         await tool.execute(target_id=1, host="example.com", asset_id=99)
     tech = save_obs.call_args[1]["tech_stack"]
     assert tech["detected"] is False
+    assert tech["signals"] == []
+    assert "1.2.3.4" in tech["ips"]
 
 
 @pytest.mark.asyncio
