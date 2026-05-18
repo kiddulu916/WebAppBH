@@ -89,7 +89,7 @@ def test_generate_short_name_root_returns_empty():
 
 def test_generate_short_name_strips_special_chars():
     # hyphens and dots are removed; only alphanumeric kept, then truncated to 6
-    assert _generate_short_name("/my-config.php") == "MYCON"
+    assert _generate_short_name("/my-config.php") == "MYCONF"
 
 
 def test_generate_short_name_exact_six_chars():
