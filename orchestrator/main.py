@@ -1636,7 +1636,7 @@ async def create_report(target_id: int, body: ReportCreate):
         if has_vulns is None:
             raise HTTPException(status_code=400, detail="No vulnerabilities found for this target")
 
-    msg_id = await push_task("reporting_queue", {
+    msg_id = await push_task("reporting_worker_queue", {
         "target_id": target_id,
         "formats": body.formats,
         "platform": body.platform,
@@ -2058,8 +2058,8 @@ async def get_queue_health():
         "business_logic_queue",
         "client_side_queue",
         "chain_worker_queue",
-        "reporting_queue",
-        "reasoning_queue",
+        "reporting_worker_queue",
+        "reasoning_worker_queue",
     ]
     results = {}
     for q in queues:
@@ -2921,7 +2921,7 @@ async def trigger_reasoning(target_id: int):
         if not target:
             raise HTTPException(status_code=404, detail="Target not found")
 
-    await push_task("reasoning_queue", {"target_id": target_id})
+    await push_task("reasoning_worker_queue", {"target_id": target_id})
     return {"status": "queued", "target_id": target_id}
 
 

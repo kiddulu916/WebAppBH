@@ -145,7 +145,7 @@ export const WORKER_STAGES: Record<string, { id: string; name: string; stageName
     { id: "4", name: "Chain Execution", stageName: "chain_execution", sectionId: "CHAIN-04" },
     { id: "5", name: "Reporting", stageName: "reporting", sectionId: "CHAIN-05" },
   ],
-  reporting: [
+  reporting_worker: [
     { id: "1", name: "Data Gathering", stageName: "data_gathering", sectionId: "RPT-01" },
     { id: "2", name: "Deduplication", stageName: "deduplication", sectionId: "RPT-02" },
     { id: "3", name: "Rendering", stageName: "rendering", sectionId: "RPT-03" },

@@ -78,7 +78,7 @@ PIPELINE_STAGES: dict[str, list[str]] = {
         "data_collection", "chain_evaluation", "ai_chain_discovery",
         "chain_execution", "reporting",
     ],
-    "reporting": [
+    "reporting_worker": [
         "data_gathering", "deduplication", "rendering", "export",
     ],
 }

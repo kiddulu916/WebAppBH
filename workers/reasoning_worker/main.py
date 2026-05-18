@@ -111,7 +111,7 @@ async def main() -> None:
     logger.info("Listening for tasks", extra={"consumer": consumer_name})
 
     async for message in listen_priority_queues(
-        "reasoning_queue", consumer_group, consumer_name
+        "reasoning_worker_queue", consumer_group, consumer_name
     ):
         try:
             await handle_message(message["msg_id"], message["payload"])

@@ -107,11 +107,11 @@ STAGES = [
         HeaderFrameworkProbe, MetaGeneratorProbe, FrameworkFileProber,
         CMSFingerprinter,
     ]),
-    Stage(name="map_architecture", section_id="4.1.10", tools=[
+    Stage(name="map_architecture", section_id="4.1.10a", tools=[
         Waybackurls, ArchitectureModeler,
         CDNProbe, LoadBalancerProbe, ServerlessProbe, ReverseProxyProbe,
     ]),
-    Stage(name="map_application", section_id="4.1.10", tools=[ApplicationMapper, AttackSurfaceAnalyzer]),
+    Stage(name="map_application", section_id="4.1.10b", tools=[ApplicationMapper, AttackSurfaceAnalyzer]),
 ]
 
 STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}

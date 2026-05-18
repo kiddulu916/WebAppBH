@@ -286,7 +286,7 @@ export const PIPELINE_WORKER_NAMES = [
   "mobile_worker",
   "reasoning_worker",
   "chain_worker",
-  "reporting",
+  "reporting_worker",
 ] as const;
 
 export const ALL_WORKER_NAMES = [...INFRA_WORKER_NAMES, ...PIPELINE_WORKER_NAMES] as const;
@@ -311,7 +311,7 @@ export const WORKER_STAGE_COUNTS: Record<string, number> = {
   mobile_worker: 5,
   reasoning_worker: 3,
   chain_worker: 5,
-  reporting: 4,
+  reporting_worker: 4,
 };
 
 export const WORKER_DEPENDENCIES: Record<string, string[]> = {
@@ -332,7 +332,7 @@ export const WORKER_DEPENDENCIES: Record<string, string[]> = {
   mobile_worker: ["authorization", "session_mgmt", "input_validation"],
   reasoning_worker: ["error_handling", "cryptography", "business_logic", "client_side", "mobile_worker"],
   chain_worker: ["reasoning_worker"],
-  reporting: ["chain_worker"],
+  reporting_worker: ["chain_worker"],
 };
 
 // ---------------------------------------------------------------------------
