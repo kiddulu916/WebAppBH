@@ -18,7 +18,7 @@ _EXPLICIT_HEADERS: list[tuple[str, str | None, str]] = [
     ("x-cache-hits",       None,       "generic_cache"),
     ("x-drupal-cache",     None,       "drupal_cache"),
     ("x-squid-error",      None,       "squid"),
-    ("x-forwarded-server", None,       "haproxy"),
+    ("x-forwarded-server", None,       "generic_proxy"),
 ]
 
 # Headers whose mere presence indicates a proxy layer
