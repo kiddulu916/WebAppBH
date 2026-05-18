@@ -16,7 +16,7 @@ def _make_session(cookie_headers: list[str]) -> MagicMock:
         mock_resp.headers = MagicMock()
         idx = min(call_count - 1, len(cookie_headers) - 1)
         hdr_val = cookie_headers[idx] if cookie_headers else ""
-        mock_resp.headers.get = MagicMock(side_effect=lambda k, d="": (
+        mock_resp.headers.get = MagicMock(side_effect=lambda k, d=None: (
             hdr_val if k.lower() == "set-cookie" else d
         ))
         mock_resp.headers.getall = MagicMock(return_value=[hdr_val] if hdr_val else [])
