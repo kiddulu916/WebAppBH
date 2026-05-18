@@ -49,8 +49,9 @@ _WIN83_BYPASS_EXTS = [".PHP", ".PHT", ".ASP"]
 
 _SOURCE_SYNTAX = [
     "<?php", "<?=",
-    "<%@", "response.write",
+    "<%", "<%@", "response.write",
     "<jsp:",
+    "{%", "{{",
     "#!/usr/bin/env python", "#!/usr/bin/python",
     "#!/usr/bin/perl", "#!/usr/bin/env perl",
     "#!/usr/bin/ruby",
