@@ -317,7 +317,7 @@ class FileExtensionTester(ConfigMgmtTool):
         async with sem:
             try:
                 resp = await client.get(url)
-            except (httpx.RequestError, asyncio.TimeoutError):
+            except httpx.RequestError:
                 return None
 
         if resp.status_code != 200:
@@ -334,7 +334,7 @@ class FileExtensionTester(ConfigMgmtTool):
         async with sem:
             try:
                 resp = await client.get(url)
-            except (httpx.RequestError, asyncio.TimeoutError):
+            except httpx.RequestError:
                 return None
 
         if resp.status_code != 200:

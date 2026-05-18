@@ -341,7 +341,7 @@ class FileExtensionTester(ConfigMgmtTool):
         elif category == "document":
             if not has_credentials:
                 return None
-            severity = "medium"
+            severity = "critical"
         else:
             severity = "medium"
 
