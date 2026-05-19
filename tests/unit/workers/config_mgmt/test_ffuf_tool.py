@@ -138,7 +138,7 @@ def test_build_ffuf_cmd_basic_structure():
     )
     assert "ffuf" in cmd
     assert "https://example.com/FUZZ" in cmd
-    assert "/wordlists/common.txt" in cmd
+    assert any("/wordlists/common.txt" in arg for arg in cmd)
     assert "/tmp/out.json" in cmd
     assert "json" in cmd
 
@@ -152,7 +152,7 @@ def test_build_ffuf_cmd_includes_supplemental_wordlist():
         headers=None,
         supplemental_wl="/tmp/supp.txt",
     )
-    assert "/tmp/supp.txt" in cmd
+    assert any("/tmp/supp.txt" in arg for arg in cmd)
     assert cmd.count("-w") >= 2
 
 
@@ -180,6 +180,36 @@ async def test_ffuf_execute_skips_on_cooldown(monkeypatch):
         container_name="config_mgmt",
     )
     assert stats == {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": True}
+
+
+async def test_execute_returns_zero_when_out_of_scope(monkeypatch):
+    tool = FfufTool()
+    monkeypatch.setattr(tool, "check_cooldown", AsyncMock(return_value=False))
+
+    mock_sem = MagicMock()
+    mock_sem.acquire = AsyncMock()
+    mock_sem.release = MagicMock()
+    monkeypatch.setattr(
+        "workers.config_mgmt.tools.ffuf_tool.get_semaphore",
+        lambda _: mock_sem,
+    )
+    monkeypatch.setattr(
+        "workers.config_mgmt.tools.ffuf_tool.push_task",
+        AsyncMock(),
+    )
+
+    scope_result = MagicMock()
+    scope_result.in_scope = False
+    scope_manager = MagicMock()
+    scope_manager.is_in_scope.return_value = scope_result
+
+    stats = await tool.execute(
+        target=MagicMock(target_value="https://example.com"),
+        scope_manager=scope_manager,
+        target_id=1,
+        container_name="config_mgmt",
+    )
+    assert stats == {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
 
 
 async def test_ffuf_execute_runs_and_returns_stats(monkeypatch):

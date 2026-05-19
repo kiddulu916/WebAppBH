@@ -6,7 +6,7 @@ import asyncio
 import json
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from sqlalchemy import select
@@ -143,14 +143,14 @@ def _build_ffuf_cmd(
 ) -> list[str]:
     """Build a ffuf command list for one target URL."""
     cmd = [
-        "ffuf", "-u", url, "-w", wordlist,
+        "ffuf", "-u", url, "-w", f"{wordlist}:FUZZ",
         "-o", output_file, "-of", "json",
         "-mc", "200,204,301,302,307,401,403",
         "-rate", str(rate_limit),
         "-t", str(min(rate_limit, 50)),
     ]
     if supplemental_wl:
-        cmd.extend(["-w", supplemental_wl])
+        cmd.extend(["-w", f"{supplemental_wl}:FUZZ"])
     if headers:
         for k, v in headers.items():
             cmd.extend(["-H", f"{k}: {v}"])
@@ -215,7 +215,10 @@ class FfufTool(ConfigMgmtTool):
         supplemental_wl: str | None,
     ) -> list[dict]:
         """Run ffuf for one target URL and return parsed results."""
-        output_file = tempfile.mktemp(suffix=".json", prefix="ffuf_")
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", prefix="ffuf_", delete=False
+        ) as tmp:
+            output_file = tmp.name
         cmd = _build_ffuf_cmd(url, wordlist, output_file, rate_limit, headers, supplemental_wl)
         try:
             await self.run_subprocess(cmd)
@@ -255,6 +258,11 @@ class FfufTool(ConfigMgmtTool):
                 target_url if target_url.startswith(("http://", "https://"))
                 else f"https://{target_url}"
             )
+
+            scope_check = scope_manager.is_in_scope(base_url)
+            if not scope_check.in_scope:
+                log.info(f"Skipping {self.name} — target out of scope")
+                return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
 
             async with get_session() as session:
                 discovered_dirs = await self._fetch_discovered_dirs(session, target_id)
@@ -312,7 +320,7 @@ class FfufTool(ConfigMgmtTool):
                 job = result.scalar_one_or_none()
                 if job:
                     job.last_tool_executed = self.name
-                    job.last_seen = datetime.utcnow()
+                    job.last_seen = datetime.now(timezone.utc)
                     await session.commit()
 
             stats = {
