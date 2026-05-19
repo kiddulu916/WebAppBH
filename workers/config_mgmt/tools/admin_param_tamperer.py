@@ -86,6 +86,7 @@ def _classify_tamper_response(
     baseline_len: int,
     new_len: int,
     new_body: str,
+    baseline_body: str = "",
 ) -> tuple[str | None, str | None]:
     """Return (severity, vuln_type) if the tampered response differs meaningfully.
 
@@ -95,7 +96,8 @@ def _classify_tamper_response(
         return "critical", "parameter_tampering_bypass"
 
     new_body_lower = new_body.lower()
-    if any(kw in new_body_lower for kw in _ADMIN_BODY_KEYWORDS):
+    baseline_body_lower = baseline_body.lower()
+    if any(kw in new_body_lower for kw in _ADMIN_BODY_KEYWORDS) and not any(kw in baseline_body_lower for kw in _ADMIN_BODY_KEYWORDS):
         return "high", "parameter_tampering_escalation"
 
     if baseline_len > 0 and abs(new_len - baseline_len) / baseline_len > 0.20:
@@ -137,6 +139,18 @@ class AdminParamTamperer(ConfigMgmtTool):
                 "tool": self.name, "progress": 0,
                 "message": f"{self.name} started",
             })
+
+            # Scope check
+            base_url = target.target_value if hasattr(target, "target_value") else str(target)
+            if not base_url.startswith(("http://", "https://")):
+                base_url = f"https://{base_url.rstrip('/')}"
+            else:
+                base_url = base_url.rstrip("/")
+
+            scope_result = scope_manager.is_in_scope(base_url)
+            if not scope_result.in_scope:
+                log.info(f"{self.name}: target out of scope, skipping")
+                return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
 
             # Phase 0 — DB reads
             async with get_session() as session:
@@ -181,12 +195,8 @@ class AdminParamTamperer(ConfigMgmtTool):
                             _extract_hidden_inputs(baseline_body)
                         )
 
-                        for cookie_header in base_resp.headers.get_list("set-cookie"):
-                            name_part = cookie_header.split("=", 1)
-                            if len(name_part) == 2:
-                                cname = name_part[0].strip()
-                                cvalue = name_part[1].split(";")[0].strip()
-                                params.extend(_filter_admin_params([(cname, cvalue)]))
+                        for cname, cvalue in base_resp.cookies.items():
+                            params.extend(_filter_admin_params([(cname, cvalue or "")]))
 
                         for param_name, param_value in params:
                             for flip in _build_flip_values(param_value):
@@ -200,6 +210,7 @@ class AdminParamTamperer(ConfigMgmtTool):
                                         baseline_len=baseline_len,
                                         new_len=len(tampered.text),
                                         new_body=tampered.text,
+                                        baseline_body=baseline_body,
                                     )
                                     if severity:
                                         results.append({"vulnerability": {
@@ -253,7 +264,7 @@ class AdminParamTamperer(ConfigMgmtTool):
                 "tool": self.name, "progress": 100,
                 "message": f"{self.name}: {new_count} new, {in_scope_count} in scope, {found} total",
             })
-            log.info(f"{self.name} complete", **stats)
+            log.info(f"{self.name} complete", extra=stats)
             return stats
 
         finally:

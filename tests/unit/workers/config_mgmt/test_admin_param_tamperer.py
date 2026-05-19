@@ -186,6 +186,15 @@ def test_classify_tamper_admin_keywords_users():
     assert severity == "high"
 
 
+def test_classify_tamper_no_escalation_when_keyword_already_in_baseline():
+    severity, vuln_type = _classify_tamper_response(
+        baseline_status=200, new_status=200,
+        baseline_len=100, new_len=110, new_body="welcome to the admin dashboard",
+        baseline_body="welcome to the admin dashboard",
+    )
+    assert severity is None or severity == "medium"  # keyword was already there, not new
+
+
 # ── AdminParamTamperer class ──────────────────────────────────────────────────
 
 def test_tool_has_correct_name():
