@@ -45,6 +45,10 @@ RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs
 COPY workers/__init__.py /app/workers/__init__.py
 COPY workers/config_mgmt /app/workers/config_mgmt
 
+# Admin interface wordlist
+RUN mkdir -p /wordlists
+COPY workers/config_mgmt/wordlists/ /wordlists/
+
 # Verify
 RUN python -c "from workers.config_mgmt.main import main; print('config-mgmt OK')"
 
