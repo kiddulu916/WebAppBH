@@ -216,7 +216,14 @@ def _analyze_static_probe(
 
     body_lower = body.lower()
     has_credentials = any(p in body_lower for p in _CREDENTIAL_PATTERNS)
-    severity = "critical" if has_credentials else base_severity
+    has_source = any(p in body_lower for p in _SOURCE_SYNTAX)
+
+    if has_credentials:
+        severity = "critical"
+    elif has_source:
+        severity = "high"
+    else:
+        severity = base_severity
 
     desc = (
         f"{url} returned HTTP {status_code}. "
@@ -224,6 +231,8 @@ def _analyze_static_probe(
     )
     if has_credentials:
         desc += " Response body contains credential patterns."
+    elif has_source:
+        desc += " Response body contains source code syntax."
 
     return {
         "vulnerability": {
@@ -255,8 +264,6 @@ def _analyze_mutation(
 
     if has_credentials:
         severity = "critical"
-    elif original_ext in _SCRIPT_EXTS and (has_source or is_plain):
-        severity = "high"
     else:
         severity = "high"
 

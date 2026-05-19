@@ -191,6 +191,15 @@ def test_analyze_static_probe_unknown_path_returns_none():
     assert result is None
 
 
+def test_analyze_static_probe_source_syntax_upgrades_to_high():
+    result = _analyze_static_probe(
+        "https://example.com/config.bak", "/config.bak", 200,
+        "<?php include_once('db.php'); ?>", "text/plain"
+    )
+    assert result is not None
+    assert result["vulnerability"]["severity"] == "high"
+
+
 # ── _analyze_mutation ─────────────────────────────────────────────────────────
 
 def test_analyze_mutation_200_is_high():
