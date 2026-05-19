@@ -277,7 +277,7 @@ class ConfigMgmtTool(InfrastructureMixin, ABC):
                 description=description,
                 cvss_score=cvss_score,
                 source_tool=self.name,
-                section_id="WSTG-CONF-01",
+                section_id=vuln_data.get("section_id", "WSTG-CONF-01"),
                 worker_type="config_mgmt",
             )
             session.add(vuln)
