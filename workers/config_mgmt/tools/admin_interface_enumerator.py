@@ -106,6 +106,62 @@ def _extract_admin_links(html: str, base_url: str) -> list[str]:
     return result
 
 
+def _base_url(target) -> str:
+    """Return a normalised base URL string for target."""
+    value = getattr(target, "target_value", str(target))
+    if value.startswith(("http://", "https://")):
+        return value.rstrip("/")
+    return f"https://{value.rstrip('/')}"
+
+
+async def _probe_path(
+    client: httpx.AsyncClient,
+    base_url: str,
+    path: str,
+    sem: asyncio.Semaphore,
+) -> dict | None:
+    """GET one path. Return result dict or None."""
+    url = base_url + path
+    async with sem:
+        try:
+            resp = await client.get(url)
+            status = resp.status_code
+            if status == 200:
+                body = resp.text
+                severity, vuln_type = _classify_200_response(body)
+                return {
+                    "vulnerability": {
+                        "name": f"Admin interface accessible: {path}",
+                        "severity": severity,
+                        "description": (
+                            f"Admin path {url} returned HTTP 200. "
+                            f"{'No login form detected — may be accessible without authentication.' if severity == 'high' else 'Login form present.'}"
+                        ),
+                        "location": url,
+                        "section_id": _SECTION_ID,
+                    }
+                }
+            if status in (401, 403):
+                return {"observation": {
+                    "type": "admin_access_denied",
+                    "value": url,
+                    "details": {"path": path, "status": status},
+                }}
+            if status in (301, 302, 307, 308):
+                return {"observation": {
+                    "type": "admin_redirect",
+                    "value": url,
+                    "details": {
+                        "path": path,
+                        "status": status,
+                        "location": resp.headers.get("location", ""),
+                    },
+                }}
+        except httpx.RequestError:
+            pass
+    return None
+
+
 class AdminInterfaceEnumerator(ConfigMgmtTool):
     """Enumerate admin interfaces via wordlist probing, HTML link mining,
     and auth-header fingerprinting. WSTG-CONF-05."""
@@ -117,66 +173,6 @@ class AdminInterfaceEnumerator(ConfigMgmtTool):
 
     def parse_output(self, stdout: str) -> list:
         raise NotImplementedError("AdminInterfaceEnumerator uses execute() directly")
-
-    def _base_url(self, target) -> str:
-        value = getattr(target, "target_value", str(target))
-        if value.startswith(("http://", "https://")):
-            return value.rstrip("/")
-        return f"https://{value.rstrip('/')}"
-
-    async def _probe_path(
-        self,
-        client: httpx.AsyncClient,
-        base_url: str,
-        path: str,
-        sem: asyncio.Semaphore,
-    ) -> dict | None:
-        """HEAD (fallback GET on 405) one path. Return result dict or None."""
-        url = base_url + path
-        async with sem:
-            try:
-                resp = await client.head(url)
-                if resp.status_code == 405:
-                    resp = await client.get(url)
-                status = resp.status_code
-                if status == 200:
-                    body = resp.text if hasattr(resp, "text") else ""
-                    if not body:
-                        full = await client.get(url)
-                        body = full.text
-                        status = full.status_code
-                    severity, vuln_type = _classify_200_response(body)
-                    return {
-                        "vulnerability": {
-                            "name": f"Admin interface accessible: {path}",
-                            "severity": severity,
-                            "description": (
-                                f"Admin path {url} returned HTTP 200. "
-                                f"{'No login form detected — may be accessible without authentication.' if severity == 'high' else 'Login form present.'}"
-                            ),
-                            "location": url,
-                            "section_id": _SECTION_ID,
-                        }
-                    }
-                if status in (401, 403):
-                    return {"observation": {
-                        "type": "admin_access_denied",
-                        "value": url,
-                        "details": {"path": path, "status": status},
-                    }}
-                if status in (301, 302, 307, 308):
-                    return {"observation": {
-                        "type": "admin_redirect",
-                        "value": url,
-                        "details": {
-                            "path": path,
-                            "status": status,
-                            "location": resp.headers.get("location", ""),
-                        },
-                    }}
-            except httpx.RequestError:
-                pass
-        return None
 
     async def execute(
         self,
@@ -201,7 +197,17 @@ class AdminInterfaceEnumerator(ConfigMgmtTool):
                 "message": f"{self.name} started",
             })
 
-            base_url = self._base_url(target)
+            base_url = _base_url(target)
+
+            scope_result = scope_manager.is_in_scope(base_url)
+            if not scope_result.in_scope:
+                log.info(f"{self.name}: target out of scope — skipping")
+                await push_task(f"events:{target_id}", {
+                    "event": "TOOL_PROGRESS", "container": container_name,
+                    "tool": self.name, "progress": 100,
+                    "message": f"{self.name}: out of scope",
+                })
+                return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
 
             # Phase 0 — DB reads + wordlist
             async with get_session() as session:
@@ -234,7 +240,7 @@ class AdminInterfaceEnumerator(ConfigMgmtTool):
             async with httpx.AsyncClient(**client_kwargs) as client:
                 # Phase 1 — wordlist probing
                 probe_tasks = [
-                    self._probe_path(client, base_url, p, inner_sem)
+                    _probe_path(client, base_url, p, inner_sem)
                     for p in paths
                 ]
                 phase1 = await asyncio.gather(*probe_tasks, return_exceptions=True)
@@ -252,19 +258,20 @@ class AdminInterfaceEnumerator(ConfigMgmtTool):
                         if resp.status_code == 200:
                             links = _extract_admin_links(resp.text, base_url)
                             link_tasks = [
-                                self._probe_path(client, base_url, lnk, inner_sem)
+                                _probe_path(client, base_url, lnk, inner_sem)
                                 for lnk in links
                             ]
                             link_results = await asyncio.gather(*link_tasks, return_exceptions=True)
-                            for r in link_results:
+                            for lnk, r in zip(links, link_results):
                                 if isinstance(r, dict):
                                     all_results.append(r)
-                            for lnk in links:
-                                all_results.append({"observation": {
-                                    "type": "admin_link",
-                                    "value": base_url + lnk,
-                                    "details": {"path": lnk, "source": "html_mining"},
-                                }})
+                                elif r is None:
+                                    # No finding from probe — record as admin_link observation
+                                    all_results.append({"observation": {
+                                        "type": "admin_link",
+                                        "value": base_url + lnk,
+                                        "details": {"path": lnk, "source": "html_mining"},
+                                    }})
                     except httpx.RequestError:
                         pass
 
