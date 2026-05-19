@@ -29,6 +29,7 @@ TOOL_WEIGHTS = {
     "file_inclusion_tester":      WeightClass.LIGHT,
     "subdomain_takeover_checker": WeightClass.LIGHT,
     "cloud_storage_auditor":      WeightClass.LIGHT,
+    "admin_interface_enumerator": WeightClass.HEAVY,
 }
 
 
