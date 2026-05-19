@@ -263,8 +263,6 @@ def _analyze_mutation(
 
     if has_credentials:
         severity = "critical"
-    elif has_source:
-        severity = "high"
     else:
         severity = "high"
 
@@ -491,6 +489,12 @@ class BackupFileFinder(ConfigMgmtTool):
                 target_url if target_url.startswith(("http://", "https://"))
                 else f"https://{target_url}"
             )
+
+            scope_check = scope_manager.is_in_scope(base_url)
+            if not scope_check.in_scope:
+                log.info(f"Skipping {self.name} — target out of scope")
+                return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
+
             domain = _extract_domain(target_url)
 
             # Phase 0 — DB reads

@@ -242,6 +242,36 @@ async def test_execute_skips_on_cooldown(monkeypatch):
     assert stats == {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": True}
 
 
+async def test_execute_returns_zero_when_out_of_scope(monkeypatch):
+    tool = BackupFileFinder()
+    monkeypatch.setattr(tool, "check_cooldown", AsyncMock(return_value=False))
+
+    mock_sem = MagicMock()
+    mock_sem.acquire = AsyncMock()
+    mock_sem.release = MagicMock()
+    monkeypatch.setattr(
+        "workers.config_mgmt.tools.backup_file_finder.get_semaphore",
+        lambda _: mock_sem,
+    )
+    monkeypatch.setattr(
+        "workers.config_mgmt.tools.backup_file_finder.push_task",
+        AsyncMock(),
+    )
+
+    scope_result = MagicMock()
+    scope_result.in_scope = False
+    scope_manager = MagicMock()
+    scope_manager.is_in_scope.return_value = scope_result
+
+    stats = await tool.execute(
+        target=MagicMock(target_value="https://example.com"),
+        scope_manager=scope_manager,
+        target_id=1,
+        container_name="config_mgmt",
+    )
+    assert stats == {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
+
+
 async def test_execute_returns_stats_on_finding(monkeypatch):
     tool = BackupFileFinder()
 
@@ -310,9 +340,14 @@ async def test_execute_returns_stats_on_finding(monkeypatch):
 
     monkeypatch.setattr(tool, "_process_result", AsyncMock(return_value=True))
 
+    scope_result = MagicMock()
+    scope_result.in_scope = True
+    scope_manager = MagicMock()
+    scope_manager.is_in_scope.return_value = scope_result
+
     stats = await tool.execute(
         target=MagicMock(target_value="https://example.com"),
-        scope_manager=MagicMock(),
+        scope_manager=scope_manager,
         target_id=1,
         container_name="config_mgmt",
     )
