@@ -260,10 +260,11 @@ def _analyze_mutation(
     body_lower = body.lower()
     has_credentials = any(p in body_lower for p in _CREDENTIAL_PATTERNS)
     has_source = any(p in body_lower for p in _SOURCE_SYNTAX)
-    is_plain = "text/plain" in content_type or "application/octet-stream" in content_type
 
     if has_credentials:
         severity = "critical"
+    elif has_source:
+        severity = "high"
     else:
         severity = "high"
 
@@ -274,6 +275,8 @@ def _analyze_mutation(
     )
     if has_credentials:
         desc += " Response body contains credential patterns."
+    elif has_source:
+        desc += " Response body contains source code syntax."
 
     return {
         "vulnerability": {
