@@ -86,6 +86,12 @@ def test_classify_ffuf_result_403_is_observation():
     assert result["observation"]["type"] == "ffuf_access_denied"
 
 
+def test_classify_ffuf_result_401_is_observation():
+    result = _classify_ffuf_result("/admin", 401, "https://example.com/admin")
+    assert "observation" in result
+    assert result["observation"]["details"]["status"] == 401
+
+
 def test_classify_ffuf_result_generic_path_is_low():
     result = _classify_ffuf_result("/about", 200, "https://example.com/about")
     assert result["vulnerability"]["severity"] == "low"

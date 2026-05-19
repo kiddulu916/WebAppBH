@@ -26,7 +26,7 @@ RATE_THRESHOLD = 50
 # ── Severity classification constants ─────────────────────────────────────────
 
 _FFUF_DB_EXTS      = frozenset({".sql", ".db", ".sqlite", ".sqlite3", ".mdb"})
-_FFUF_BACKUP_EXTS  = frozenset({".bak", ".old", ".orig", ".swp", ".copy", ".tmp", ".src", ".dev", ".inc"})
+_FFUF_BACKUP_EXTS  = frozenset({".bak", ".old", ".orig", ".swp", ".copy"})
 _FFUF_ARCHIVE_EXTS = frozenset({".zip", ".tar", ".gz", ".tgz", ".rar", ".7z"})
 _FFUF_SCRIPT_EXTS  = frozenset({".php", ".php3", ".php5", ".phtml", ".asp", ".aspx", ".jsp", ".rb", ".py", ".pl", ".cgi"})
 
