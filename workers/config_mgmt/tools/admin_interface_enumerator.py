@@ -263,6 +263,8 @@ class AdminInterfaceEnumerator(ConfigMgmtTool):
                             ]
                             link_results = await asyncio.gather(*link_tasks, return_exceptions=True)
                             for lnk, r in zip(links, link_results):
+                                if isinstance(r, Exception):
+                                    continue
                                 if isinstance(r, dict):
                                     all_results.append(r)
                                 elif r is None:

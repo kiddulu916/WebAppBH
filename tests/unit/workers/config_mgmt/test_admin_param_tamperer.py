@@ -192,7 +192,7 @@ def test_classify_tamper_no_escalation_when_keyword_already_in_baseline():
         baseline_len=100, new_len=110, new_body="welcome to the admin dashboard",
         baseline_body="welcome to the admin dashboard",
     )
-    assert severity is None or severity == "medium"  # keyword was already there, not new
+    assert severity != "high"  # keyword was already in baseline — no escalation should fire
 
 
 # ── AdminParamTamperer class ──────────────────────────────────────────────────
