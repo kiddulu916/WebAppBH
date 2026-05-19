@@ -122,7 +122,7 @@ For each unique directory path extracted from DB assets (e.g. `/app/admin/`), pr
 /app/admin.backup/
 ```
 
-A 200 or 403 response flags the variant as an observation. A 200 with directory listing content is a vulnerability.
+A 200 response is a vulnerability (`medium` severity). A 403 response is an observation (`backup_access_denied`) — the directory exists but is blocked.
 
 ### Phase 4 — Archive Probing
 
@@ -183,7 +183,7 @@ WHERE target_id = :tid
 AND asset_type IN ('url', 'page', 'endpoint', 'directory');
 ```
 
-Extract unique parent directory paths. Build one ffuf invocation per target URL — webroot plus up to **10 discovered directories** (most recently discovered first, to bound runtime):
+Extract unique parent directory paths. Build one ffuf invocation per target URL — webroot plus up to **10 discovered directories** (capped to bound runtime):
 
 ```
 {base_url}/FUZZ
