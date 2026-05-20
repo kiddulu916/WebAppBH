@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 from datetime import datetime
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import select
@@ -94,7 +95,7 @@ def _classify_hsts(host: str, header: str) -> list[dict]:
             },
         }})
 
-    if not vulns:
+    if not vulns and parsed["preload"]:
         results.append({"observation": {
             "type": "hsts_config",
             "value": "compliant",
@@ -247,7 +248,10 @@ class HstsTester(ConfigMgmtTool):
             })
 
             raw = target.target_value if hasattr(target, "target_value") else str(target)
-            base_host = raw.replace("https://", "").replace("http://", "").rstrip("/")
+            if not raw.startswith(("http://", "https://")):
+                raw = f"https://{raw}"
+            parsed_url = urlparse(raw)
+            base_host = parsed_url.netloc or parsed_url.path
 
             if not scope_manager.is_in_scope(f"https://{base_host}").in_scope:
                 log.info(f"{self.name}: target out of scope, skipping")

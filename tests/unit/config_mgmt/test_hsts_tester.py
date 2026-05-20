@@ -48,6 +48,7 @@ def test_classify_hsts_no_preload_is_observation_not_vuln():
     assert len(vulns) == 0
     obs = [r for r in results if "observation" in r]
     assert any(o["observation"]["value"] == "no_preload" for o in obs)
+    assert not any(o["observation"]["value"] == "compliant" for o in obs)
 
 
 def test_classify_hsts_compliant():
