@@ -1,4 +1,4 @@
-"""Config management pipeline: 13 sequential stages with checkpointing."""
+"""Config management pipeline: 14 sequential stages with checkpointing."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from workers.config_mgmt.tools import (
     HttpMethodTester,
     HstsTester,
     RpcTester,
+    FilePermissionTester,
     FileInclusionTester,
     SubdomainTakeoverChecker,
     CloudStorageAuditor,
@@ -49,8 +50,9 @@ STAGES = [
     Stage("api_discovery",              [ApiDiscoveryTool]),
     Stage("http_methods", [HttpMethodTester]),
     Stage("hsts_testing", [HstsTester]),
-    Stage("rpc_testing", [RpcTester]),
-    Stage("file_inclusion", [FileInclusionTester]),
+    Stage("rpc_testing",      [RpcTester]),
+    Stage("file_permission",  [FilePermissionTester]),
+    Stage("file_inclusion",   [FileInclusionTester]),
     Stage("subdomain_takeover", [SubdomainTakeoverChecker]),
     Stage("cloud_storage", [CloudStorageAuditor]),
 ]
@@ -59,7 +61,7 @@ STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}
 
 
 class Pipeline(CheckpointMixin):
-    """Orchestrates the 13-stage config management pipeline with checkpointing."""
+    """Orchestrates the 14-stage config management pipeline with checkpointing."""
 
     def __init__(self, target_id: int, container_name: str):
         self.target_id = target_id

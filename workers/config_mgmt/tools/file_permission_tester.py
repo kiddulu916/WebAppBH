@@ -246,7 +246,7 @@ class FilePermissionTester(ConfigMgmtTool):
                     f"{in_scope_count} in scope, {found} total"
                 ),
             })
-            log.info(f"{self.name} complete", **stats)
+            log.info(f"{self.name} complete", extra=stats)
             return stats
 
         finally:

@@ -23,7 +23,7 @@ PIPELINE_STAGES: dict[str, list[str]] = {
     "config_mgmt": [
         "network_config", "network_config_cred_test", "platform_config", "file_extension_handling",
         "backup_files", "admin_interface_enumeration", "api_discovery", "http_methods", "hsts_testing",
-        "rpc_testing", "file_inclusion", "subdomain_takeover", "cloud_storage",
+        "rpc_testing", "file_permission", "file_inclusion", "subdomain_takeover", "cloud_storage",
     ],
     "identity_mgmt": [
         "role_definitions", "registration_process", "account_provisioning",

@@ -26,6 +26,7 @@ TOOL_WEIGHTS = {
     "http_method_tester":         WeightClass.LIGHT,
     "hsts_tester":                WeightClass.LIGHT,
     "rpc_tester":                 WeightClass.LIGHT,
+    "file_permission_tester":     WeightClass.LIGHT,
     "file_inclusion_tester":      WeightClass.LIGHT,
     "subdomain_takeover_checker": WeightClass.LIGHT,
     "cloud_storage_auditor":      WeightClass.LIGHT,

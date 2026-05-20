@@ -13,6 +13,7 @@ from .api_discovery_tool import ApiDiscoveryTool
 from .http_method_tester import HttpMethodTester
 from .hsts_tester import HstsTester
 from .rpc_tester import RpcTester
+from .file_permission_tester import FilePermissionTester
 from .file_inclusion_tester import FileInclusionTester
 from .subdomain_takeover_checker import SubdomainTakeoverChecker
 from .cloud_storage_auditor import CloudStorageAuditor
@@ -31,6 +32,7 @@ __all__ = [
     "HttpMethodTester",
     "HstsTester",
     "RpcTester",
+    "FilePermissionTester",
     "FileInclusionTester",
     "SubdomainTakeoverChecker",
     "CloudStorageAuditor",
