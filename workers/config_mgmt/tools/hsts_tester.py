@@ -276,6 +276,7 @@ class HstsTester(ConfigMgmtTool):
 
             async with httpx.AsyncClient(
                 verify=False, follow_redirects=False, timeout=10,
+                headers=headers or {},
             ) as client:
                 probe_sem = asyncio.Semaphore(10)
 
