@@ -156,7 +156,7 @@ async def _probe_methods(
                 if severity:
                     results.append({
                         "vulnerability": {
-                            "name": f"TRACE method enabled (XST) at {url}",
+                            "name": f"{method} method enabled (XST) at {url}",
                             "severity": severity,
                             "description": (
                                 f"The {method} HTTP method returned HTTP {resp.status_code} "
@@ -170,7 +170,7 @@ async def _probe_methods(
                     results.append({
                         "observation": {
                             "type": "http_method_config",
-                            "value": "TRACE_disabled",
+                            "value": f"{method}_disabled",
                             "details": {"method": method, "status": 405, "location": url},
                         }
                     })

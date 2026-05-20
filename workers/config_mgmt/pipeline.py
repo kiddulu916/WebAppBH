@@ -1,4 +1,4 @@
-"""Config management pipeline: 12 sequential stages with checkpointing."""
+"""Config management pipeline: 13 sequential stages with checkpointing."""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}
 
 
 class Pipeline(CheckpointMixin):
-    """Orchestrates the 12-stage config management pipeline with checkpointing."""
+    """Orchestrates the 13-stage config management pipeline with checkpointing."""
 
     def __init__(self, target_id: int, container_name: str):
         self.target_id = target_id
