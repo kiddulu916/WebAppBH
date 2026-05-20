@@ -225,19 +225,31 @@ async def _probe_method_override(
     client: httpx.AsyncClient,
     base_url: str,
 ) -> list[dict]:
-    """Test method override via headers and query params against the base URL."""
+    """Test method override via headers and query params against the base URL.
+
+    Takes a baseline GET first to avoid false positives — only flags if the
+    override header or param produces a meaningfully different response.
+    """
     results: list[dict] = []
+
+    # Baseline — establish what a plain GET returns
+    try:
+        baseline = await client.get(base_url)
+        baseline_status = baseline.status_code
+    except httpx.RequestError:
+        return results
+
     for header_name in _OVERRIDE_HEADERS:
         try:
             resp = await client.get(base_url, headers={header_name: "DELETE"})
-            if resp.status_code in (200, 204):
+            if resp.status_code == 204 or resp.status_code != baseline_status:
                 results.append({
                     "vulnerability": {
                         "name": f"HTTP method override via {header_name}",
                         "severity": "high",
                         "description": (
                             f"GET with {header_name}: DELETE returned HTTP "
-                            f"{resp.status_code} at {base_url}"
+                            f"{resp.status_code} (baseline: {baseline_status}) at {base_url}"
                         ),
                         "location": base_url,
                         "section_id": _SECTION_ID,
@@ -249,14 +261,14 @@ async def _probe_method_override(
     for param_name in ("_method", "method"):
         try:
             resp = await client.get(base_url, params={param_name: "DELETE"})
-            if resp.status_code in (200, 204):
+            if resp.status_code == 204 or resp.status_code != baseline_status:
                 results.append({
                     "vulnerability": {
                         "name": f"HTTP method override via {param_name} query param",
                         "severity": "high",
                         "description": (
                             f"GET with ?{param_name}=DELETE returned HTTP "
-                            f"{resp.status_code} at {base_url}"
+                            f"{resp.status_code} (baseline: {baseline_status}) at {base_url}"
                         ),
                         "location": base_url,
                         "section_id": _SECTION_ID,
