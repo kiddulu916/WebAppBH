@@ -31,6 +31,11 @@ def test_classify_method_response_trace_200_is_medium():
     assert severity == "medium"
 
 
+def test_classify_method_response_track_200_is_medium():
+    severity, _ = _classify_method_response("TRACK", 200)
+    assert severity == "medium"
+
+
 def test_classify_method_response_put_403_is_none():
     severity, _ = _classify_method_response("PUT", 403)
     assert severity is None

@@ -118,7 +118,7 @@ async def _probe_methods(
         # OPTIONS — parse Allow header
         try:
             resp = await client.request("OPTIONS", url)
-            if resp.status_code == 200:
+            if resp.status_code in (200, 204):
                 allow_raw = (
                     resp.headers.get("allow", "")
                     or resp.headers.get("access-control-allow-methods", "")
@@ -178,7 +178,7 @@ async def _probe_methods(
                 pass
 
         # Dangerous methods — direct probe
-        for method in ("PUT", "DELETE", "PATCH", "COPY", "MOVE"):
+        for method in ("PUT", "DELETE", "PATCH", "COPY", "MOVE", "MKCOL", "LOCK", "UNLOCK"):
             try:
                 resp = await client.request(method, url)
                 severity, _ = _classify_method_response(method, resp.status_code)
@@ -224,48 +224,46 @@ async def _probe_methods(
 async def _probe_method_override(
     client: httpx.AsyncClient,
     base_url: str,
-    sem: asyncio.Semaphore,
 ) -> list[dict]:
     """Test method override via headers and query params against the base URL."""
     results: list[dict] = []
-    async with sem:
-        for header_name in _OVERRIDE_HEADERS:
-            try:
-                resp = await client.get(base_url, headers={header_name: "DELETE"})
-                if resp.status_code in (200, 204):
-                    results.append({
-                        "vulnerability": {
-                            "name": f"HTTP method override via {header_name}",
-                            "severity": "high",
-                            "description": (
-                                f"GET with {header_name}: DELETE returned HTTP "
-                                f"{resp.status_code} at {base_url}"
-                            ),
-                            "location": base_url,
-                            "section_id": _SECTION_ID,
-                        }
-                    })
-            except httpx.RequestError:
-                pass
+    for header_name in _OVERRIDE_HEADERS:
+        try:
+            resp = await client.get(base_url, headers={header_name: "DELETE"})
+            if resp.status_code in (200, 204):
+                results.append({
+                    "vulnerability": {
+                        "name": f"HTTP method override via {header_name}",
+                        "severity": "high",
+                        "description": (
+                            f"GET with {header_name}: DELETE returned HTTP "
+                            f"{resp.status_code} at {base_url}"
+                        ),
+                        "location": base_url,
+                        "section_id": _SECTION_ID,
+                    }
+                })
+        except httpx.RequestError:
+            pass
 
-        for param_name in ("_method", "method"):
-            try:
-                resp = await client.get(base_url, params={param_name: "DELETE"})
-                if resp.status_code in (200, 204):
-                    results.append({
-                        "vulnerability": {
-                            "name": f"HTTP method override via {param_name} query param",
-                            "severity": "high",
-                            "description": (
-                                f"GET with ?{param_name}=DELETE returned HTTP "
-                                f"{resp.status_code} at {base_url}"
-                            ),
-                            "location": base_url,
-                            "section_id": _SECTION_ID,
-                        }
-                    })
-            except httpx.RequestError:
-                pass
+    for param_name in ("_method", "method"):
+        try:
+            resp = await client.get(base_url, params={param_name: "DELETE"})
+            if resp.status_code in (200, 204):
+                results.append({
+                    "vulnerability": {
+                        "name": f"HTTP method override via {param_name} query param",
+                        "severity": "high",
+                        "description": (
+                            f"GET with ?{param_name}=DELETE returned HTTP "
+                            f"{resp.status_code} at {base_url}"
+                        ),
+                        "location": base_url,
+                        "section_id": _SECTION_ID,
+                    }
+                })
+        except httpx.RequestError:
+            pass
 
     return results
 
@@ -415,9 +413,7 @@ class HttpMethodTester(ConfigMgmtTool):
                         all_results.extend(r)
 
                 # Phase 2 — method override on base URL only
-                p2_results = await _probe_method_override(
-                    client, base_url, asyncio.Semaphore(10)
-                )
+                p2_results = await _probe_method_override(client, base_url)
                 all_results.extend(p2_results)
 
                 # Phase 3 — CORS across all probe URLs
