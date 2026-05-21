@@ -179,16 +179,16 @@ def _parse_s3scanner_output(text: str) -> list[dict]:
             if not isinstance(entry, dict):
                 continue
             results.append({
-                "bucket":   entry.get("name") or entry.get("bucket", ""),
-                "exists":   bool(entry.get("exists", False)),
+                "bucket": (entry["name"] if entry.get("name") else entry.get("bucket", "")),
+                "exists": bool(entry.get("exists", False)),
                 "listable": bool(
-                    entry.get("objects_listable") or entry.get("listable", False)
+                    entry.get("objects_listable", entry.get("listable", False))
                 ),
                 "readable": bool(
-                    entry.get("objects_readable") or entry.get("readable", False)
+                    entry.get("objects_readable", entry.get("readable", False))
                 ),
                 "writable": bool(
-                    entry.get("objects_writable") or entry.get("writable", False)
+                    entry.get("objects_writable", entry.get("writable", False))
                 ),
             })
         return results

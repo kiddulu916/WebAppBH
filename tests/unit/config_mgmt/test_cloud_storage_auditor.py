@@ -7,6 +7,8 @@ from workers.config_mgmt.tools.cloud_storage_auditor import (
     _normalize_s3_ref,
     _normalize_azure_ref,
     _normalize_gcs_ref,
+    _parse_s3scanner_output,
+    _classify_s3scanner_result,
 )
 
 
@@ -181,12 +183,6 @@ def test_normalize_azure_mixed_case():
     assert result[0] == "myaccount"
 
 
-from workers.config_mgmt.tools.cloud_storage_auditor import (
-    _parse_s3scanner_output,
-    _classify_s3scanner_result,
-)
-
-
 # ── _parse_s3scanner_output ───────────────────────────────────────────────────
 
 def test_parse_s3scanner_empty_returns_empty():
@@ -241,6 +237,18 @@ def test_parse_s3scanner_multiple_entries():
     ])
     result = _parse_s3scanner_output(data)
     assert len(result) == 2
+
+
+def test_parse_s3scanner_v2_name_takes_priority_over_bucket():
+    data = json.dumps([{"name": "primary", "bucket": "fallback", "exists": True}])
+    result = _parse_s3scanner_output(data)
+    assert result[0]["bucket"] == "primary"
+
+
+def test_parse_s3scanner_empty_name_falls_back_to_bucket():
+    data = json.dumps([{"name": "", "bucket": "fallback", "exists": True}])
+    result = _parse_s3scanner_output(data)
+    assert result[0]["bucket"] == "fallback"
 
 
 # ── _classify_s3scanner_result ────────────────────────────────────────────────
