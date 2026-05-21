@@ -9,6 +9,7 @@ ENV PATH=$GOPATH/bin:$PATH
 RUN go install github.com/ffuf/ffuf/v2@latest
 RUN go install github.com/haccer/subjack@latest
 RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+RUN go install github.com/sa7mon/s3scanner@latest
 
 # ============================================================
 # Stage 2: Runtime
@@ -29,6 +30,14 @@ RUN apt-get update && \
 COPY --from=go-builder /go/bin/ffuf     /usr/local/bin/
 COPY --from=go-builder /go/bin/subjack  /usr/local/bin/
 COPY --from=go-builder /go/bin/nuclei   /usr/local/bin/
+COPY --from=go-builder /go/bin/s3scanner /usr/local/bin/
+
+# azcopy v10 — pre-built Linux binary from Microsoft
+RUN wget -q -O /tmp/azcopy.tar.gz https://aka.ms/downloadazcopy-v10-linux && \
+    tar -xzf /tmp/azcopy.tar.gz -C /tmp && \
+    mv /tmp/azcopy_linux_amd64_*/azcopy /usr/local/bin/azcopy && \
+    chmod +x /usr/local/bin/azcopy && \
+    rm -rf /tmp/azcopy* || true
 
 # Curated takeover templates baked into the image
 COPY workers/config_mgmt/nuclei-templates/ /nuclei-templates/custom/
@@ -51,6 +60,7 @@ RUN touch /app/shared/lib_webbh/__init__.py && \
 COPY shared/lib_webbh /app/shared/lib_webbh
 RUN rm -rf /usr/local/lib/python3.10/site-packages/lib_webbh /usr/local/lib/python3.10/site-packages/lib_webbh-*.dist-info && \
     cp -a /app/shared/lib_webbh /usr/local/lib/python3.10/site-packages/lib_webbh
+RUN pip install --no-cache-dir cloud-enum aiohttp
 
 # Shared directories
 RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs
