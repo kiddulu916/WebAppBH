@@ -116,7 +116,10 @@ class PathConfusionTester(ConfigMgmtTool):
                 "message": f"{self.name} started",
             })
 
-            seed_urls = await self._fetch_seed_urls(target_id)
+            seed_urls = [
+                u for u in await self._fetch_seed_urls(target_id)
+                if scope_manager.is_in_scope(u).in_scope
+            ]
             findings = await self._run_probes(seed_urls, headers or {})
 
             found = len(findings)
