@@ -280,24 +280,19 @@ def _parse_cloud_enum_output(text: str) -> dict[str, list[str]]:
     """Parse cloud_enum stdout into a dict mapping provider to raw URL list.
 
     cloud_enum prefixes each discovered resource with '[+] AWS:', '[+] Azure:',
-    or '[+] GCP:'. Lines not matching any prefix are silently skipped.
+    or '[+] GCP:'. Lines not matching any of these prefixes are silently skipped.
     Returns {"s3": [...], "azure": [...], "gcs": [...]}.
     """
     result: dict[str, list[str]] = {"s3": [], "azure": [], "gcs": []}
     for line in text.splitlines():
         lower = line.lower()
-        if "[+] aws:" in lower or "amazonaws.com" in lower:
-            url = line.split(":", 1)[-1].strip()
-            if url:
-                result["s3"].append(url)
-        elif "[+] azure:" in lower or "blob.core.windows.net" in lower:
-            url = line.split(":", 1)[-1].strip()
-            if url:
-                result["azure"].append(url)
-        elif "[+] gcp:" in lower or "googleapis.com" in lower:
-            url = line.split(":", 1)[-1].strip()
-            if url:
-                result["gcs"].append(url)
+        for prefix, key in (("[+] aws:", "s3"), ("[+] azure:", "azure"), ("[+] gcp:", "gcs")):
+            if prefix in lower:
+                idx = lower.index(prefix) + len(prefix)
+                url = line[idx:].strip()
+                if url:
+                    result[key].append(url)
+                break
     return result
 
 

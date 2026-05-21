@@ -305,21 +305,21 @@ def test_parse_cloud_enum_aws_line():
     text = "[+] AWS: https://exampleco.s3.amazonaws.com"
     result = _parse_cloud_enum_output(text)
     assert len(result["s3"]) == 1
-    assert "amazonaws.com" in result["s3"][0]
+    assert result["s3"][0] == "https://exampleco.s3.amazonaws.com"
 
 
 def test_parse_cloud_enum_azure_line():
     text = "[+] Azure: https://exampleco.blob.core.windows.net"
     result = _parse_cloud_enum_output(text)
     assert len(result["azure"]) == 1
-    assert "blob.core.windows.net" in result["azure"][0]
+    assert result["azure"][0] == "https://exampleco.blob.core.windows.net"
 
 
 def test_parse_cloud_enum_gcp_line():
     text = "[+] GCP: https://storage.googleapis.com/exampleco"
     result = _parse_cloud_enum_output(text)
     assert len(result["gcs"]) == 1
-    assert "googleapis.com" in result["gcs"][0]
+    assert result["gcs"][0] == "https://storage.googleapis.com/exampleco"
 
 
 def test_parse_cloud_enum_unknown_lines_skipped():
