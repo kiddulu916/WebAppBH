@@ -1,2 +1,2 @@
 beautifulsoup4>=4.12.0
-cspbypass
+cspbypass>=0.1.0
