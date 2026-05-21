@@ -9,6 +9,7 @@ from workers.config_mgmt.tools.cloud_storage_auditor import (
     _normalize_gcs_ref,
     _parse_s3scanner_output,
     _classify_s3scanner_result,
+    _parse_cloud_enum_output,
 )
 
 
@@ -291,3 +292,51 @@ def test_classify_s3_always_sets_section_id():
     entry = {"bucket": "test", "exists": True, "listable": True, "readable": True, "writable": True}
     result = _classify_s3scanner_result(entry)
     assert result["vulnerability"]["section_id"] == _SECTION_ID
+
+
+# ── _parse_cloud_enum_output ──────────────────────────────────────────────────
+
+def test_parse_cloud_enum_empty_returns_empty_lists():
+    result = _parse_cloud_enum_output("")
+    assert result == {"s3": [], "azure": [], "gcs": []}
+
+
+def test_parse_cloud_enum_aws_line():
+    text = "[+] AWS: https://exampleco.s3.amazonaws.com"
+    result = _parse_cloud_enum_output(text)
+    assert len(result["s3"]) == 1
+    assert "amazonaws.com" in result["s3"][0]
+
+
+def test_parse_cloud_enum_azure_line():
+    text = "[+] Azure: https://exampleco.blob.core.windows.net"
+    result = _parse_cloud_enum_output(text)
+    assert len(result["azure"]) == 1
+    assert "blob.core.windows.net" in result["azure"][0]
+
+
+def test_parse_cloud_enum_gcp_line():
+    text = "[+] GCP: https://storage.googleapis.com/exampleco"
+    result = _parse_cloud_enum_output(text)
+    assert len(result["gcs"]) == 1
+    assert "googleapis.com" in result["gcs"][0]
+
+
+def test_parse_cloud_enum_unknown_lines_skipped():
+    text = "Scanning...\n[+] AWS: https://exampleco.s3.amazonaws.com\nDone."
+    result = _parse_cloud_enum_output(text)
+    assert len(result["s3"]) == 1
+    assert result["azure"] == []
+    assert result["gcs"] == []
+
+
+def test_parse_cloud_enum_multiple_providers():
+    text = (
+        "[+] AWS: https://exampleco.s3.amazonaws.com\n"
+        "[+] Azure: https://exampleco.blob.core.windows.net\n"
+        "[+] GCP: https://storage.googleapis.com/exampleco\n"
+    )
+    result = _parse_cloud_enum_output(text)
+    assert len(result["s3"]) == 1
+    assert len(result["azure"]) == 1
+    assert len(result["gcs"]) == 1
