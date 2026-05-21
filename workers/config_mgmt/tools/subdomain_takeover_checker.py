@@ -146,6 +146,15 @@ def _classify_subjack_result(entry: dict) -> dict:
     }
 
 
+_NUCLEI_SEVERITY_MAP: dict[str, str] = {
+    "critical": "critical",
+    "high": "critical",   # confirmed HTTP fingerprint match = confirmed takeover
+    "medium": "high",
+    "low": "medium",
+    "info": "medium",
+}
+
+
 def _parse_nuclei_output(text: str) -> list[dict]:
     """Parse nuclei JSONL output (one JSON object per line) into result dicts.
 
@@ -181,38 +190,21 @@ def _parse_nuclei_output(text: str) -> list[dict]:
 
 
 def _classify_nuclei_result(entry: dict) -> dict:
-    """Convert a parsed nuclei entry to a vulnerability finding dict.
-
-    nuclei severity "high" or "critical" → confirmed takeover (critical).
-    Any other severity → potential takeover (high).
-    """
+    """Convert a parsed nuclei entry to a vulnerability finding dict."""
     host = entry["host"]
     matched_at = entry["matched_at"]
-    name = entry["name"]
-    raw_severity = entry.get("severity", "unknown").lower()
-
-    if raw_severity in ("critical", "high"):
-        severity = "critical"
-        vuln_name = f"Subdomain takeover confirmed: {host} ({name})"
-        description = (
-            f"Nuclei confirmed a subdomain takeover vulnerability at {matched_at}. "
-            f"Template: {entry['template_id']}. The subdomain {host} is serving "
-            f"takeover-indicative content and can be claimed by an attacker."
-        )
-    else:
-        severity = "high"
-        vuln_name = f"Potential subdomain takeover: {host} ({name})"
-        description = (
-            f"Nuclei detected a potential subdomain takeover at {matched_at}. "
-            f"Template: {entry['template_id']}. The subdomain {host} may be "
-            f"susceptible to takeover based on HTTP response fingerprinting."
-        )
+    name = entry["name"] or entry["template_id"]
+    severity = _NUCLEI_SEVERITY_MAP.get(entry["severity"].lower(), "medium")
 
     return {
         "vulnerability": {
-            "name": vuln_name,
+            "name": f"Subdomain takeover detected: {name} at {host}",
             "severity": severity,
-            "description": description,
+            "description": (
+                f"Nuclei template '{entry['template_id']}' matched at {matched_at}. "
+                f"The subdomain {host} is vulnerable to takeover by an attacker who "
+                f"can claim the backing service."
+            ),
             "location": matched_at,
             "section_id": _SECTION_ID,
         }
