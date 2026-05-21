@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import re
+import tempfile
+import time
 from datetime import datetime
+from urllib.parse import urlparse
+from xml.etree import ElementTree
+
+import aiohttp
 
 from sqlalchemy import select
 
@@ -457,3 +465,383 @@ class CloudStorageAuditor(ConfigMgmtTool):
 
     def parse_output(self, stdout: str) -> list:
         raise NotImplementedError("CloudStorageAuditor uses execute() directly")
+
+    async def execute(
+        self,
+        target,
+        scope_manager: ScopeManager,
+        target_id: int,
+        container_name: str,
+        headers: dict | None = None,
+    ) -> dict:
+        log = logger.bind(target_id=target_id, tool=self.name)
+
+        if await self.check_cooldown(target_id, container_name):
+            log.info("Skipping — within cooldown period")
+            return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": True}
+
+        sem = get_semaphore(self.weight_class)
+        await sem.acquire()
+        try:
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS", "container": container_name,
+                "tool": self.name, "progress": 0,
+                "message": f"{self.name} started",
+            })
+
+            raw = target.target_value if hasattr(target, "target_value") else str(target)
+            if "://" not in raw:
+                raw = f"https://{raw}"
+            parsed_url = urlparse(raw)
+            target_domain = (parsed_url.netloc or parsed_url.path).split(":")[0].lower()
+            org_name = target_domain.split(".")[0]
+            base_url = raw.rstrip("/")
+
+            if not scope_manager.is_in_scope(raw).in_scope:
+                log.info(f"{self.name}: target out of scope, skipping")
+                return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
+
+            # ── Phase 1: Extract ───────────────────────────────────────────
+            s3_buckets: set[str] = set()
+            azure_refs: set[tuple[str, str | None]] = set()
+            gcs_buckets: set[str] = set()
+
+            def _ingest(body: str) -> None:
+                for raw_ref in _extract_storage_refs(body, "s3"):
+                    r = _normalize_s3_ref(raw_ref)
+                    if r:
+                        s3_buckets.add(r[0])
+                for raw_ref in _extract_storage_refs(body, "azure"):
+                    r = _normalize_azure_ref(raw_ref)
+                    if r:
+                        azure_refs.add(r)
+                for raw_ref in _extract_storage_refs(body, "gcs"):
+                    r = _normalize_gcs_ref(raw_ref)
+                    if r:
+                        gcs_buckets.add(r)
+
+            # Source A: DB assets
+            async with get_session() as session:
+                stmt = select(Asset).where(
+                    Asset.target_id == target_id,
+                    Asset.asset_type.in_(["url", "subdomain", "domain", "cloud_storage"]),
+                )
+                db_assets = [
+                    a.asset_value
+                    for a in (await session.execute(stmt)).scalars().all()
+                ]
+            for val in db_assets:
+                _ingest(val)
+
+            # Source B: Live crawl
+            crawl_urls = [
+                base_url,
+                f"{base_url}/robots.txt",
+                f"{base_url}/sitemap.xml",
+                f"{base_url}/static/js/",
+                f"{base_url}/assets/js/",
+                f"{base_url}/js/",
+            ]
+            http_timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(timeout=http_timeout) as http:
+                async def _fetch(url: str) -> str:
+                    try:
+                        async with http.get(url, ssl=False) as resp:
+                            return await resp.text(errors="replace")
+                    except Exception:
+                        return ""
+
+                bodies = await asyncio.gather(*[_fetch(u) for u in crawl_urls])
+            for body in bodies:
+                _ingest(body)
+
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS", "container": container_name,
+                "tool": self.name, "progress": 20,
+                "message": (
+                    f"{self.name}: extracted {len(s3_buckets)} S3, "
+                    f"{len(azure_refs)} Azure, {len(gcs_buckets)} GCS refs"
+                ),
+            })
+
+            # ── Phase 2: Enumerate (cloud_enum) ───────────────────────────
+            try:
+                enum_stdout = await self.run_subprocess(
+                    ["cloud_enum", "-k", target_domain, "-k", org_name]
+                )
+                enum_results = _parse_cloud_enum_output(enum_stdout)
+                for s3_url in enum_results["s3"]:
+                    raw_host = s3_url.replace("https://", "").replace("http://", "").strip("/")
+                    r = _normalize_s3_ref(raw_host)
+                    if r:
+                        s3_buckets.add(r[0])
+                for az_url in enum_results["azure"]:
+                    raw_host = az_url.replace("https://", "").replace("http://", "").strip("/")
+                    r = _normalize_azure_ref(raw_host)
+                    if r:
+                        azure_refs.add(r)
+                for gcs_url in enum_results["gcs"]:
+                    raw_host = gcs_url.replace("https://", "").replace("http://", "").strip("/")
+                    r = _normalize_gcs_ref(raw_host)
+                    if r:
+                        gcs_buckets.add(r)
+            except FileNotFoundError:
+                log.warning(f"{self.name}: cloud_enum not found, skipping Phase 2")
+            except asyncio.TimeoutError:
+                log.warning(f"{self.name}: cloud_enum timed out, skipping Phase 2")
+
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS", "container": container_name,
+                "tool": self.name, "progress": 35,
+                "message": (
+                    f"{self.name}: after enum — {len(s3_buckets)} S3, "
+                    f"{len(azure_refs)} Azure, {len(gcs_buckets)} GCS"
+                ),
+            })
+
+            if not s3_buckets and not azure_refs and not gcs_buckets:
+                log.info(f"{self.name}: no cloud storage refs found, nothing to probe")
+                return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
+
+            all_findings: list[dict] = []
+
+            # ── Phase 3: S3 Scan (s3scanner) ──────────────────────────────
+            tmp_s3_in = tmp_s3_out = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", prefix="csa_s3_", delete=False
+                ) as f:
+                    f.write("\n".join(s3_buckets))
+                    tmp_s3_in = f.name
+
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".json", prefix="csa_s3out_", delete=False
+                ) as f:
+                    tmp_s3_out = f.name
+
+                try:
+                    await self.run_subprocess([
+                        "s3scanner", "scan",
+                        "--bucket-file", tmp_s3_in,
+                        "--json-output", tmp_s3_out,
+                    ])
+                except FileNotFoundError:
+                    log.warning(f"{self.name}: s3scanner not found, skipping Phase 3")
+                except asyncio.TimeoutError:
+                    log.warning(f"{self.name}: s3scanner timed out, skipping Phase 3")
+                else:
+                    if os.path.exists(tmp_s3_out):
+                        with open(tmp_s3_out) as fh:
+                            for entry in _parse_s3scanner_output(fh.read()):
+                                finding = _classify_s3scanner_result(entry)
+                                if finding:
+                                    all_findings.append(finding)
+            finally:
+                for tmp in (tmp_s3_in, tmp_s3_out):
+                    if tmp and os.path.exists(tmp):
+                        try:
+                            os.unlink(tmp)
+                        except OSError:
+                            pass
+
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS", "container": container_name,
+                "tool": self.name, "progress": 55,
+                "message": f"{self.name}: S3 scan done — {len(all_findings)} findings",
+            })
+
+            # ── Phase 4: Azure Scan (azcopy + aiohttp) ────────────────────
+            probe_ts = int(time.time())
+            probe_filename = f"bbh-probe-{probe_ts}.txt"
+
+            # Expand (account, None) by enumerating containers via the XML API
+            expanded_azure: set[tuple[str, str]] = set()
+            probe_timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=probe_timeout) as http:
+                for account, container in list(azure_refs):
+                    if container is None:
+                        try:
+                            enum_url = (
+                                f"https://{account}.blob.core.windows.net/?comp=list"
+                            )
+                            async with http.get(enum_url, ssl=False) as resp:
+                                if resp.status == 200:
+                                    body = await resp.text(errors="replace")
+                                    try:
+                                        root = ElementTree.fromstring(body)
+                                        for name_el in root.iter("Name"):
+                                            if name_el.text:
+                                                expanded_azure.add(
+                                                    (account, name_el.text)
+                                                )
+                                    except ElementTree.ParseError:
+                                        pass
+                        except Exception:
+                            pass
+                    else:
+                        expanded_azure.add((account, container))
+
+            for account, container in expanded_azure:
+                c_url = (
+                    f"https://{account}.blob.core.windows.net/{container}"
+                )
+                list_accessible = False
+                head_readable = False
+                write_status = 0
+
+                try:
+                    azcopy_out = await self.run_subprocess(["azcopy", "list", c_url])
+                    results = _parse_azcopy_output(azcopy_out)
+                    if results:
+                        list_accessible = results[0]["accessible"]
+                except FileNotFoundError:
+                    log.warning(f"{self.name}: azcopy not found, skipping azcopy step")
+                except asyncio.TimeoutError:
+                    log.warning(f"{self.name}: azcopy timed out for {c_url}")
+
+                if not list_accessible:
+                    async with aiohttp.ClientSession(
+                        timeout=probe_timeout
+                    ) as http:
+                        try:
+                            async with http.head(
+                                f"{c_url}/index.html", ssl=False
+                            ) as resp:
+                                head_readable = resp.status == 200
+                        except Exception:
+                            pass
+
+                if list_accessible or head_readable:
+                    async with aiohttp.ClientSession(
+                        timeout=probe_timeout
+                    ) as http:
+                        try:
+                            async with http.put(
+                                f"{c_url}/{probe_filename}",
+                                data=b"bbh",
+                                ssl=False,
+                            ) as resp:
+                                write_status = resp.status
+                                if write_status == 201:
+                                    try:
+                                        await http.delete(
+                                            f"{c_url}/{probe_filename}", ssl=False
+                                        )
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+
+                finding = _classify_azure_probe(
+                    c_url, list_accessible, head_readable, write_status
+                )
+                if finding:
+                    all_findings.append(finding)
+
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS", "container": container_name,
+                "tool": self.name, "progress": 70,
+                "message": f"{self.name}: Azure scan done — {len(all_findings)} findings",
+            })
+
+            # ── Phase 5: GCS Scan (aiohttp) ───────────────────────────────
+            for bucket in gcs_buckets:
+                b_url = f"https://storage.googleapis.com/{bucket}"
+                list_body = ""
+                write_status = 0
+
+                async with aiohttp.ClientSession(timeout=probe_timeout) as http:
+                    try:
+                        async with http.get(
+                            f"{b_url}/?prefix=", ssl=False
+                        ) as resp:
+                            if resp.status == 200:
+                                list_body = await resp.text(errors="replace")
+                    except Exception:
+                        pass
+
+                    if "ListBucketResult" in list_body or "<Contents>" in list_body:
+                        try:
+                            async with http.put(
+                                f"{b_url}/{probe_filename}",
+                                data=b"bbh",
+                                ssl=False,
+                            ) as resp:
+                                write_status = resp.status
+                                if write_status in (200, 201):
+                                    try:
+                                        await http.delete(
+                                            f"{b_url}/{probe_filename}", ssl=False
+                                        )
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+
+                finding = _classify_gcs_probe(b_url, list_body, write_status)
+                if finding:
+                    all_findings.append(finding)
+
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS", "container": container_name,
+                "tool": self.name, "progress": 85,
+                "message": f"{self.name}: GCS scan done — {len(all_findings)} findings",
+            })
+
+            # ── Persist ────────────────────────────────────────────────────
+            seen_keys: set[tuple] = set()
+            unique_findings: list[dict] = []
+            for finding in all_findings:
+                if "vulnerability" in finding:
+                    v = finding["vulnerability"]
+                    key = (v.get("location", ""), v.get("name", ""))
+                elif "observation" in finding:
+                    o = finding["observation"]
+                    key = (o.get("type", ""), o.get("value", ""))
+                else:
+                    continue
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    unique_findings.append(finding)
+
+            found = len(unique_findings)
+            new_count = in_scope_count = 0
+            for item in unique_findings:
+                inserted = await self._process_result(
+                    item, scope_manager, target_id, log
+                )
+                if inserted is not None:
+                    in_scope_count += 1
+                    if inserted:
+                        new_count += 1
+
+            async with get_session() as session:
+                stmt = select(JobState).where(
+                    JobState.target_id == target_id,
+                    JobState.container_name == container_name,
+                )
+                job = (await session.execute(stmt)).scalar_one_or_none()
+                if job:
+                    job.last_tool_executed = self.name
+                    job.last_seen = datetime.utcnow()
+                    await session.commit()
+
+            stats = {
+                "found": found,
+                "in_scope": in_scope_count,
+                "new": new_count,
+                "skipped_cooldown": False,
+            }
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS", "container": container_name,
+                "tool": self.name, "progress": 100,
+                "message": (
+                    f"{self.name}: {new_count} new, "
+                    f"{in_scope_count} in scope, {found} total"
+                ),
+            })
+            log.info(f"{self.name} complete", extra=stats)
+            return stats
+
+        finally:
+            sem.release()
