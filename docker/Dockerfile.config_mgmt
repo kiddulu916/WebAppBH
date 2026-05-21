@@ -36,6 +36,10 @@ COPY workers/config_mgmt/nuclei-templates/ /nuclei-templates/custom/
 # Community nuclei templates fetched at build time
 RUN nuclei -update-templates -ud /nuclei-templates/community || true
 
+# subjack fingerprints database
+RUN wget -q -O /fingerprints.json \
+    https://raw.githubusercontent.com/haccer/subjack/master/fingerprints.json || true
+
 # Copy setup.py first for dependency caching
 COPY shared/lib_webbh/setup.py /app/shared/lib_webbh/setup.py
 RUN touch /app/shared/lib_webbh/__init__.py && \

@@ -281,7 +281,7 @@ class SubdomainTakeoverChecker(ConfigMgmtTool):
             all_findings: list[dict] = []
             suspects: list[str] = []
 
-            tmp_domains = tmp_subjack = tmp_suspects = tmp_nuclei = None
+            tmp_domains = tmp_subjack = tmp_suspects = None
             try:
                 # Write full subdomain list to temp file
                 with tempfile.NamedTemporaryFile(
@@ -299,7 +299,7 @@ class SubdomainTakeoverChecker(ConfigMgmtTool):
                 try:
                     await self.run_subprocess([
                         "subjack", "-w", tmp_domains, "-o", tmp_subjack,
-                        "-t", "20", "-ssl", "-a",
+                        "-t", "20", "-ssl", "-a", "-c", "/fingerprints.json",
                     ])
                 except FileNotFoundError:
                     log.warning(f"{self.name}: subjack binary not found, skipping Phase 2")
@@ -330,32 +330,23 @@ class SubdomainTakeoverChecker(ConfigMgmtTool):
                         f.write("\n".join(suspects))
                         tmp_suspects = f.name
 
-                    with tempfile.NamedTemporaryFile(
-                        mode="w", suffix=".json", prefix="st_nuclei_", delete=False
-                    ) as f:
-                        tmp_nuclei = f.name
-
                     try:
-                        await self.run_subprocess([
+                        nuclei_stdout = await self.run_subprocess([
                             "nuclei", "-l", tmp_suspects,
                             "-t", "/nuclei-templates/custom/",
                             "-t", "/nuclei-templates/community/http/takeovers/",
-                            "-json", "-o", tmp_nuclei,
+                            "-json",
                             "-silent",
                         ])
+                        for entry in _parse_nuclei_output(nuclei_stdout):
+                            all_findings.append(_classify_nuclei_result(entry))
                     except FileNotFoundError:
                         log.warning(f"{self.name}: nuclei binary not found, skipping Phase 3")
                     except asyncio.TimeoutError:
                         log.warning(f"{self.name}: nuclei timed out, skipping Phase 3")
-                    else:
-                        if os.path.exists(tmp_nuclei):
-                            with open(tmp_nuclei) as f:
-                                nuclei_text = f.read()
-                            for entry in _parse_nuclei_output(nuclei_text):
-                                all_findings.append(_classify_nuclei_result(entry))
 
             finally:
-                for tmp in (tmp_domains, tmp_subjack, tmp_suspects, tmp_nuclei):
+                for tmp in (tmp_domains, tmp_subjack, tmp_suspects):
                     if tmp and os.path.exists(tmp):
                         try:
                             os.unlink(tmp)
