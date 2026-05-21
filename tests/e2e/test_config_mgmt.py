@@ -1,4 +1,4 @@
-"""E2E tests for config_mgmt worker (WSTG-CONF-01 through CONF-11)."""
+"""E2E tests for config_mgmt worker (WSTG-CONF-01 through CONF-13)."""
 import pytest
 from conftest import (
     assert_assets, assert_job_completed,
@@ -9,7 +9,7 @@ pytestmark = pytest.mark.e2e
 
 WORKER = "config_mgmt"
 PLAYBOOK = "e2e_config_mgmt"
-LAST_STAGE = "csp_testing"
+LAST_STAGE = "path_confusion"
 
 STAGE_ASSERTIONS = {
     "network_config":               lambda c, tid: assert_assets(c, tid),
@@ -27,6 +27,7 @@ STAGE_ASSERTIONS = {
     "subdomain_takeover":           None,
     "cloud_storage":                None,
     "csp_testing":                  None,
+    "path_confusion":               None,
 }
 
 STAGE_TIMEOUTS = {
@@ -45,6 +46,7 @@ STAGE_TIMEOUTS = {
     "subdomain_takeover":           180,
     "cloud_storage":                180,
     "csp_testing":                  180,
+    "path_confusion":               180,
 }
 
 
