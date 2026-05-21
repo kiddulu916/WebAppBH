@@ -221,3 +221,194 @@ class SubdomainTakeoverChecker(ConfigMgmtTool):
 
     def parse_output(self, stdout: str) -> list:
         raise NotImplementedError("SubdomainTakeoverChecker uses execute() directly")
+
+    async def execute(
+        self,
+        target,
+        scope_manager: ScopeManager,
+        target_id: int,
+        container_name: str,
+        headers: dict | None = None,
+    ) -> dict:
+        log = logger.bind(target_id=target_id, tool=self.name)
+
+        if await self.check_cooldown(target_id, container_name):
+            log.info("Skipping — within cooldown period")
+            return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": True}
+
+        sem = get_semaphore(self.weight_class)
+        await sem.acquire()
+        try:
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS", "container": container_name,
+                "tool": self.name, "progress": 0,
+                "message": f"{self.name} started",
+            })
+
+            raw = target.target_value if hasattr(target, "target_value") else str(target)
+            if "://" not in raw:
+                raw = f"https://{raw}"
+            parsed = urlparse(raw)
+            target_domain = (parsed.netloc or parsed.path).split(":")[0].lower()
+
+            if not scope_manager.is_in_scope(raw).in_scope:
+                log.info(f"{self.name}: target out of scope, skipping")
+                return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
+
+            # Phase 1 — assemble subdomain list
+            async with get_session() as session:
+                stmt = select(Asset).where(
+                    Asset.target_id == target_id,
+                    Asset.asset_type.in_(["subdomain", "url", "domain", "ip"]),
+                )
+                db_assets = [
+                    a.asset_value
+                    for a in (await session.execute(stmt)).scalars().all()
+                ]
+
+            subdomains = _build_subdomain_list(db_assets, target_domain)
+            if not subdomains:
+                log.info(f"{self.name}: no subdomains to check")
+                return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": False}
+
+            log.info(f"{self.name}: checking {len(subdomains)} subdomains")
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS", "container": container_name,
+                "tool": self.name, "progress": 20,
+                "message": f"{self.name}: checking {len(subdomains)} subdomains",
+            })
+
+            all_findings: list[dict] = []
+            suspects: list[str] = []
+
+            tmp_domains = tmp_subjack = tmp_suspects = tmp_nuclei = None
+            try:
+                # Write full subdomain list to temp file
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", prefix="st_domains_", delete=False
+                ) as f:
+                    f.write("\n".join(subdomains))
+                    tmp_domains = f.name
+
+                # Phase 2 — subjack
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".json", prefix="st_subjack_", delete=False
+                ) as f:
+                    tmp_subjack = f.name
+
+                try:
+                    await self.run_subprocess([
+                        "subjack", "-w", tmp_domains, "-o", tmp_subjack,
+                        "-t", "20", "-ssl", "-a",
+                    ])
+                except FileNotFoundError:
+                    log.warning(f"{self.name}: subjack binary not found, skipping Phase 2")
+                except asyncio.TimeoutError:
+                    log.warning(f"{self.name}: subjack timed out, skipping Phase 2")
+                else:
+                    if os.path.exists(tmp_subjack):
+                        with open(tmp_subjack) as f:
+                            subjack_text = f.read()
+                        for entry in _parse_subjack_output(subjack_text):
+                            all_findings.append(_classify_subjack_result(entry))
+                            suspects.append(entry["subdomain"])
+
+                log.info(f"{self.name}: {len(suspects)} suspects from subjack")
+                await push_task(f"events:{target_id}", {
+                    "event": "TOOL_PROGRESS", "container": container_name,
+                    "tool": self.name, "progress": 60,
+                    "message": (
+                        f"{self.name}: {len(suspects)} suspects found, running nuclei"
+                    ),
+                })
+
+                # Phase 3 — nuclei (suspects only)
+                if suspects:
+                    with tempfile.NamedTemporaryFile(
+                        mode="w", suffix=".txt", prefix="st_suspects_", delete=False
+                    ) as f:
+                        f.write("\n".join(suspects))
+                        tmp_suspects = f.name
+
+                    with tempfile.NamedTemporaryFile(
+                        mode="w", suffix=".json", prefix="st_nuclei_", delete=False
+                    ) as f:
+                        tmp_nuclei = f.name
+
+                    try:
+                        await self.run_subprocess([
+                            "nuclei", "-l", tmp_suspects,
+                            "-t", "/nuclei-templates/custom/",
+                            "-t", "/nuclei-templates/community/http/takeovers/",
+                            "-json", "-o", tmp_nuclei,
+                            "-silent",
+                        ])
+                    except FileNotFoundError:
+                        log.warning(f"{self.name}: nuclei binary not found, skipping Phase 3")
+                    except asyncio.TimeoutError:
+                        log.warning(f"{self.name}: nuclei timed out, skipping Phase 3")
+                    else:
+                        if os.path.exists(tmp_nuclei):
+                            with open(tmp_nuclei) as f:
+                                nuclei_text = f.read()
+                            for entry in _parse_nuclei_output(nuclei_text):
+                                all_findings.append(_classify_nuclei_result(entry))
+
+            finally:
+                for tmp in (tmp_domains, tmp_subjack, tmp_suspects, tmp_nuclei):
+                    if tmp and os.path.exists(tmp):
+                        try:
+                            os.unlink(tmp)
+                        except OSError:
+                            pass
+
+            # Deduplicate by (location, name)
+            seen_keys: set[tuple] = set()
+            unique_findings: list[dict] = []
+            for finding in all_findings:
+                if "vulnerability" in finding:
+                    v = finding["vulnerability"]
+                    key = (v.get("location", ""), v.get("name", ""))
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        unique_findings.append(finding)
+
+            found = len(unique_findings)
+            new_count = in_scope_count = 0
+            for item in unique_findings:
+                inserted = await self._process_result(item, scope_manager, target_id, log)
+                if inserted is not None:
+                    in_scope_count += 1
+                    if inserted:
+                        new_count += 1
+
+            async with get_session() as session:
+                stmt = select(JobState).where(
+                    JobState.target_id == target_id,
+                    JobState.container_name == container_name,
+                )
+                job = (await session.execute(stmt)).scalar_one_or_none()
+                if job:
+                    job.last_tool_executed = self.name
+                    job.last_seen = datetime.utcnow()
+                    await session.commit()
+
+            stats = {
+                "found": found,
+                "in_scope": in_scope_count,
+                "new": new_count,
+                "skipped_cooldown": False,
+            }
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS", "container": container_name,
+                "tool": self.name, "progress": 100,
+                "message": (
+                    f"{self.name}: {new_count} new, "
+                    f"{in_scope_count} in scope, {found} total"
+                ),
+            })
+            log.info(f"{self.name} complete", extra=stats)
+            return stats
+
+        finally:
+            sem.release()
