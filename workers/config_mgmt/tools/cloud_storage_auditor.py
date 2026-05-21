@@ -377,6 +377,76 @@ def _classify_azure_probe(
     return None
 
 
+# ── GCS ───────────────────────────────────────────────────────────────────────
+
+def _classify_gcs_probe(
+    bucket_url: str,
+    list_body: str,
+    write_status: int,
+) -> dict | None:
+    """Classify a GCS bucket probe result into a finding dict.
+
+    list_body is the raw HTTP response body from GET /?prefix=.
+    Priority order: write > list > None.
+    """
+    is_listable = "ListBucketResult" in list_body or "<Contents>" in list_body
+
+    if write_status in (200, 201):
+        access = "write and list" if is_listable else "write"
+        return {
+            "vulnerability": {
+                "name": f"Publicly writable GCS bucket: {bucket_url}",
+                "severity": "critical",
+                "description": (
+                    f"GCS bucket at {bucket_url} allows anonymous {access} access. "
+                    f"An attacker can upload arbitrary files."
+                ),
+                "location": bucket_url,
+                "section_id": _SECTION_ID,
+            }
+        }
+
+    if is_listable:
+        return {
+            "vulnerability": {
+                "name": f"Publicly listable GCS bucket: {bucket_url}",
+                "severity": "high",
+                "description": (
+                    f"GCS bucket at {bucket_url} allows anonymous listing of its contents."
+                ),
+                "location": bucket_url,
+                "section_id": _SECTION_ID,
+            }
+        }
+
+    return None
+
+
+# ── Generic write probe ───────────────────────────────────────────────────────
+
+def _classify_write_probe(url: str, provider: str, put_status: int) -> dict | None:
+    """Classify a raw write probe (PUT) result.
+
+    Used when the caller issues a PUT independently of the provider-specific
+    scan flow. Returns None for any status other than 200 or 201.
+    """
+    if put_status in (200, 201):
+        return {
+            "vulnerability": {
+                "name": f"Publicly writable {provider.upper()} storage: {url}",
+                "severity": "critical",
+                "description": (
+                    f"The {provider} storage resource at {url} allows anonymous write "
+                    f"access (HTTP PUT returned {put_status}). "
+                    f"An attacker can upload arbitrary content."
+                ),
+                "location": url,
+                "section_id": _SECTION_ID,
+            }
+        }
+    return None
+
+
 class CloudStorageAuditor(ConfigMgmtTool):
     """Audit cloud storage configurations — WSTG-CONF-11."""
 

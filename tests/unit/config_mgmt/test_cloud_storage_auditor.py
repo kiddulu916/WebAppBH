@@ -12,9 +12,13 @@ from workers.config_mgmt.tools.cloud_storage_auditor import (
     _parse_cloud_enum_output,
     _parse_azcopy_output,
     _classify_azure_probe,
+    _classify_gcs_probe,
+    _classify_write_probe,
 )
 
 _AZURE_URL = "https://myaccount.blob.core.windows.net/mycontainer"
+_GCS_URL = "https://storage.googleapis.com/my-gcs-bucket"
+_LIST_BODY = "<ListBucketResult><Contents><Key>file.txt</Key></Contents></ListBucketResult>"
 
 
 # ── _SECTION_ID ──────────────────────────────────────────────────────────────
@@ -415,3 +419,59 @@ def test_classify_azure_fully_restricted_returns_none():
 def test_classify_azure_write_without_list_is_critical():
     result = _classify_azure_probe(_AZURE_URL, False, False, 201)
     assert result["vulnerability"]["severity"] == "critical"
+
+
+# ── _classify_gcs_probe ───────────────────────────────────────────────────────
+
+def test_classify_gcs_listable_and_writable_is_critical():
+    result = _classify_gcs_probe(_GCS_URL, _LIST_BODY, 200)
+    assert result is not None
+    assert result["vulnerability"]["severity"] == "critical"
+    assert result["vulnerability"]["section_id"] == _SECTION_ID
+
+
+def test_classify_gcs_listable_read_only_is_high():
+    result = _classify_gcs_probe(_GCS_URL, _LIST_BODY, 403)
+    assert result["vulnerability"]["severity"] == "high"
+
+
+def test_classify_gcs_not_listable_not_writable_returns_none():
+    result = _classify_gcs_probe(_GCS_URL, "", 403)
+    assert result is None
+
+
+def test_classify_gcs_not_listable_but_writable_is_critical():
+    result = _classify_gcs_probe(_GCS_URL, "", 200)
+    assert result["vulnerability"]["severity"] == "critical"
+
+
+def test_classify_gcs_contents_tag_also_detected():
+    body = "<ListBucketResult><Contents></Contents></ListBucketResult>"
+    result = _classify_gcs_probe(_GCS_URL, body, 403)
+    assert result["vulnerability"]["severity"] == "high"
+
+
+# ── _classify_write_probe ─────────────────────────────────────────────────────
+
+def test_classify_write_s3_put_200_is_critical():
+    result = _classify_write_probe("https://bucket.s3.amazonaws.com", "s3", 200)
+    assert result is not None
+    assert result["vulnerability"]["severity"] == "critical"
+    assert result["vulnerability"]["section_id"] == _SECTION_ID
+
+
+def test_classify_write_azure_put_201_is_critical():
+    result = _classify_write_probe(
+        "https://acc.blob.core.windows.net/c", "azure", 201
+    )
+    assert result["vulnerability"]["severity"] == "critical"
+
+
+def test_classify_write_403_returns_none():
+    result = _classify_write_probe("https://bucket.s3.amazonaws.com", "s3", 403)
+    assert result is None
+
+
+def test_classify_write_404_returns_none():
+    result = _classify_write_probe("https://bucket.s3.amazonaws.com", "s3", 404)
+    assert result is None
