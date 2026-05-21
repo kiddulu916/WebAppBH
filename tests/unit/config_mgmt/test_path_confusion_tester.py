@@ -120,8 +120,8 @@ def test_analyze_name_contains_confused_url():
 
 
 def test_analyze_no_finding_at_similarity_boundary():
-    # A body that is similar but just below threshold should return None.
-    # "X" repeated 100 times vs 85 X's + 15 Y's produces ratio ≈ 0.85 → boundary
+    # A body at exactly the threshold boundary (ratio == 0.85) should return None.
+    # "X" * 100 vs "X" * 85 + "Y" * 15 → 2*85/200 = 0.85 exactly; condition is ratio <= 0.85.
     base = "X" * 100
     just_below = "X" * 85 + "Y" * 15
     result = _analyze_confused_response(
