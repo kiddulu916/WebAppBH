@@ -14,6 +14,8 @@ from workers.config_mgmt.tools.cloud_storage_auditor import (
     _classify_azure_probe,
 )
 
+_AZURE_URL = "https://myaccount.blob.core.windows.net/mycontainer"
+
 
 # ── _SECTION_ID ──────────────────────────────────────────────────────────────
 
@@ -379,9 +381,13 @@ def test_parse_azcopy_not_accessible_on_auth_failure():
     assert result[0]["accessible"] is False
 
 
-# ── _classify_azure_probe ─────────────────────────────────────────────────────
+def test_parse_azcopy_not_accessible_on_5xx():
+    text = "RESPONSE Status: 500 Internal Server Error"
+    result = _parse_azcopy_output(text)
+    assert result[0]["accessible"] is False
 
-_AZURE_URL = "https://myaccount.blob.core.windows.net/mycontainer"
+
+# ── _classify_azure_probe ─────────────────────────────────────────────────────
 
 
 def test_classify_azure_write_success_is_critical():
@@ -392,7 +398,7 @@ def test_classify_azure_write_success_is_critical():
 
 
 def test_classify_azure_list_only_is_high():
-    result = _classify_azure_probe(_AZURE_URL, True, True, 403)
+    result = _classify_azure_probe(_AZURE_URL, True, False, 403)
     assert result["vulnerability"]["severity"] == "high"
 
 
