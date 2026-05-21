@@ -227,3 +227,247 @@ def _scan_meta_tag(host: str, url: str, html: str) -> list[dict]:
         if meta_policy:
             results.extend(_classify_directives(host, url, meta_policy))
     return results
+
+
+# ---------------------------------------------------------------------------
+# Google CSP Evaluator helper
+# ---------------------------------------------------------------------------
+
+_GOOGLE_CSP_EVAL_URL = "https://csp-evaluator.withgoogle.com/getCSPEvaluation"
+_GOOGLE_SEVERITY: dict[int, str] = {10: "high", 20: "medium", 30: "low"}
+
+
+async def _call_google_csp_evaluator(policy_str: str, url: str) -> list[dict]:
+    """POST policy to Google CSP Evaluator API; return mapped vuln dicts."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+            resp = await client.post(_GOOGLE_CSP_EVAL_URL, json={"csp": policy_str})
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        logger.warning(f"Google CSP Evaluator API failed for {url}: {exc}")
+        return []
+
+    results: list[dict] = []
+    for finding in data.get("findings", []):
+        severity = _GOOGLE_SEVERITY.get(finding.get("severity", 99))
+        if severity is None:
+            continue
+        directive = finding.get("directive", "")
+        description = finding.get("description", "")
+        results.append({"vulnerability": {
+            "name": f"Google CSP Evaluator [{directive}]: {description[:60]}",
+            "severity": severity,
+            "description": f"Google CSP Evaluator finding on {url}: {description}",
+            "location": url,
+            "section_id": _SECTION_ID,
+        }})
+    return results
+
+
+# ---------------------------------------------------------------------------
+# cspbypass helper
+# ---------------------------------------------------------------------------
+
+async def _run_csp_bypass(url: str) -> list[dict]:
+    """Invoke cspbypass CLI against url; map each bypass line to a high vuln."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "cspbypass", url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout_bytes, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            logger.warning(f"cspbypass timed out for {url}")
+            return []
+        stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
+    except FileNotFoundError:
+        logger.error("cspbypass binary not found — skipping Layer 3")
+        return []
+
+    results: list[dict] = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        results.append({"vulnerability": {
+            "name": f"CSP bypass technique: {line[:80]}",
+            "severity": "high",
+            "description": f"cspbypass detected a bypass technique on {url}: {line}",
+            "location": url,
+            "section_id": _SECTION_ID,
+        }})
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Per-URL probe coroutine
+# ---------------------------------------------------------------------------
+
+async def _probe_url(
+    client: httpx.AsyncClient,
+    url: str,
+    sem: asyncio.Semaphore,
+) -> list[dict]:
+    """GET url once; run all three analysis layers; return all findings."""
+    async with sem:
+        try:
+            resp = await client.get(url)
+        except httpx.RequestError:
+            return []
+
+        csp_header = resp.headers.get("content-security-policy", "")
+        html = resp.text
+        host = urlparse(url).netloc or url
+
+        results: list[dict] = []
+
+        # Layer 1 — own directive classifier (handles missing-header case via empty policy)
+        results.extend(_classify_directives(host, url, _parse_csp_header(csp_header)))
+
+        # Layers 2 + 3 only when a policy exists to evaluate / bypass
+        if csp_header:
+            results.extend(await _call_google_csp_evaluator(csp_header, url))
+            results.extend(await _run_csp_bypass(url))
+
+        # Meta tag scan — always, regardless of HTTP header
+        results.extend(_scan_meta_tag(host, url, html))
+
+        return results
+
+
+# ---------------------------------------------------------------------------
+# Tool class
+# ---------------------------------------------------------------------------
+
+class CspTester(ConfigMgmtTool):
+    """Test Content Security Policy per WSTG-CONF-12.
+
+    Probes every domain, subdomain, url, and endpoint asset from DB.
+    Three analysis layers: own classifier, Google CSP Evaluator API, cspbypass CLI.
+    """
+
+    name = "csp_tester"
+
+    def build_command(self, target, headers=None) -> list[str]:
+        raise NotImplementedError("CspTester uses execute() directly")
+
+    def parse_output(self, stdout: str) -> list:
+        raise NotImplementedError("CspTester uses execute() directly")
+
+    async def execute(
+        self,
+        target,
+        scope_manager: ScopeManager,
+        target_id: int,
+        container_name: str,
+        headers: dict | None = None,
+    ) -> dict:
+        log = logger.bind(target_id=target_id, tool=self.name)
+
+        if await self.check_cooldown(target_id, container_name):
+            log.info("Skipping — within cooldown period")
+            return {"found": 0, "in_scope": 0, "new": 0, "skipped_cooldown": True}
+
+        sem = get_semaphore(self.weight_class)
+        await sem.acquire()
+        try:
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS",
+                "container": container_name,
+                "tool": self.name,
+                "progress": 0,
+                "message": f"{self.name} started",
+            })
+
+            # Resolve base URL for fallback
+            raw = target.target_value if hasattr(target, "target_value") else str(target)
+            if not raw.startswith(("http://", "https://")):
+                raw = f"https://{raw}"
+
+            # Collect probe targets from DB
+            async with get_session() as session:
+                stmt = select(Asset.asset_value, Asset.asset_type).where(
+                    Asset.target_id == target_id,
+                    Asset.asset_type.in_(_DB_ASSET_TYPES),
+                )
+                rows = (await session.execute(stmt)).all()
+
+            probe_urls: list[str] = []
+            for value, asset_type in rows:
+                if asset_type in ("domain", "subdomain"):
+                    candidate = f"https://{value}/"
+                else:
+                    candidate = (
+                        value if value.startswith(("http://", "https://"))
+                        else f"https://{value}"
+                    )
+                if scope_manager.is_in_scope(candidate).in_scope:
+                    probe_urls.append(candidate)
+
+            if not probe_urls:
+                probe_urls = [raw]
+
+            # Deduplicate while preserving order
+            seen: set[str] = set()
+            unique_urls = [u for u in probe_urls if not (u in seen or seen.add(u))]
+
+            all_results: list[dict] = []
+            probe_sem = asyncio.Semaphore(10)
+
+            async with httpx.AsyncClient(
+                verify=False,
+                follow_redirects=True,
+                timeout=15,
+                headers=headers or {},
+            ) as client:
+                tasks = [_probe_url(client, u, probe_sem) for u in unique_urls]
+                for r in await asyncio.gather(*tasks, return_exceptions=True):
+                    if isinstance(r, list):
+                        all_results.extend(r)
+
+            found = len(all_results)
+            new_count = in_scope_count = 0
+            for item in all_results:
+                inserted = await self._process_result(item, scope_manager, target_id, log)
+                if inserted is not None:
+                    in_scope_count += 1
+                    if inserted:
+                        new_count += 1
+
+            async with get_session() as session:
+                stmt = select(JobState).where(
+                    JobState.target_id == target_id,
+                    JobState.container_name == container_name,
+                )
+                job = (await session.execute(stmt)).scalar_one_or_none()
+                if job:
+                    job.last_tool_executed = self.name
+                    job.last_seen = datetime.utcnow()
+                    await session.commit()
+
+            stats = {
+                "found": found,
+                "in_scope": in_scope_count,
+                "new": new_count,
+                "skipped_cooldown": False,
+            }
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS",
+                "container": container_name,
+                "tool": self.name,
+                "progress": 100,
+                "message": (
+                    f"{self.name}: {new_count} new, "
+                    f"{in_scope_count} in scope, {found} total"
+                ),
+            })
+            log.info(f"{self.name} complete", extra=stats)
+            return stats
+
+        finally:
+            sem.release()
