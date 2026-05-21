@@ -771,9 +771,10 @@ class CloudStorageAuditor(ConfigMgmtTool):
                                 write_status = resp.status
                                 if write_status in (200, 201):
                                     try:
-                                        await http.delete(
+                                        async with http.delete(
                                             f"{b_url}/{probe_filename}", ssl=False
-                                        )
+                                        ):
+                                            pass
                                     except Exception:
                                         pass
                         except Exception:
