@@ -10,6 +10,8 @@ from workers.config_mgmt.tools.cloud_storage_auditor import (
     _parse_s3scanner_output,
     _classify_s3scanner_result,
     _parse_cloud_enum_output,
+    _parse_azcopy_output,
+    _classify_azure_probe,
 )
 
 
@@ -340,3 +342,70 @@ def test_parse_cloud_enum_multiple_providers():
     assert len(result["s3"]) == 1
     assert len(result["azure"]) == 1
     assert len(result["gcs"]) == 1
+
+
+# ── _parse_azcopy_output ──────────────────────────────────────────────────────
+
+def test_parse_azcopy_accessible_when_info_lines_present():
+    text = (
+        "INFO: https://account.blob.core.windows.net/container/file.txt; "
+        "Content Length: 100"
+    )
+    result = _parse_azcopy_output(text)
+    assert len(result) == 1
+    assert result[0]["accessible"] is True
+
+
+def test_parse_azcopy_not_accessible_on_403():
+    text = "RESPONSE Status: 403 Server failed to authenticate the request."
+    result = _parse_azcopy_output(text)
+    assert result[0]["accessible"] is False
+
+
+def test_parse_azcopy_not_accessible_on_404():
+    text = "RESPONSE Status: 404 The specified resource does not exist."
+    result = _parse_azcopy_output(text)
+    assert result[0]["accessible"] is False
+
+
+def test_parse_azcopy_not_accessible_on_empty():
+    result = _parse_azcopy_output("")
+    assert result[0]["accessible"] is False
+
+
+def test_parse_azcopy_not_accessible_on_auth_failure():
+    text = "AuthorizationFailure: Server failed to authenticate."
+    result = _parse_azcopy_output(text)
+    assert result[0]["accessible"] is False
+
+
+# ── _classify_azure_probe ─────────────────────────────────────────────────────
+
+_AZURE_URL = "https://myaccount.blob.core.windows.net/mycontainer"
+
+
+def test_classify_azure_write_success_is_critical():
+    result = _classify_azure_probe(_AZURE_URL, True, True, 201)
+    assert result is not None
+    assert result["vulnerability"]["severity"] == "critical"
+    assert result["vulnerability"]["section_id"] == _SECTION_ID
+
+
+def test_classify_azure_list_only_is_high():
+    result = _classify_azure_probe(_AZURE_URL, True, True, 403)
+    assert result["vulnerability"]["severity"] == "high"
+
+
+def test_classify_azure_read_only_is_medium():
+    result = _classify_azure_probe(_AZURE_URL, False, True, 403)
+    assert result["vulnerability"]["severity"] == "medium"
+
+
+def test_classify_azure_fully_restricted_returns_none():
+    result = _classify_azure_probe(_AZURE_URL, False, False, 403)
+    assert result is None
+
+
+def test_classify_azure_write_without_list_is_critical():
+    result = _classify_azure_probe(_AZURE_URL, False, False, 201)
+    assert result["vulnerability"]["severity"] == "critical"

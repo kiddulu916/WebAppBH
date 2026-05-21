@@ -296,6 +296,87 @@ def _parse_cloud_enum_output(text: str) -> dict[str, list[str]]:
     return result
 
 
+# ── azcopy / Azure ────────────────────────────────────────────────────────────
+
+def _parse_azcopy_output(text: str) -> list[dict]:
+    """Parse azcopy list stdout into [{container_url: str, accessible: bool}].
+
+    azcopy v10 prefixes each listed object with 'INFO:'.
+    Error responses contain 'RESPONSE Status: 4xx' or known failure keywords.
+    Empty input is treated as inaccessible (no output = command failed or no access).
+    """
+    text = text.strip()
+    if not text:
+        return [{"container_url": "", "accessible": False}]
+    error_markers = [
+        "RESPONSE Status: 4",
+        "RESPONSE Status: 5",
+        "AuthorizationFailure",
+        "failed to authenticate",
+        "does not exist",
+        "ResourceNotFound",
+    ]
+    has_error = any(marker in text for marker in error_markers)
+    return [{"container_url": "", "accessible": not has_error}]
+
+
+def _classify_azure_probe(
+    container_url: str,
+    list_accessible: bool,
+    head_readable: bool,
+    write_status: int,
+) -> dict | None:
+    """Classify an Azure Blob container probe result into a finding dict.
+
+    Priority order: write > list > read > None (fully restricted).
+    Returns None when the container appears fully restricted.
+    """
+    if write_status in (200, 201):
+        access = "write and list" if list_accessible else "write"
+        return {
+            "vulnerability": {
+                "name": f"Publicly writable Azure Blob container: {container_url}",
+                "severity": "critical",
+                "description": (
+                    f"Azure Blob container at {container_url} allows anonymous {access} "
+                    f"access. An attacker can upload arbitrary files."
+                ),
+                "location": container_url,
+                "section_id": _SECTION_ID,
+            }
+        }
+
+    if list_accessible:
+        return {
+            "vulnerability": {
+                "name": f"Publicly listable Azure Blob container: {container_url}",
+                "severity": "high",
+                "description": (
+                    f"Azure Blob container at {container_url} allows anonymous listing "
+                    f"of its contents."
+                ),
+                "location": container_url,
+                "section_id": _SECTION_ID,
+            }
+        }
+
+    if head_readable:
+        return {
+            "vulnerability": {
+                "name": f"Publicly readable Azure Blob container: {container_url}",
+                "severity": "medium",
+                "description": (
+                    f"Azure Blob container at {container_url} allows anonymous read "
+                    f"access to individual objects but does not expose a directory listing."
+                ),
+                "location": container_url,
+                "section_id": _SECTION_ID,
+            }
+        }
+
+    return None
+
+
 class CloudStorageAuditor(ConfigMgmtTool):
     """Audit cloud storage configurations — WSTG-CONF-11."""
 
