@@ -104,8 +104,10 @@ def _classify_directives(host: str, url: str, policy: dict) -> list[dict]:
             "section_id": _SECTION_ID,
         }})
 
+    seen_insecure_schemes: set[str] = set()
     for src in script_src:
-        if src in ("http:", "data:"):
+        if src in ("http:", "data:") and src not in seen_insecure_schemes:
+            seen_insecure_schemes.add(src)
             results.append({"vulnerability": {
                 "name": f"CSP allows insecure script source scheme on {host}",
                 "severity": "high",
@@ -116,7 +118,6 @@ def _classify_directives(host: str, url: str, policy: dict) -> list[dict]:
                 "location": url,
                 "section_id": _SECTION_ID,
             }})
-            break
 
     # ── Medium ────────────────────────────────────────────────────────────────
 
@@ -155,13 +156,14 @@ def _classify_directives(host: str, url: str, policy: dict) -> list[dict]:
             "section_id": _SECTION_ID,
         }})
 
-    if "object-src" not in policy and default_src is None:
+    if "object-src" not in policy and default_src is not None:
         results.append({"vulnerability": {
             "name": f"CSP missing object-src on {host}",
             "severity": "medium",
             "description": (
-                f"No object-src directive (and no default-src fallback) in CSP on {url}, "
-                "allowing unrestricted plugin content."
+                f"No object-src directive in CSP on {url}. "
+                "Even with default-src set, plugin content (Flash, Java applets) "
+                "is not explicitly restricted — object-src must be set explicitly."
             ),
             "location": url,
             "section_id": _SECTION_ID,
@@ -199,7 +201,7 @@ def _classify_directives(host: str, url: str, policy: dict) -> list[dict]:
 def _scan_meta_tag(host: str, url: str, html: str) -> list[dict]:
     """Parse HTML body for <meta http-equiv="Content-Security-Policy"> tags."""
     results: list[dict] = []
-    for meta_m in re.finditer(r"<meta\b[^>]*>", html, re.IGNORECASE):
+    for meta_m in re.finditer(r"<meta\b[^>]*>", html, re.IGNORECASE | re.DOTALL):
         tag = meta_m.group(0)
         if not re.search(r"http-equiv=[\"']?Content-Security-Policy[\"']?", tag, re.IGNORECASE):
             continue
