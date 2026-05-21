@@ -7,6 +7,8 @@ ENV GOPATH=/go
 ENV PATH=$GOPATH/bin:$PATH
 
 RUN go install github.com/ffuf/ffuf/v2@latest
+RUN go install github.com/haccer/subjack@latest
+RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 
 # ============================================================
 # Stage 2: Runtime
@@ -24,7 +26,15 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Go binaries
-COPY --from=go-builder /go/bin/ffuf /usr/local/bin/
+COPY --from=go-builder /go/bin/ffuf     /usr/local/bin/
+COPY --from=go-builder /go/bin/subjack  /usr/local/bin/
+COPY --from=go-builder /go/bin/nuclei   /usr/local/bin/
+
+# Curated takeover templates baked into the image
+COPY workers/config_mgmt/nuclei-templates/ /nuclei-templates/custom/
+
+# Community nuclei templates fetched at build time
+RUN nuclei -update-templates -ud /nuclei-templates/community || true
 
 # Copy setup.py first for dependency caching
 COPY shared/lib_webbh/setup.py /app/shared/lib_webbh/setup.py
