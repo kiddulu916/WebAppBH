@@ -2,6 +2,7 @@
 from workers.config_mgmt.tools.path_confusion_tester import (
     _is_cacheable,
     _analyze_confused_response,
+    _SECTION_ID,
 )
 
 # ── _is_cacheable ──────────────────────────────────────────────────────────────
@@ -30,6 +31,14 @@ def test_is_cacheable_case_insensitive():
     assert _is_cacheable({"cache-control": "NO-STORE"}) is False
 
 
+def test_is_cacheable_with_s_maxage():
+    assert _is_cacheable({"cache-control": "s-maxage=3600"}) is True
+
+
+def test_section_id_constant():
+    assert _SECTION_ID == "WSTG-CONF-13"
+
+
 # ── _analyze_confused_response ─────────────────────────────────────────────────
 
 _BASELINE = "sensitive dashboard content for user john, session data here"
@@ -48,7 +57,7 @@ def test_analyze_high_severity_cacheable():
     vuln = result["vulnerability"]
     assert vuln["severity"] == "high"
     assert vuln["section_id"] == "WSTG-CONF-13"
-    assert vuln["section_id"] == "WSTG-CONF-13"
+    assert "similarity" in vuln["description"].lower()
     assert "x.js" in vuln["location"]
 
 
@@ -108,3 +117,18 @@ def test_analyze_name_contains_confused_url():
     )
     assert result is not None
     assert "https://example.com/account/x.png" in result["vulnerability"]["name"]
+
+
+def test_analyze_no_finding_at_similarity_boundary():
+    # A body that is similar but just below threshold should return None.
+    # "X" repeated 100 times vs 85 X's + 15 Y's produces ratio ≈ 0.85 → boundary
+    base = "X" * 100
+    just_below = "X" * 85 + "Y" * 15
+    result = _analyze_confused_response(
+        "https://example.com/dashboard",
+        "https://example.com/dashboard/x.js",
+        base,
+        just_below,
+        {},
+    )
+    assert result is None
