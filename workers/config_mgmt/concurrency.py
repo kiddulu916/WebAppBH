@@ -33,6 +33,7 @@ TOOL_WEIGHTS = {
     "admin_interface_enumerator": WeightClass.HEAVY,
     "admin_param_tamperer":       WeightClass.LIGHT,
     "csp_tester":                 WeightClass.LIGHT,
+    "path_confusion_tester":      WeightClass.LIGHT,
 }
 
 
