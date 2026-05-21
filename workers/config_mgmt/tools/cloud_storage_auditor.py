@@ -2,17 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
-import os
 import re
-import tempfile
-import time
 from datetime import datetime
-from urllib.parse import urlparse
-from xml.etree import ElementTree
 
-import aiohttp
 from sqlalchemy import select
 
 from lib_webbh import Asset, JobState, get_session, push_task, setup_logger
@@ -96,14 +88,21 @@ def _normalize_s3_ref(raw: str) -> tuple[str, str | None] | None:
     Returns None if raw does not match any known S3 URL format.
     """
     raw = raw.lower().strip()
-    # Virtual-hosted: bucket.s3[-region].amazonaws.com
+    # Virtual-hosted, no region: bucket.s3.amazonaws.com
     m = re.match(
-        r"^([a-z0-9][a-z0-9.\-]{1,61}[a-z0-9])\.s3(?:[.\-]([\w\-]+))?\.amazonaws\.com$",
+        r"^([a-z0-9][a-z0-9.\-]{1,61}[a-z0-9])\.s3\.amazonaws\.com$",
+        raw,
+    )
+    if m:
+        return m.group(1), None
+    # Virtual-hosted, with region: bucket.s3[-.]region.amazonaws.com
+    m = re.match(
+        r"^([a-z0-9][a-z0-9.\-]{1,61}[a-z0-9])\.s3[.\-]([\w\-]+)\.amazonaws\.com$",
         raw,
     )
     if m:
         return m.group(1), m.group(2)
-    # Path-style: s3[-region].amazonaws.com/bucket
+    # Path-style: s3[-.]region.amazonaws.com/bucket or s3.amazonaws.com/bucket
     m = re.match(
         r"^s3(?:[.\-]([\w\-]+))?\.amazonaws\.com/([a-z0-9][a-z0-9.\-]{1,61}[a-z0-9])$",
         raw,
@@ -129,7 +128,7 @@ def _normalize_azure_ref(raw: str) -> tuple[str, str | None] | None:
     m = re.match(
         r"^([a-z0-9][a-z0-9\-]{1,22}[a-z0-9])"
         r"\.(?:blob|file|queue|table)\.core\.windows\.net"
-        r"(?:/([a-z0-9][a-z0-9\-]{0,62}))?",
+        r"(?:/([a-z0-9][a-z0-9\-]{0,62}))?$",
         raw,
     )
     if m:

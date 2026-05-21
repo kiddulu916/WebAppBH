@@ -159,3 +159,23 @@ def test_normalize_gcs_cloud_google():
 def test_normalize_gcs_invalid_returns_none():
     assert _normalize_gcs_ref("notgcs.example.com") is None
     assert _normalize_gcs_ref("") is None
+
+
+# ── Edge cases ────────────────────────────────────────────────────────────────
+
+def test_extract_unknown_provider_returns_empty():
+    body = "my-bucket.s3.amazonaws.com"
+    assert _extract_storage_refs(body, "gcp") == []
+    assert _extract_storage_refs(body, "") == []
+
+
+def test_normalize_s3_mixed_case():
+    result = _normalize_s3_ref("MY-BUCKET.S3.AMAZONAWS.COM")
+    assert result is not None
+    assert result[0] == "my-bucket"
+
+
+def test_normalize_azure_mixed_case():
+    result = _normalize_azure_ref("MYACCOUNT.BLOB.CORE.WINDOWS.NET")
+    assert result is not None
+    assert result[0] == "myaccount"
