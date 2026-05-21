@@ -681,28 +681,35 @@ class CloudStorageAuditor(ConfigMgmtTool):
                     else:
                         expanded_azure.add((account, container))
 
-            for account, container in expanded_azure:
-                c_url = (
-                    f"https://{account}.blob.core.windows.net/{container}"
-                )
-                list_accessible = False
-                head_readable = False
-                write_status = 0
+            azcopy_available = True
+            async with aiohttp.ClientSession(timeout=probe_timeout) as http:
+                for account, container in expanded_azure:
+                    c_url = (
+                        f"https://{account}.blob.core.windows.net/{container}"
+                    )
+                    list_accessible = False
+                    head_readable = False
+                    write_status = 0
 
-                try:
-                    azcopy_out = await self.run_subprocess(["azcopy", "list", c_url])
-                    results = _parse_azcopy_output(azcopy_out)
-                    if results:
-                        list_accessible = results[0]["accessible"]
-                except FileNotFoundError:
-                    log.warning(f"{self.name}: azcopy not found, skipping azcopy step")
-                except asyncio.TimeoutError:
-                    log.warning(f"{self.name}: azcopy timed out for {c_url}")
+                    if azcopy_available:
+                        try:
+                            azcopy_out = await self.run_subprocess(
+                                ["azcopy", "list", c_url]
+                            )
+                            results = _parse_azcopy_output(azcopy_out)
+                            if results:
+                                list_accessible = results[0]["accessible"]
+                        except FileNotFoundError:
+                            log.warning(
+                                f"{self.name}: azcopy not found, skipping all azcopy checks"
+                            )
+                            azcopy_available = False
+                        except asyncio.TimeoutError:
+                            log.warning(
+                                f"{self.name}: azcopy timed out for {c_url}"
+                            )
 
-                if not list_accessible:
-                    async with aiohttp.ClientSession(
-                        timeout=probe_timeout
-                    ) as http:
+                    if not list_accessible:
                         try:
                             async with http.head(
                                 f"{c_url}/index.html", ssl=False
@@ -711,10 +718,7 @@ class CloudStorageAuditor(ConfigMgmtTool):
                         except Exception:
                             pass
 
-                if list_accessible or head_readable:
-                    async with aiohttp.ClientSession(
-                        timeout=probe_timeout
-                    ) as http:
+                    if list_accessible or head_readable:
                         try:
                             async with http.put(
                                 f"{c_url}/{probe_filename}",
@@ -733,11 +737,11 @@ class CloudStorageAuditor(ConfigMgmtTool):
                         except Exception:
                             pass
 
-                finding = _classify_azure_probe(
-                    c_url, list_accessible, head_readable, write_status
-                )
-                if finding:
-                    all_findings.append(finding)
+                    finding = _classify_azure_probe(
+                        c_url, list_accessible, head_readable, write_status
+                    )
+                    if finding:
+                        all_findings.append(finding)
 
             await push_task(f"events:{target_id}", {
                 "event": "TOOL_PROGRESS", "container": container_name,
@@ -746,12 +750,12 @@ class CloudStorageAuditor(ConfigMgmtTool):
             })
 
             # ── Phase 5: GCS Scan (aiohttp) ───────────────────────────────
-            for bucket in gcs_buckets:
-                b_url = f"https://storage.googleapis.com/{bucket}"
-                list_body = ""
-                write_status = 0
+            async with aiohttp.ClientSession(timeout=probe_timeout) as http:
+                for bucket in gcs_buckets:
+                    b_url = f"https://storage.googleapis.com/{bucket}"
+                    list_body = ""
+                    write_status = 0
 
-                async with aiohttp.ClientSession(timeout=probe_timeout) as http:
                     try:
                         async with http.get(
                             f"{b_url}/?prefix=", ssl=False
@@ -761,28 +765,28 @@ class CloudStorageAuditor(ConfigMgmtTool):
                     except Exception:
                         pass
 
-                    if "ListBucketResult" in list_body or "<Contents>" in list_body:
-                        try:
-                            async with http.put(
-                                f"{b_url}/{probe_filename}",
-                                data=b"bbh",
-                                ssl=False,
-                            ) as resp:
-                                write_status = resp.status
-                                if write_status in (200, 201):
-                                    try:
-                                        async with http.delete(
-                                            f"{b_url}/{probe_filename}", ssl=False
-                                        ):
-                                            pass
-                                    except Exception:
+                    # Always attempt write probe — detect write-only misconfigurations
+                    try:
+                        async with http.put(
+                            f"{b_url}/{probe_filename}",
+                            data=b"bbh",
+                            ssl=False,
+                        ) as resp:
+                            write_status = resp.status
+                            if write_status in (200, 201):
+                                try:
+                                    async with http.delete(
+                                        f"{b_url}/{probe_filename}", ssl=False
+                                    ):
                                         pass
-                        except Exception:
-                            pass
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
 
-                finding = _classify_gcs_probe(b_url, list_body, write_status)
-                if finding:
-                    all_findings.append(finding)
+                    finding = _classify_gcs_probe(b_url, list_body, write_status)
+                    if finding:
+                        all_findings.append(finding)
 
             await push_task(f"events:{target_id}", {
                 "event": "TOOL_PROGRESS", "container": container_name,
