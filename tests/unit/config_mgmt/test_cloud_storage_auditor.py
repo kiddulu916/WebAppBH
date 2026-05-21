@@ -179,3 +179,107 @@ def test_normalize_azure_mixed_case():
     result = _normalize_azure_ref("MYACCOUNT.BLOB.CORE.WINDOWS.NET")
     assert result is not None
     assert result[0] == "myaccount"
+
+
+from workers.config_mgmt.tools.cloud_storage_auditor import (
+    _parse_s3scanner_output,
+    _classify_s3scanner_result,
+)
+
+
+# ── _parse_s3scanner_output ───────────────────────────────────────────────────
+
+def test_parse_s3scanner_empty_returns_empty():
+    assert _parse_s3scanner_output("") == []
+
+
+def test_parse_s3scanner_malformed_json_returns_empty():
+    assert _parse_s3scanner_output("not json {{{{") == []
+
+
+def test_parse_s3scanner_writable_bucket():
+    data = json.dumps([{
+        "name": "test-bucket",
+        "exists": True,
+        "objects_listable": True,
+        "objects_readable": True,
+        "objects_writable": True,
+    }])
+    result = _parse_s3scanner_output(data)
+    assert len(result) == 1
+    assert result[0]["bucket"] == "test-bucket"
+    assert result[0]["exists"] is True
+    assert result[0]["listable"] is True
+    assert result[0]["readable"] is True
+    assert result[0]["writable"] is True
+
+
+def test_parse_s3scanner_nonexistent_bucket():
+    data = json.dumps([{
+        "name": "ghost-bucket",
+        "exists": False,
+        "objects_listable": False,
+        "objects_readable": False,
+        "objects_writable": False,
+    }])
+    result = _parse_s3scanner_output(data)
+    assert result[0]["exists"] is False
+    assert result[0]["writable"] is False
+
+
+def test_parse_s3scanner_accepts_bucket_field_alias():
+    """s3scanner v1 used 'bucket' instead of 'name'."""
+    data = json.dumps([{"bucket": "legacy-bucket", "exists": True}])
+    result = _parse_s3scanner_output(data)
+    assert result[0]["bucket"] == "legacy-bucket"
+
+
+def test_parse_s3scanner_multiple_entries():
+    data = json.dumps([
+        {"name": "bucket-a", "exists": True, "objects_writable": True},
+        {"name": "bucket-b", "exists": True, "objects_writable": False},
+    ])
+    result = _parse_s3scanner_output(data)
+    assert len(result) == 2
+
+
+# ── _classify_s3scanner_result ────────────────────────────────────────────────
+
+def test_classify_s3_writable_is_critical():
+    entry = {"bucket": "test", "exists": True, "listable": True, "readable": True, "writable": True}
+    result = _classify_s3scanner_result(entry)
+    assert result is not None
+    assert "vulnerability" in result
+    assert result["vulnerability"]["severity"] == "critical"
+
+
+def test_classify_s3_listable_only_is_high():
+    entry = {"bucket": "test", "exists": True, "listable": True, "readable": True, "writable": False}
+    result = _classify_s3scanner_result(entry)
+    assert result["vulnerability"]["severity"] == "high"
+
+
+def test_classify_s3_readable_only_is_medium():
+    entry = {"bucket": "test", "exists": True, "listable": False, "readable": True, "writable": False}
+    result = _classify_s3scanner_result(entry)
+    assert result["vulnerability"]["severity"] == "medium"
+
+
+def test_classify_s3_restricted_is_observation():
+    entry = {"bucket": "test", "exists": True, "listable": False, "readable": False, "writable": False}
+    result = _classify_s3scanner_result(entry)
+    assert result is not None
+    assert "observation" in result
+
+
+def test_classify_s3_not_exists_is_observation():
+    entry = {"bucket": "ghost", "exists": False, "listable": False, "readable": False, "writable": False}
+    result = _classify_s3scanner_result(entry)
+    assert "observation" in result
+    assert "not_found" in result["observation"]["value"]
+
+
+def test_classify_s3_always_sets_section_id():
+    entry = {"bucket": "test", "exists": True, "listable": True, "readable": True, "writable": True}
+    result = _classify_s3scanner_result(entry)
+    assert result["vulnerability"]["section_id"] == _SECTION_ID

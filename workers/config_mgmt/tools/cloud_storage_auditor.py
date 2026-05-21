@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime
 
@@ -157,6 +158,120 @@ def _normalize_gcs_ref(raw: str) -> str | None:
     if m:
         return m.group(1)
     return None
+
+
+# ── s3scanner ─────────────────────────────────────────────────────────────────
+
+def _parse_s3scanner_output(text: str) -> list[dict]:
+    """Parse s3scanner JSON file output into a list of normalised result dicts.
+
+    Handles both s3scanner v1 ('bucket' key) and v2 ('name' key) field names.
+    Returns [] on empty input or JSON parse failure.
+    """
+    text = text.strip()
+    if not text:
+        return []
+    try:
+        data = json.loads(text)
+        entries = data if isinstance(data, list) else [data] if isinstance(data, dict) else []
+        results = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            results.append({
+                "bucket":   entry.get("name") or entry.get("bucket", ""),
+                "exists":   bool(entry.get("exists", False)),
+                "listable": bool(
+                    entry.get("objects_listable") or entry.get("listable", False)
+                ),
+                "readable": bool(
+                    entry.get("objects_readable") or entry.get("readable", False)
+                ),
+                "writable": bool(
+                    entry.get("objects_writable") or entry.get("writable", False)
+                ),
+            })
+        return results
+    except (json.JSONDecodeError, ValueError):
+        return []
+
+
+def _classify_s3scanner_result(entry: dict) -> dict | None:
+    """Convert one parsed s3scanner entry into a vulnerability or observation dict.
+
+    Returns None only when the entry has no useful signal (malformed).
+    """
+    bucket = entry.get("bucket", "")
+    location = f"https://{bucket}.s3.amazonaws.com"
+
+    if not entry.get("exists"):
+        return {
+            "observation": {
+                "type": "cloud_storage",
+                "value": f"s3_bucket_not_found: {bucket}",
+                "details": {
+                    "provider": "aws_s3",
+                    "bucket": bucket,
+                    "note": "Bucket does not exist — potential unclaimed resource",
+                },
+            }
+        }
+
+    if entry.get("writable"):
+        return {
+            "vulnerability": {
+                "name": f"Publicly writable S3 bucket: {bucket}",
+                "severity": "critical",
+                "description": (
+                    f"S3 bucket '{bucket}' allows anonymous write access. "
+                    f"An attacker can upload arbitrary files to serve malicious content "
+                    f"or exfiltrate data."
+                ),
+                "location": location,
+                "section_id": _SECTION_ID,
+            }
+        }
+
+    if entry.get("listable"):
+        return {
+            "vulnerability": {
+                "name": f"Publicly listable S3 bucket: {bucket}",
+                "severity": "high",
+                "description": (
+                    f"S3 bucket '{bucket}' allows anonymous listing of its contents. "
+                    f"Sensitive files may be enumerated and downloaded."
+                ),
+                "location": location,
+                "section_id": _SECTION_ID,
+            }
+        }
+
+    if entry.get("readable"):
+        return {
+            "vulnerability": {
+                "name": f"Publicly readable S3 bucket: {bucket}",
+                "severity": "medium",
+                "description": (
+                    f"S3 bucket '{bucket}' allows anonymous read access to individual "
+                    f"objects but does not expose a directory listing."
+                ),
+                "location": location,
+                "section_id": _SECTION_ID,
+            }
+        }
+
+    # Exists but fully restricted
+    return {
+        "observation": {
+            "type": "cloud_storage",
+            "value": f"s3_bucket_restricted: {bucket}",
+            "details": {
+                "provider": "aws_s3",
+                "bucket": bucket,
+                "note": "Bucket exists but access is fully restricted",
+            },
+        }
+    }
 
 
 class CloudStorageAuditor(ConfigMgmtTool):
