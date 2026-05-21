@@ -1,237 +1,172 @@
-"""Cloud storage configuration auditor."""
+"""Cloud storage configuration auditor — WSTG-CONF-11."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import re
+import tempfile
+import time
+from datetime import datetime
+from urllib.parse import urlparse
+from xml.etree import ElementTree
+
+import aiohttp
+from sqlalchemy import select
+
+from lib_webbh import Asset, JobState, get_session, push_task, setup_logger
+from lib_webbh.scope import ScopeManager
 
 from workers.config_mgmt.base_tool import ConfigMgmtTool
-from workers.config_mgmt.concurrency import WeightClass
+from workers.config_mgmt.concurrency import get_semaphore
+
+logger = setup_logger("config-mgmt-conf11")
+
+_SECTION_ID = "WSTG-CONF-11"
+
+# ── Compiled regex patterns ───────────────────────────────────────────────────
+
+_S3_PATTERNS = [
+    # Virtual-hosted: bucket.s3[-region].amazonaws.com
+    re.compile(
+        r"([a-z0-9][a-z0-9.\-]{1,61}[a-z0-9])\.s3(?:[.\-][\w\-]+)?\.amazonaws\.com",
+        re.IGNORECASE,
+    ),
+    # Path-style: s3[-region].amazonaws.com/bucket
+    re.compile(
+        r"s3(?:[.\-][\w\-]+)?\.amazonaws\.com/([a-z0-9][a-z0-9.\-]{1,61}[a-z0-9])",
+        re.IGNORECASE,
+    ),
+    # Website endpoint: bucket.s3-website[-.]region.amazonaws.com
+    re.compile(
+        r"([a-z0-9][a-z0-9.\-]{1,61}[a-z0-9])\.s3-website[-\.][\w\-]+\.amazonaws\.com",
+        re.IGNORECASE,
+    ),
+]
+
+_AZURE_PATTERNS = [
+    # account.{blob|file|queue|table}.core.windows.net[/container]
+    re.compile(
+        r"([a-z0-9][a-z0-9\-]{1,22}[a-z0-9])"
+        r"\.(?:blob|file|queue|table)\.core\.windows\.net"
+        r"(?:/([a-z0-9][a-z0-9\-]{0,62}))?",
+        re.IGNORECASE,
+    ),
+]
+
+_GCS_PATTERNS = [
+    # bucket.storage.googleapis.com
+    re.compile(
+        r"([a-z0-9][a-z0-9.\-_]{1,220}[a-z0-9])\.storage\.googleapis\.com",
+        re.IGNORECASE,
+    ),
+    # storage.googleapis.com/bucket  OR  storage.cloud.google.com/bucket
+    re.compile(
+        r"storage\.(?:googleapis\.com|cloud\.google\.com)"
+        r"/([a-z0-9][a-z0-9.\-_]{1,220}[a-z0-9])",
+        re.IGNORECASE,
+    ),
+]
+
+
+# ── Extraction ────────────────────────────────────────────────────────────────
+
+def _extract_storage_refs(body: str, provider: str) -> list[str]:
+    """Return all raw matched strings for the given provider found in body.
+
+    provider must be one of: "s3", "azure", "gcs".
+    Returns full match strings (group 0) — normalization is a separate step.
+    """
+    patterns = {"s3": _S3_PATTERNS, "azure": _AZURE_PATTERNS, "gcs": _GCS_PATTERNS}.get(
+        provider, []
+    )
+    results: list[str] = []
+    for pat in patterns:
+        for m in pat.finditer(body):
+            results.append(m.group(0))
+    return results
+
+
+# ── Normalization ─────────────────────────────────────────────────────────────
+
+def _normalize_s3_ref(raw: str) -> tuple[str, str | None] | None:
+    """Parse a raw S3 match string into (bucket_name, region | None).
+
+    Returns None if raw does not match any known S3 URL format.
+    """
+    raw = raw.lower().strip()
+    # Virtual-hosted: bucket.s3[-region].amazonaws.com
+    m = re.match(
+        r"^([a-z0-9][a-z0-9.\-]{1,61}[a-z0-9])\.s3(?:[.\-]([\w\-]+))?\.amazonaws\.com$",
+        raw,
+    )
+    if m:
+        return m.group(1), m.group(2)
+    # Path-style: s3[-region].amazonaws.com/bucket
+    m = re.match(
+        r"^s3(?:[.\-]([\w\-]+))?\.amazonaws\.com/([a-z0-9][a-z0-9.\-]{1,61}[a-z0-9])$",
+        raw,
+    )
+    if m:
+        return m.group(2), m.group(1)
+    # Website endpoint: bucket.s3-website[-.]region.amazonaws.com
+    m = re.match(
+        r"^([a-z0-9][a-z0-9.\-]{1,61}[a-z0-9])\.s3-website[-\.][\w\-]+\.amazonaws\.com$",
+        raw,
+    )
+    if m:
+        return m.group(1), None
+    return None
+
+
+def _normalize_azure_ref(raw: str) -> tuple[str, str | None] | None:
+    """Parse a raw Azure match string into (account, container | None).
+
+    Returns None if raw does not match any known Azure storage URL format.
+    """
+    raw = raw.lower().strip()
+    m = re.match(
+        r"^([a-z0-9][a-z0-9\-]{1,22}[a-z0-9])"
+        r"\.(?:blob|file|queue|table)\.core\.windows\.net"
+        r"(?:/([a-z0-9][a-z0-9\-]{0,62}))?",
+        raw,
+    )
+    if m:
+        return m.group(1), m.group(2) or None
+    return None
+
+
+def _normalize_gcs_ref(raw: str) -> str | None:
+    """Parse a raw GCS match string into a bucket name.
+
+    Returns None if raw does not match any known GCS URL format.
+    """
+    raw = raw.lower().strip()
+    # bucket.storage.googleapis.com
+    m = re.match(
+        r"^([a-z0-9][a-z0-9.\-_]{1,220}[a-z0-9])\.storage\.googleapis\.com$", raw
+    )
+    if m:
+        return m.group(1)
+    # storage.googleapis.com/bucket  OR  storage.cloud.google.com/bucket
+    m = re.match(
+        r"^storage\.(?:googleapis\.com|cloud\.google\.com)"
+        r"/([a-z0-9][a-z0-9.\-_]{1,220}[a-z0-9])$",
+        raw,
+    )
+    if m:
+        return m.group(1)
+    return None
 
 
 class CloudStorageAuditor(ConfigMgmtTool):
-    """Audit cloud storage configurations (WSTG-CONFIG-011)."""
+    """Audit cloud storage configurations — WSTG-CONF-11."""
 
     name = "cloud_storage_auditor"
 
     def build_command(self, target, headers=None):
-        target_url = getattr(target, 'target_value', str(target))
-        base_url = target_url if target_url.startswith(('http://', 'https://')) else f"https://{target_url}"
+        raise NotImplementedError("CloudStorageAuditor uses execute() directly")
 
-        script = f'''
-import httpx
-import json
-import re
-
-results = []
-base_url = "{base_url}"
-
-S3_BUCKET_PATTERNS = [
-    r"[a-z0-9][a-z0-9.\-]*\.s3\.amazonaws\.com",
-    r"s3\.amazonaws\.com/[a-z0-9][a-z0-9.\-]*",
-    r"[a-z0-9][a-z0-9.\-]*\.s3-website\.[a-z0-9\-]+\.amazonaws\.com",
-]
-
-AZURE_BLOB_PATTERNS = [
-    r"[a-z0-9][a-z0-9\-]*\.blob\.core\.windows\.net",
-    r"[a-z0-9][a-z0-9\-]*\.file\.core\.windows\.net",
-    r"[a-z0-9][a-z0-9\-]*\.queue\.core\.windows\.net",
-    r"[a-z0-9][a-z0-9\-]*\.table\.core\.windows\.net",
-]
-
-GCS_BUCKET_PATTERNS = [
-    r"[a-z0-9][a-z0-9.\-_]*\.storage\.googleapis\.com",
-    r"storage\.cloud\.google\.com/[a-z0-9][a-z0-9.\-_]*",
-    r"storage\.googleapis\.com/[a-z0-9][a-z0-9.\-_]*",
-]
-
-try:
-    client = httpx.Client(follow_redirects=True, timeout=10, verify=False)
-    base_path = base_url.rstrip('/')
-
-    try:
-        resp = client.get(base_path)
-        body = resp.text
-
-        for pattern in S3_BUCKET_PATTERNS:
-            matches = re.findall(pattern, body)
-            for match in matches:
-                bucket_url = match if "http" in match else f"https://{{match}}"
-                try:
-                    bucket_resp = client.get(bucket_url)
-                    if bucket_resp.status_code == 200:
-                        if "ListBucketResult" in bucket_resp.text or "<Contents>" in bucket_resp.text:
-                            results.append({{
-                                "vulnerability": {{
-                                    "name": f"Publicly accessible S3 bucket: {{match}}",
-                                    "severity": "critical",
-                                    "description": f"S3 bucket {{match}} is publicly accessible and allows listing",
-                                    "location": bucket_url
-                                }}
-                            }})
-                        else:
-                            results.append({{
-                                "observation": {{
-                                    "type": "cloud_storage",
-                                    "value": f"s3_bucket_found: {{match}}",
-                                    "details": {{
-                                        "location": bucket_url,
-                                        "status": bucket_resp.status_code
-                                    }}
-                                }}
-                            }})
-                    elif bucket_resp.status_code == 403:
-                        results.append({{
-                            "observation": {{
-                                "type": "cloud_storage",
-                                "value": f"s3_bucket_restricted: {{match}}",
-                                "details": {{
-                                    "location": bucket_url,
-                                    "status": bucket_resp.status_code,
-                                    "note": "Bucket exists but access is restricted"
-                                }}
-                            }}
-                        }})
-                    elif bucket_resp.status_code == 404:
-                        results.append({{
-                            "observation": {{
-                                "type": "cloud_storage",
-                                "value": f"s3_bucket_not_found: {{match}}",
-                                "details": {{
-                                    "location": bucket_url,
-                                    "note": "S3 bucket does not exist - potential takeover"
-                                }}
-                            }}
-                        }})
-                except Exception:
-                    pass
-
-        for pattern in AZURE_BLOB_PATTERNS:
-            matches = re.findall(pattern, body)
-            for match in matches:
-                blob_url = match if "http" in match else f"https://{{match}}"
-                try:
-                    blob_resp = client.get(blob_url)
-                    if blob_resp.status_code == 200:
-                        if "EnumerationResults" in blob_resp.text:
-                            results.append({{
-                                "vulnerability": {{
-                                    "name": f"Publicly accessible Azure Blob Storage: {{match}}",
-                                    "severity": "critical",
-                                    "description": f"Azure Blob Storage {{match}} is publicly accessible",
-                                    "location": blob_url
-                                }}
-                            }})
-                        else:
-                            results.append({{
-                                "observation": {{
-                                    "type": "cloud_storage",
-                                    "value": f"azure_blob_found: {{match}}",
-                                    "details": {{
-                                        "location": blob_url,
-                                        "status": blob_resp.status_code
-                                    }}
-                                }}
-                            }})
-                except Exception:
-                    pass
-
-        for pattern in GCS_BUCKET_PATTERNS:
-            matches = re.findall(pattern, body)
-            for match in matches:
-                gcs_url = match if "http" in match else f"https://{{match}}"
-                try:
-                    gcs_resp = client.get(gcs_url)
-                    if gcs_resp.status_code == 200:
-                        if "ListBucketResult" in gcs_resp.text:
-                            results.append({{
-                                "vulnerability": {{
-                                    "name": f"Publicly accessible GCS bucket: {{match}}",
-                                    "severity": "critical",
-                                    "description": f"Google Cloud Storage bucket {{match}} is publicly accessible",
-                                    "location": gcs_url
-                                }}
-                            }})
-                        else:
-                            results.append({{
-                                "observation": {{
-                                    "type": "cloud_storage",
-                                    "value": f"gcs_bucket_found: {{match}}",
-                                    "details": {{
-                                        "location": gcs_url,
-                                        "status": gcs_resp.status_code
-                                    }}
-                                }}
-                            }})
-                except Exception:
-                    pass
-
-    except Exception:
-        pass
-
-    try:
-        resp = client.get(base_path + "/robots.txt")
-        if resp.status_code == 200:
-            for pattern in S3_BUCKET_PATTERNS + AZURE_BLOB_PATTERNS + GCS_BUCKET_PATTERNS:
-                matches = re.findall(pattern, resp.text)
-                for match in matches:
-                    results.append({{
-                        "observation": {{
-                            "type": "cloud_storage",
-                            "value": f"cloud_storage_in_robots: {{match}}",
-                            "details": {{"source": "robots.txt"}}
-                        }}
-                    }})
-    except Exception:
-        pass
-
-    try:
-        resp = client.get(base_path + "/sitemap.xml")
-        if resp.status_code == 200:
-            for pattern in S3_BUCKET_PATTERNS + AZURE_BLOB_PATTERNS + GCS_BUCKET_PATTERNS:
-                matches = re.findall(pattern, resp.text)
-                for match in matches:
-                    results.append({{
-                        "observation": {{
-                            "type": "cloud_storage",
-                            "value": f"cloud_storage_in_sitemap: {{match}}",
-                            "details": {{"source": "sitemap.xml"}}
-                        }}
-                    }})
-    except Exception:
-        pass
-
-    js_paths = ["/", "/static/js/", "/assets/js/", "/js/"]
-    for js_path in js_paths:
-        try:
-            resp = client.get(base_path + js_path)
-            if resp.status_code == 200 and "javascript" in resp.headers.get("content-type", ""):
-                for pattern in S3_BUCKET_PATTERNS + AZURE_BLOB_PATTERNS + GCS_BUCKET_PATTERNS:
-                    matches = re.findall(pattern, resp.text)
-                    for match in matches:
-                        results.append({{
-                            "observation": {{
-                                "type": "cloud_storage",
-                                "value": f"cloud_storage_in_js: {{match}}",
-                                "details": {{"source": js_path}}
-                            }}
-                        }})
-        except Exception:
-            pass
-
-    client.close()
-
-except Exception as e:
-    results.append({{
-        "observation": {{
-            "type": "test_error",
-            "value": str(e),
-            "details": {{"error": str(e)}}
-        }}
-    }})
-
-print(json.dumps(results))
-'''
-        return ["python3", "-c", script]
-
-    def parse_output(self, stdout):
-        import json
-        try:
-            return json.loads(stdout.strip())
-        except (json.JSONDecodeError, ValueError):
-            return []
+    def parse_output(self, stdout: str) -> list:
+        raise NotImplementedError("CloudStorageAuditor uses execute() directly")
