@@ -32,6 +32,7 @@ TOOL_WEIGHTS = {
     "cloud_storage_auditor":      WeightClass.LIGHT,
     "admin_interface_enumerator": WeightClass.HEAVY,
     "admin_param_tamperer":       WeightClass.LIGHT,
+    "csp_tester":                 WeightClass.LIGHT,
 }
 
 

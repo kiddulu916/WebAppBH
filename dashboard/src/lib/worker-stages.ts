@@ -35,6 +35,7 @@ export const WORKER_STAGES: Record<string, { id: string; name: string; stageName
     { id: "11", name: "File Inclusion",                 stageName: "file_inclusion",                sectionId: "WSTG-INPV-11" },
     { id: "12", name: "Subdomain Takeover",             stageName: "subdomain_takeover",            sectionId: "WSTG-CONF-10" },
     { id: "13", name: "Cloud Storage",                  stageName: "cloud_storage",                 sectionId: "WSTG-CONF-11" },
+    { id: "14", name: "Content Security Policy",        stageName: "csp_testing",                   sectionId: "WSTG-CONF-12" },
   ],
   identity_mgmt: [
     { id: "1", name: "Role Definitions", stageName: "role_definitions", sectionId: "WSTG-IDNT-01" },

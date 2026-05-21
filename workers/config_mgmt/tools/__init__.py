@@ -17,6 +17,7 @@ from .file_permission_tester import FilePermissionTester
 from .file_inclusion_tester import FileInclusionTester
 from .subdomain_takeover_checker import SubdomainTakeoverChecker
 from .cloud_storage_auditor import CloudStorageAuditor
+from .csp_tester import CspTester
 
 __all__ = [
     "NetworkConfigTester",
@@ -36,4 +37,5 @@ __all__ = [
     "FileInclusionTester",
     "SubdomainTakeoverChecker",
     "CloudStorageAuditor",
+    "CspTester",
 ]
