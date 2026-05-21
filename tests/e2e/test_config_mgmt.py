@@ -9,7 +9,7 @@ pytestmark = pytest.mark.e2e
 
 WORKER = "config_mgmt"
 PLAYBOOK = "e2e_config_mgmt"
-LAST_STAGE = "cloud_storage"
+LAST_STAGE = "csp_testing"
 
 STAGE_ASSERTIONS = {
     "network_config":               lambda c, tid: assert_assets(c, tid),
@@ -26,6 +26,7 @@ STAGE_ASSERTIONS = {
     "file_inclusion":               None,
     "subdomain_takeover":           None,
     "cloud_storage":                None,
+    "csp_testing":                  None,
 }
 
 STAGE_TIMEOUTS = {
@@ -43,6 +44,7 @@ STAGE_TIMEOUTS = {
     "file_inclusion":               120,
     "subdomain_takeover":           180,
     "cloud_storage":                180,
+    "csp_testing":                  180,
 }
 
 
