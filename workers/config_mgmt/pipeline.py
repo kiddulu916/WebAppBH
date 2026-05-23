@@ -1,4 +1,4 @@
-"""Config management pipeline: 16 sequential stages with checkpointing."""
+"""Config management pipeline: 17 sequential stages with checkpointing."""
 
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ from workers.config_mgmt.tools import (
     CloudStorageAuditor,
     CspTester,
     PathConfusionTester,
+    HttpSecurityHeadersTester,
 )
 
 logger = setup_logger("config-mgmt-pipeline")
@@ -59,13 +60,14 @@ STAGES = [
     Stage("cloud_storage", [CloudStorageAuditor]),
     Stage("csp_testing",      [CspTester]),
     Stage("path_confusion",    [PathConfusionTester]),
+    Stage("security_headers",  [HttpSecurityHeadersTester]),
 ]
 
 STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}
 
 
 class Pipeline(CheckpointMixin):
-    """Orchestrates the 16-stage config management pipeline with checkpointing."""
+    """Orchestrates the 17-stage config management pipeline with checkpointing."""
 
     def __init__(self, target_id: int, container_name: str):
         self.target_id = target_id

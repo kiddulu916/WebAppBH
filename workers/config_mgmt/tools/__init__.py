@@ -19,6 +19,7 @@ from .subdomain_takeover_checker import SubdomainTakeoverChecker
 from .cloud_storage_auditor import CloudStorageAuditor
 from .csp_tester import CspTester
 from .path_confusion_tester import PathConfusionTester
+from .http_security_headers_tester import HttpSecurityHeadersTester
 
 __all__ = [
     "NetworkConfigTester",
@@ -40,4 +41,5 @@ __all__ = [
     "CloudStorageAuditor",
     "CspTester",
     "PathConfusionTester",
+    "HttpSecurityHeadersTester",
 ]
