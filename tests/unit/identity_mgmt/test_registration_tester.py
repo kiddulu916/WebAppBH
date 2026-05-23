@@ -183,3 +183,25 @@ def test_build_command_has_timing_delta(tool):
 
 def test_build_command_block4_valid_python(tool):
     compile(tool.build_command(FakeTarget())[2], "<string>", "exec")
+
+
+# ── Block 5: Email verification ───────────────────────────────────────────────
+
+def test_build_command_has_tempmail(tool):
+    assert "tempmail" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_has_mailinator(tool):
+    assert "mailinator" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_has_notanemail(tool):
+    assert "notanemail" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_has_verify_keyword(tool):
+    assert "verify_keywords" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_block5_valid_python(tool):
+    compile(tool.build_command(FakeTarget())[2], "<string>", "exec")

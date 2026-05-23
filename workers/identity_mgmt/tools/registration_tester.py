@@ -341,6 +341,78 @@ except Exception as e:
         "data": {{"error": str(e)}},
     }})
 
+# ── Block 5: Email Verification & Identity Verification ──────────────────────
+
+try:
+    uid = random.randint(10000, 99999)
+    verify_keywords = re.compile(r"(verify|confirm|activation|check your email)", re.IGNORECASE)
+    disposable_domains = ["tempmail.com", "mailinator.com", "guerrillamail.com"]
+
+    for ep in reg_endpoints:
+        url = base_url.rstrip("/") + ep
+
+        # Invalid email format
+        try:
+            c = make_client()
+            resp = safe_request("POST", url, c, json={{
+                "username": f"invalidemail_{{uid}}", "email": "notanemail", "password": "T3stP@ssw0rd!",
+            }})
+            c.close()
+            if resp is not None and resp.status_code in (200, 201):
+                results.append({{
+                    "title": "Registration accepts invalid email format",
+                    "description": f"{{ep}} accepted 'notanemail' as a valid email address",
+                    "severity": "medium",
+                    "data": {{"endpoint": ep, "accepted_invalid_format": True}},
+                }})
+        except Exception:
+            pass
+
+        # Disposable email domains
+        for domain in disposable_domains:
+            try:
+                c = make_client()
+                resp = safe_request("POST", url, c, json={{
+                    "username": f"disposable_{{uid}}", "email": f"test_{{uid}}@{{domain}}", "password": "T3stP@ssw0rd!",
+                }})
+                c.close()
+                if resp is not None and resp.status_code in (200, 201):
+                    results.append({{
+                        "title": "Registration accepts disposable email domain",
+                        "description": f"{{ep}} accepted registration with @{{domain}} address",
+                        "severity": "low",
+                        "data": {{"endpoint": ep, "disposable_domain": domain}},
+                    }})
+                    break
+            except Exception:
+                pass
+
+        # No email verification step
+        try:
+            c = make_client()
+            resp = safe_request("POST", url, c, json={{
+                "username": f"noverify_{{uid}}", "email": f"noverify_{{uid}}@example.com", "password": "T3stP@ssw0rd!",
+            }})
+            c.close()
+            if resp is not None and resp.status_code in (200, 201):
+                if not verify_keywords.search(resp.text):
+                    results.append({{
+                        "title": "Registration may not require email verification",
+                        "description": f"{{ep}} returned success ({{resp.status_code}}) without mentioning email verification",
+                        "severity": "medium",
+                        "data": {{"endpoint": ep, "no_verification_mentioned": True}},
+                    }})
+        except Exception:
+            pass
+
+except Exception as e:
+    results.append({{
+        "title": "Email verification test error",
+        "description": str(e),
+        "severity": "info",
+        "data": {{"error": str(e)}},
+    }})
+
 print(json.dumps(results))
 '''
         return ["python3", "-c", script]
