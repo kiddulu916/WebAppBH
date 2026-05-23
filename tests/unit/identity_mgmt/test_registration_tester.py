@@ -145,3 +145,22 @@ def test_build_command_has_permissions(tool):
 
 def test_build_command_block2_valid_python(tool):
     compile(tool.build_command(FakeTarget())[2], "<string>", "exec")
+
+
+# ── Block 3: Password policy ──────────────────────────────────────────────────
+
+def test_build_command_has_weak_passwords(tool):
+    assert "weak_passwords" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_weak_passwords_has_123456(tool):
+    assert "123456" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_weak_passwords_has_password(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert '"password"' in script or "'password'" in script
+
+
+def test_build_command_block3_valid_python(tool):
+    compile(tool.build_command(FakeTarget())[2], "<string>", "exec")

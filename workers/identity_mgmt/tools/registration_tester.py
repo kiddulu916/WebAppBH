@@ -196,6 +196,47 @@ except Exception as e:
         "data": {{"error": str(e)}},
     }})
 
+# ── Block 3: Password Policy Enforcement ─────────────────────────────────────
+
+try:
+    uid = random.randint(10000, 99999)
+    base_username = f"pwpolicy_{{uid}}"
+    weak_passwords = [
+        ("password", "dictionary word"),
+        ("123456", "sequential numeric"),
+        ("abc", "too short"),
+        ("1", "single character"),
+        ("", "empty string"),
+        (base_username, "same as username"),
+    ]
+    for ep in reg_endpoints:
+        url = base_url.rstrip("/") + ep
+        for i, (weak_pwd, weakness) in enumerate(weak_passwords):
+            try:
+                c = make_client()
+                resp = safe_request("POST", url, c, json={{
+                    "username": f"{{base_username}}_{{i}}",
+                    "email": f"pwpolicy_{{uid}}_{{i}}@example.com",
+                    "password": weak_pwd,
+                }})
+                c.close()
+                if resp is not None and resp.status_code in (200, 201):
+                    results.append({{
+                        "title": "Weak password accepted at registration",
+                        "description": f"{{ep}} accepted password type '{{weakness}}' (status {{resp.status_code}})",
+                        "severity": "high",
+                        "data": {{"endpoint": ep, "weakness": weakness, "response_status": resp.status_code}},
+                    }})
+            except Exception:
+                pass
+except Exception as e:
+    results.append({{
+        "title": "Password policy test error",
+        "description": str(e),
+        "severity": "info",
+        "data": {{"error": str(e)}},
+    }})
+
 print(json.dumps(results))
 '''
         return ["python3", "-c", script]
