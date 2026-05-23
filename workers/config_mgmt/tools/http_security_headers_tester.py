@@ -92,7 +92,7 @@ def _classify_static_headers(host: str, headers: dict) -> list[dict]:
             "location": loc,
             "section_id": _SECTION_ID,
         }})
-    elif "unsafe-url" in rp.lower():
+    elif rp.strip().lower() == "unsafe-url":
         findings.append({"vulnerability": {
             "name": f"Unsafe Referrer-Policy on {host}",
             "severity": "medium",
@@ -343,7 +343,8 @@ class HttpSecurityHeadersTester(ConfigMgmtTool):
         async with sem:
             try:
                 resp = await client.get(f"https://{host}/")
-            except httpx.RequestError:
+            except httpx.RequestError as exc:
+                logger.debug(f"Static probe failed for {host}: {exc}")
                 return []
         return _classify_static_headers(host, dict(resp.headers))
 
@@ -356,7 +357,8 @@ class HttpSecurityHeadersTester(ConfigMgmtTool):
         async with sem:
             try:
                 resp = await client.get(url, headers={"Origin": _CORS_PROBE_ORIGIN})
-            except httpx.RequestError:
+            except httpx.RequestError as exc:
+                logger.debug(f"CORS probe failed for {url}: {exc}")
                 return []
         if resp.status_code != 200:
             return []
