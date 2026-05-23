@@ -69,3 +69,33 @@ def test_build_command_embeds_base_url_https(tool):
 
 def test_build_command_preserves_http_scheme(tool):
     assert "http://example.com" in tool.build_command(HttpTarget())[2]
+
+
+# ── Evasion layer ─────────────────────────────────────────────────────────────
+
+def test_build_command_has_user_agents_pool(tool):
+    assert "USER_AGENTS" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_has_xff_header(tool):
+    assert "X-Forwarded-For" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_has_make_client(tool):
+    assert "make_client" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_has_safe_request(tool):
+    assert "safe_request" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_has_429_backoff(tool):
+    assert "429" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_has_jitter(tool):
+    assert "uniform" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_evasion_script_valid_python(tool):
+    compile(tool.build_command(FakeTarget())[2], "<string>", "exec")
