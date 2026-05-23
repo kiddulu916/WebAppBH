@@ -190,11 +190,14 @@ try:
             "requiresAuth", "adminOnly",
         ]
         home_resp = client.get(base_url.rstrip("/") + "/")
-        script_srcs = re.findall('src="([^"]+)"', home_resp.text, re.IGNORECASE)
+        if home_resp.status_code != 200:
+            raise RuntimeError(f"Homepage returned {{home_resp.status_code}}")
+        script_srcs_dq = re.findall(\'src="([^"]+)"\', home_resp.text, re.IGNORECASE)
+        script_srcs_sq = re.findall("src=\'([^\']+)\'", home_resp.text, re.IGNORECASE)
+        script_srcs = script_srcs_dq + script_srcs_sq
+        js_srcs = [s for s in script_srcs if s.endswith(".js") or ".js?" in s]
         abs_js_urls = []
-        for src in script_srcs[:10]:
-            if not src.endswith(".js") and ".js?" not in src:
-                continue
+        for src in js_srcs[:10]:
             if src.startswith("http"):
                 abs_js_urls.append(src)
             elif src.startswith("//"):
