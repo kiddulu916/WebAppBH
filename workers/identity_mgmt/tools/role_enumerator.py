@@ -5,7 +5,7 @@ from workers.identity_mgmt.concurrency import WeightClass
 
 
 class RoleEnumerator(IdentityMgmtTool):
-    """Test for role enumeration vulnerabilities (WSTG-IDENT-001)."""
+    """Test for role enumeration vulnerabilities (WSTG-IDNT-01)."""
 
     name = "role_enumerator"
     weight_class = WeightClass.HEAVY

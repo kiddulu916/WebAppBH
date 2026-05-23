@@ -84,5 +84,4 @@ def test_build_command_none_credentials_serialized(tool):
 
 def test_build_command_dict_credentials_serialized(tool):
     script = tool.build_command(FakeTarget(), credentials={"token": "tok123"})[2]
-    assert "tok123" in script
-    assert "credentials = None" not in script
+    assert 'credentials = {"token": "tok123"}' in script
