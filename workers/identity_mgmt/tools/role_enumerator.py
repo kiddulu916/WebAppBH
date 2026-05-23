@@ -182,6 +182,50 @@ try:
         except Exception:
             pass
 
+    # Block 5: JavaScript source scan (OWASP obj 1 — identify roles via source analysis)
+    try:
+        js_role_patterns = [
+            "isAdmin", "ROLE_ADMIN", "hasRole", "requiresAdmin",
+            "admin_required", "user_type", "userRole", "accessLevel",
+            "requiresAuth", "adminOnly",
+        ]
+        home_resp = client.get(base_url.rstrip("/") + "/")
+        script_srcs = re.findall('src="([^"]+)"', home_resp.text, re.IGNORECASE)
+        abs_js_urls = []
+        for src in script_srcs[:10]:
+            if not src.endswith(".js") and ".js?" not in src:
+                continue
+            if src.startswith("http"):
+                abs_js_urls.append(src)
+            elif src.startswith("//"):
+                abs_js_urls.append("https:" + src)
+            elif src.startswith("/"):
+                abs_js_urls.append(base_url.rstrip("/") + src)
+            else:
+                abs_js_urls.append(base_url.rstrip("/") + "/" + src)
+        for js_url in abs_js_urls[:10]:
+            try:
+                js_resp = client.get(js_url, headers=auth_headers, timeout=5)
+                if js_resp.status_code != 200:
+                    continue
+                matched_pats = [p for p in js_role_patterns if p.lower() in js_resp.text.lower()]
+                if matched_pats:
+                    results.append({{
+                        "title": "Role/permission logic detected in JavaScript source",
+                        "description": f"Found role-related patterns in {{js_url}}: {{', '.join(matched_pats)}}",
+                        "severity": "medium",
+                        "data": {{"js_url": js_url, "matched_patterns": matched_pats}},
+                    }})
+            except Exception:
+                pass
+    except Exception as js_err:
+        results.append({{
+            "title": "JS source scan error",
+            "description": str(js_err),
+            "severity": "info",
+            "data": {{"error": str(js_err)}},
+        }})
+
     client.close()
 
 except Exception as e:

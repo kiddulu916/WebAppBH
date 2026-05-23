@@ -85,3 +85,23 @@ def test_build_command_none_credentials_serialized(tool):
 def test_build_command_dict_credentials_serialized(tool):
     script = tool.build_command(FakeTarget(), credentials={"token": "tok123"})[2]
     assert 'credentials = {"token": "tok123"}' in script
+
+
+# ── Block 5: JS source scan ───────────────────────────────────────────────────
+
+def test_build_command_script_contains_js_scan(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert "script_srcs" in script
+    assert "js_role_patterns" in script
+    assert "isAdmin" in script
+    assert "ROLE_ADMIN" in script
+
+
+def test_build_command_js_scan_script_valid_python(tool):
+    script = tool.build_command(FakeTarget())[2]
+    compile(script, "<string>", "exec")
+
+
+def test_build_command_js_url_resolution_handles_absolute(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert "startswith" in script and "http" in script
