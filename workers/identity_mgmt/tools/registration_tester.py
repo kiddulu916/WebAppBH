@@ -89,6 +89,61 @@ def safe_request(method, url, client, max_retries=3, **kwargs):
     return None
 
 
+# ── Block 1: Endpoint Discovery & Protocol Check ─────────────────────────────
+
+reg_endpoints = []
+try:
+    reg_paths = [
+        "/register", "/signup", "/api/register", "/api/signup",
+        "/auth/register", "/auth/signup", "/api/v1/register", "/api/v1/signup",
+        "/user/register", "/user/signup", "/api/user/register",
+        "/account/create", "/api/account/create", "/join",
+    ]
+    client = make_client()
+    for path in reg_paths:
+        try:
+            url = base_url.rstrip("/") + path
+            resp = safe_request("GET", url, client)
+            if resp is None or resp.status_code != 200:
+                continue
+            reg_endpoints.append(path)
+
+            # Protocol enforcement
+            if base_url.startswith("https://"):
+                http_url = "http://" + base_url.split("://", 1)[1].rstrip("/") + path
+                try:
+                    with httpx.Client(follow_redirects=False, timeout=5, verify=False) as nr_c:
+                        nr_resp = nr_c.get(http_url)
+                        if nr_resp.status_code not in (301, 302, 307, 308):
+                            results.append({{
+                                "title": "Registration endpoint does not enforce HTTPS",
+                                "description": f"{{path}} served over HTTP without redirect (status {{nr_resp.status_code}})",
+                                "severity": "medium",
+                                "data": {{"endpoint": path, "http_status": nr_resp.status_code}},
+                            }})
+                except Exception:
+                    pass
+
+            # CSRF token check
+            csrf_patterns = [r"_token", r"csrf", r"__RequestVerificationToken", r"authenticity_token"]
+            if not any(re.search(p, resp.text, re.IGNORECASE) for p in csrf_patterns):
+                results.append({{
+                    "title": "Registration form missing CSRF token",
+                    "description": f"No CSRF token pattern detected on {{path}}",
+                    "severity": "medium",
+                    "data": {{"endpoint": path}},
+                }})
+        except Exception:
+            pass
+    client.close()
+except Exception as e:
+    results.append({{
+        "title": "Endpoint discovery error",
+        "description": str(e),
+        "severity": "info",
+        "data": {{"error": str(e)}},
+    }})
+
 print(json.dumps(results))
 '''
         return ["python3", "-c", script]

@@ -99,3 +99,26 @@ def test_build_command_has_jitter(tool):
 
 def test_build_command_evasion_script_valid_python(tool):
     compile(tool.build_command(FakeTarget())[2], "<string>", "exec")
+
+
+# ── Block 1: Endpoint discovery & protocol check ──────────────────────────────
+
+def test_build_command_has_reg_paths(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert "reg_paths" in script
+    assert "/register" in script and "/join" in script
+
+
+def test_build_command_has_csrf_check(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert "_token" in script and "csrf" in script.lower()
+
+
+def test_build_command_has_https_enforcement(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert "follow_redirects=False" in script
+    assert "301" in script or "302" in script
+
+
+def test_build_command_block1_valid_python(tool):
+    compile(tool.build_command(FakeTarget())[2], "<string>", "exec")
