@@ -229,6 +229,63 @@ try:
             "data": {{"error": str(js_err)}},
         }})
 
+    # Block 6: Cookie and header role fuzzing (OWASP obj 2 — attempt to change role)
+    try:
+        fuzz_endpoints = ["/profile", "/account", "/api/user", "/me", "/api/me"]
+        inject_cookies = {{"role": "admin", "isAdmin": "True", "user_type": "administrator", "is_superuser": "true"}}
+        inject_header_sets = [
+            {{"X-Role": "admin"}},
+            {{"X-User-Type": "admin"}},
+            {{"X-Is-Admin": "true"}},
+            {{"X-Forwarded-User": "admin"}},
+            {{"X-Override-Role": "administrator"}},
+        ]
+        for fuzz_ep in fuzz_endpoints:
+            try:
+                fuzz_url = base_url.rstrip("/") + fuzz_ep
+                baseline = client.get(fuzz_url, headers=auth_headers)
+                baseline_status = baseline.status_code
+                baseline_len = len(baseline.text)
+                try:
+                    cookie_resp = client.get(fuzz_url, headers=auth_headers, cookies=inject_cookies)
+                    status_drop = baseline_status >= 400 and cookie_resp.status_code < 300
+                    size_grew = baseline_len > 0 and len(cookie_resp.text) > baseline_len * 1.2
+                    if status_drop or size_grew:
+                        results.append({{
+                            "title": "Potential privilege escalation via cookie role injection",
+                            "description": f"Role cookie injection on {{fuzz_ep}}: {{baseline_status}} -> {{cookie_resp.status_code}}, delta {{len(cookie_resp.text) - baseline_len}}",
+                            "severity": "high",
+                            "data": {{"endpoint": fuzz_ep, "method": "cookie", "baseline_status": baseline_status, "modified_status": cookie_resp.status_code, "size_delta": len(cookie_resp.text) - baseline_len}},
+                        }})
+                except Exception:
+                    pass
+                for hdr_set in inject_header_sets:
+                    try:
+                        merged = {{**auth_headers, **hdr_set}}
+                        hdr_resp = client.get(fuzz_url, headers=merged)
+                        status_drop = baseline_status >= 400 and hdr_resp.status_code < 300
+                        size_grew = baseline_len > 0 and len(hdr_resp.text) > baseline_len * 1.2
+                        if status_drop or size_grew:
+                            hdr_name = list(hdr_set.keys())[0]
+                            results.append({{
+                                "title": "Potential privilege escalation via header role injection",
+                                "description": f"Header role injection ({{hdr_name}}) on {{fuzz_ep}}: {{baseline_status}} -> {{hdr_resp.status_code}}",
+                                "severity": "high",
+                                "data": {{"endpoint": fuzz_ep, "method": "header", "injected_header": hdr_name, "baseline_status": baseline_status, "modified_status": hdr_resp.status_code, "size_delta": len(hdr_resp.text) - baseline_len}},
+                            }})
+                            break
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    except Exception as fuzz_err:
+        results.append({{
+            "title": "Cookie/header fuzzing error",
+            "description": str(fuzz_err),
+            "severity": "info",
+            "data": {{"error": str(fuzz_err)}},
+        }})
+
     client.close()
 
 except Exception as e:

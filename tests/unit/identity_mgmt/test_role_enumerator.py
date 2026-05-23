@@ -105,3 +105,23 @@ def test_build_command_js_scan_script_valid_python(tool):
 def test_build_command_js_url_resolution_handles_absolute(tool):
     script = tool.build_command(FakeTarget())[2]
     assert "startswith" in script and "http" in script
+
+
+# ── Block 6: Cookie/header role fuzzing ───────────────────────────────────────
+
+def test_build_command_script_contains_cookie_fuzzing(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert "inject_cookies" in script
+    assert "inject_header_sets" in script
+    assert "X-Role" in script
+
+
+def test_build_command_cookie_fuzz_checks_status_drop(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert "baseline_status" in script
+    assert "status_drop" in script
+
+
+def test_build_command_cookie_fuzz_script_valid_python(tool):
+    script = tool.build_command(FakeTarget())[2]
+    compile(script, "<string>", "exec")
