@@ -49,7 +49,7 @@ try:
         if not value:
             continue
         product, version = extract_product_version(value)
-        if not product:
+        if not product or not version:
             continue
         detected.append({{"header": h, "raw_value": value, "product": product, "version": version}})
         results.append({{"vulnerability": {{
@@ -104,6 +104,7 @@ try:
                         "severity": severity,
                         "description": desc,
                         "location": base_url,
+                        "section_id": "WSTG-CONF-01",
                     }}}})
                 else:
                     results.append({{"vulnerability": {{
@@ -113,8 +114,9 @@ try:
                         "location": base_url,
                         "section_id": "WSTG-CONF-01",
                     }}}})
-        except Exception:
-            pass
+        except Exception as e:
+            import sys
+            print(f"[network_config_tester] probe failed: {{e}}", file=sys.stderr)
         time.sleep(0.6)
     nvd.close()
 
