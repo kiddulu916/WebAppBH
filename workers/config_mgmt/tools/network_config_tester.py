@@ -52,10 +52,15 @@ try:
         if not product:
             continue
         detected.append({{"header": h, "raw_value": value, "product": product, "version": version}})
-        results.append({{"observation": {{
-            "type": "server_banner",
-            "value": value,
-            "details": {{"header": h, "product": product, "version": version}},
+        results.append({{"vulnerability": {{
+            "name": f"Server software version disclosed: {{value}}",
+            "severity": "low",
+            "description": (
+                f"The server disclosed its software version in the {{h}} header: {{value}}. "
+                "Version disclosure enables targeted exploitation of known CVEs."
+            ),
+            "location": base_url,
+            "section_id": "WSTG-CONF-01",
         }}}})
     client.close()
 
@@ -101,21 +106,20 @@ try:
                         "location": base_url,
                     }}}})
                 else:
-                    results.append({{"observation": {{
-                        "type": "server_cve_low",
-                        "value": cve_id,
-                        "details": {{
-                            "product": item["product"], "version": item["version"],
-                            "base_score": base_score, "description": desc,
-                        }},
+                    results.append({{"vulnerability": {{
+                        "name": f"{{cve_id}}: {{item['product']}} {{item['version']}} (low CVSS {{base_score}})",
+                        "severity": "low",
+                        "description": desc,
+                        "location": base_url,
+                        "section_id": "WSTG-CONF-01",
                     }}}})
         except Exception:
             pass
         time.sleep(0.6)
     nvd.close()
 
-except Exception as e:
-    results.append({{"observation": {{"type": "test_error", "value": str(e), "details": {{"error": str(e)}}}}}})
+except Exception:
+    pass
 
 print(json.dumps(results))
 """

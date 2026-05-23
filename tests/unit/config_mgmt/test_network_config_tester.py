@@ -5,20 +5,26 @@ import pytest
 from workers.config_mgmt.tools.network_config_tester import NetworkConfigTester
 
 
-def test_parse_output_server_banner_observation():
+def test_parse_output_server_banner_is_low_vulnerability():
     tool = NetworkConfigTester()
     raw = json.dumps([{
-        "observation": {
-            "type": "server_banner",
-            "value": "Apache/2.4.49",
-            "details": {"header": "server", "product": "apache", "version": "2.4.49"},
+        "vulnerability": {
+            "name": "Server software version disclosed: Apache/2.4.49",
+            "severity": "low",
+            "description": (
+                "The server disclosed its software version in the server header: "
+                "Apache/2.4.49. Version disclosure enables targeted exploitation "
+                "of known CVEs."
+            ),
+            "location": "https://example.com",
+            "section_id": "WSTG-CONF-01",
         }
     }])
     results = tool.parse_output(raw)
     assert len(results) == 1
-    assert results[0]["observation"]["type"] == "server_banner"
-    assert results[0]["observation"]["details"]["product"] == "apache"
-    assert results[0]["observation"]["details"]["version"] == "2.4.49"
+    assert results[0]["vulnerability"]["severity"] == "low"
+    assert "Apache/2.4.49" in results[0]["vulnerability"]["name"]
+    assert results[0]["vulnerability"]["section_id"] == "WSTG-CONF-01"
 
 
 def test_parse_output_high_cvss_yields_vulnerability():
@@ -37,22 +43,21 @@ def test_parse_output_high_cvss_yields_vulnerability():
     assert "CVE-2021-41773" in results[0]["vulnerability"]["name"]
 
 
-def test_parse_output_low_cvss_yields_server_cve_low_observation():
+def test_parse_output_low_cvss_yields_low_vulnerability():
     tool = NetworkConfigTester()
     raw = json.dumps([{
-        "observation": {
-            "type": "server_cve_low",
-            "value": "CVE-2021-12345",
-            "details": {
-                "product": "apache", "version": "2.4.49",
-                "base_score": 5.3, "description": "Low risk issue",
-            },
+        "vulnerability": {
+            "name": "CVE-2021-12345: apache 2.4.49 (low CVSS 5.3)",
+            "severity": "low",
+            "description": "Low risk issue",
+            "location": "https://example.com",
+            "section_id": "WSTG-CONF-01",
         }
     }])
     results = tool.parse_output(raw)
     assert len(results) == 1
-    assert results[0]["observation"]["type"] == "server_cve_low"
-    assert results[0]["observation"]["details"]["base_score"] == 5.3
+    assert results[0]["vulnerability"]["severity"] == "low"
+    assert "CVE-2021-12345" in results[0]["vulnerability"]["name"]
 
 
 def test_parse_output_empty_stdout_returns_empty_list():
@@ -85,7 +90,7 @@ def test_build_command_script_contains_server_banner_emission():
     tool = NetworkConfigTester()
     target = type("T", (), {"target_value": "example.com"})()
     cmd = tool.build_command(target)
-    assert "server_banner" in cmd[2]
+    assert "Server software version disclosed" in cmd[2]
 
 
 def test_build_command_script_has_no_cors_logic():
