@@ -413,6 +413,66 @@ except Exception as e:
         "data": {{"error": str(e)}},
     }})
 
+# ── Block 6: Rate Limiting & Bot Protection ───────────────────────────────────
+
+try:
+    rate_limit_patterns = re.compile(r"(rate.?limit|too many|slow down|throttl)", re.IGNORECASE)
+    captcha_patterns = re.compile(r"(g-recaptcha|h-captcha|cf-turnstile|data-sitekey|hcaptcha)", re.IGNORECASE)
+
+    for ep in reg_endpoints:
+        url = base_url.rstrip("/") + ep
+        uid = random.randint(10000, 99999)
+        rate_limited = False
+
+        # CAPTCHA presence check
+        try:
+            c = make_client()
+            page_resp = safe_request("GET", url, c)
+            c.close()
+            if page_resp is not None and not captcha_patterns.search(page_resp.text):
+                results.append({{
+                    "title": "No bot protection detected on registration endpoint",
+                    "description": f"No CAPTCHA indicators found on {{ep}}",
+                    "severity": "low",
+                    "data": {{"endpoint": ep}},
+                }})
+        except Exception:
+            pass
+
+        # 15-attempt rate limit probe, fresh client per attempt
+        for i in range(15):
+            try:
+                c = make_client()
+                resp = safe_request("POST", url, c, json={{
+                    "username": f"ratelimit_{{uid}}_{{i}}",
+                    "email": f"ratelimit_{{uid}}_{{i}}@example.com",
+                    "password": "T3stP@ssw0rd!",
+                }})
+                c.close()
+                if resp is None:
+                    continue
+                if resp.status_code in (429, 503) or rate_limit_patterns.search(resp.text):
+                    rate_limited = True
+                    break
+            except Exception:
+                pass
+
+        if not rate_limited:
+            results.append({{
+                "title": "No rate limiting on registration endpoint",
+                "description": f"{{ep}} did not trigger rate limiting after 15 rapid registration attempts",
+                "severity": "medium",
+                "data": {{"endpoint": ep, "attempts_before_check": 15}},
+            }})
+
+except Exception as e:
+    results.append({{
+        "title": "Rate limiting test error",
+        "description": str(e),
+        "severity": "info",
+        "data": {{"error": str(e)}},
+    }})
+
 print(json.dumps(results))
 '''
         return ["python3", "-c", script]

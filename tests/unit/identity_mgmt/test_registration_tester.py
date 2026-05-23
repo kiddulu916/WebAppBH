@@ -205,3 +205,24 @@ def test_build_command_has_verify_keyword(tool):
 
 def test_build_command_block5_valid_python(tool):
     compile(tool.build_command(FakeTarget())[2], "<string>", "exec")
+
+
+# ── Block 6: Rate limiting & bot protection ────────────────────────────────────
+
+def test_build_command_has_15_attempt_loop(tool):
+    assert "range(15)" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_rate_limit_rotates_client(tool):
+    script = tool.build_command(FakeTarget())[2]
+    # make_client() appears multiple times (evasion + block 6 per-attempt)
+    assert script.count("make_client()") >= 2
+
+
+def test_build_command_has_captcha_patterns(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert "g-recaptcha" in script and "captcha_patterns" in script
+
+
+def test_build_command_block6_valid_python(tool):
+    compile(tool.build_command(FakeTarget())[2], "<string>", "exec")
