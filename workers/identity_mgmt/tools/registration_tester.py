@@ -237,6 +237,110 @@ except Exception as e:
         "data": {{"error": str(e)}},
     }})
 
+# ── Block 4: Duplicate Account & Enumeration ─────────────────────────────────
+
+try:
+    uid = random.randint(10000, 99999)
+    dup_email = f"dup_{{uid}}@example.com"
+    dup_username = f"dupuser_{{uid}}"
+    reveal_patterns = re.compile(
+        r"(already|exist|taken|registered|in use|duplicate)", re.IGNORECASE
+    )
+    t_dup = None
+
+    for ep in reg_endpoints:
+        url = base_url.rstrip("/") + ep
+
+        # Duplicate email
+        try:
+            c1 = make_client()
+            safe_request("POST", url, c1, json={{
+                "username": f"{{dup_username}}_a", "email": dup_email, "password": "T3stP@ssw0rd!",
+            }})
+            c1.close()
+            c2 = make_client()
+            t_start = time.monotonic()
+            resp2 = safe_request("POST", url, c2, json={{
+                "username": f"{{dup_username}}_b", "email": dup_email, "password": "T3stP@ssw0rd!",
+            }})
+            t_dup = time.monotonic() - t_start
+            c2.close()
+            if resp2 is not None:
+                if resp2.status_code in (200, 201):
+                    results.append({{
+                        "title": "Duplicate email registration accepted",
+                        "description": f"{{ep}} accepted second registration with same email (status {{resp2.status_code}})",
+                        "severity": "high",
+                        "data": {{"endpoint": ep, "duplicate_email": True, "response_status": resp2.status_code}},
+                    }})
+                elif reveal_patterns.search(resp2.text) and "email" in resp2.text.lower():
+                    results.append({{
+                        "title": "Email enumeration via registration rejection message",
+                        "description": f"{{ep}} rejection message reveals whether email is registered",
+                        "severity": "medium",
+                        "data": {{"endpoint": ep, "message_reveals_email": True}},
+                    }})
+        except Exception:
+            pass
+
+        # Duplicate username
+        try:
+            c3 = make_client()
+            safe_request("POST", url, c3, json={{
+                "username": dup_username, "email": f"novel_a_{{uid}}@example.com", "password": "T3stP@ssw0rd!",
+            }})
+            c3.close()
+            c4 = make_client()
+            resp4 = safe_request("POST", url, c4, json={{
+                "username": dup_username, "email": f"novel_b_{{uid}}@example.com", "password": "T3stP@ssw0rd!",
+            }})
+            c4.close()
+            if resp4 is not None:
+                if resp4.status_code in (200, 201):
+                    results.append({{
+                        "title": "Duplicate username registration accepted",
+                        "description": f"{{ep}} accepted second registration with same username (status {{resp4.status_code}})",
+                        "severity": "high",
+                        "data": {{"endpoint": ep, "duplicate_username": True, "response_status": resp4.status_code}},
+                    }})
+                elif reveal_patterns.search(resp4.text) and "username" in resp4.text.lower():
+                    results.append({{
+                        "title": "Username enumeration via registration rejection message",
+                        "description": f"{{ep}} rejection message reveals whether username is taken",
+                        "severity": "medium",
+                        "data": {{"endpoint": ep, "message_reveals_username": True}},
+                    }})
+        except Exception:
+            pass
+
+        # Timing-based enumeration
+        try:
+            if t_dup is not None:
+                c5 = make_client()
+                t_novel_start = time.monotonic()
+                safe_request("POST", url, c5, json={{
+                    "username": f"novel_timing_{{uid}}", "email": f"novel_timing_{{uid}}@example.com", "password": "T3stP@ssw0rd!",
+                }})
+                t_novel = time.monotonic() - t_novel_start
+                c5.close()
+                if abs(t_dup - t_novel) > 0.5:
+                    results.append({{
+                        "title": "Possible timing-based user enumeration at registration",
+                        "description": f"{{ep}} timing delta {{abs(t_dup - t_novel):.2f}}s between duplicate and novel registration",
+                        "severity": "low",
+                        "data": {{"endpoint": ep, "t_dup": round(t_dup, 3), "t_novel": round(t_novel, 3)}},
+                    }})
+        except Exception:
+            pass
+
+except Exception as e:
+    results.append({{
+        "title": "Duplicate account test error",
+        "description": str(e),
+        "severity": "info",
+        "data": {{"error": str(e)}},
+    }})
+
 print(json.dumps(results))
 '''
         return ["python3", "-c", script]

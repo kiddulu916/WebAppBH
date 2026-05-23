@@ -164,3 +164,22 @@ def test_build_command_weak_passwords_has_password(tool):
 
 def test_build_command_block3_valid_python(tool):
     compile(tool.build_command(FakeTarget())[2], "<string>", "exec")
+
+
+# ── Block 4: Duplicate account & enumeration ──────────────────────────────────
+
+def test_build_command_has_dup_email(tool):
+    assert "dup_email" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_has_reveal_patterns(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert "reveal_patterns" in script and "already" in script
+
+
+def test_build_command_has_timing_delta(tool):
+    assert "monotonic" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_block4_valid_python(tool):
+    compile(tool.build_command(FakeTarget())[2], "<string>", "exec")
