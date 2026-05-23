@@ -24,6 +24,7 @@ def test_static_xfo_allow_from_is_low():
     )
     assert xfo is not None
     assert xfo["vulnerability"]["severity"] == "low"
+    assert xfo["vulnerability"]["section_id"] == "WSTG-CONF-14"
     assert "deprecated" in xfo["vulnerability"]["name"].lower() or \
            "allow-from" in xfo["vulnerability"]["description"].lower()
 
@@ -71,6 +72,7 @@ def test_static_xcto_wrong_value_is_medium():
     )
     assert xcto is not None
     assert xcto["vulnerability"]["severity"] == "medium"
+    assert xcto["vulnerability"]["section_id"] == "WSTG-CONF-14"
 
 
 def test_static_xcto_empty_is_medium():
@@ -81,6 +83,7 @@ def test_static_xcto_empty_is_medium():
     )
     assert xcto is not None
     assert xcto["vulnerability"]["severity"] == "medium"
+    assert xcto["vulnerability"]["section_id"] == "WSTG-CONF-14"
 
 
 def test_static_missing_referrer_policy_is_info():
@@ -100,6 +103,7 @@ def test_static_referrer_policy_unsafe_url_is_medium():
     )
     assert rp is not None
     assert rp["vulnerability"]["severity"] == "medium"
+    assert rp["vulnerability"]["section_id"] == "WSTG-CONF-14"
 
 
 def test_static_referrer_policy_no_referrer_no_finding():
@@ -132,6 +136,7 @@ def test_static_permissions_policy_empty_is_low():
     )
     assert pp is not None
     assert pp["vulnerability"]["severity"] == "low"
+    assert pp["vulnerability"]["section_id"] == "WSTG-CONF-14"
 
 
 def test_static_permissions_policy_non_empty_no_finding():
@@ -164,6 +169,7 @@ def test_static_xpcdp_all_is_medium():
     )
     assert xpcdp is not None
     assert xpcdp["vulnerability"]["severity"] == "medium"
+    assert xpcdp["vulnerability"]["section_id"] == "WSTG-CONF-14"
 
 
 def test_static_xpcdp_master_only_is_medium():
@@ -174,6 +180,7 @@ def test_static_xpcdp_master_only_is_medium():
     )
     assert xpcdp is not None
     assert xpcdp["vulnerability"]["severity"] == "medium"
+    assert xpcdp["vulnerability"]["section_id"] == "WSTG-CONF-14"
 
 
 def test_static_xpcdp_none_no_finding():
