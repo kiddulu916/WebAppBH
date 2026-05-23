@@ -272,11 +272,13 @@ class HttpSecurityHeadersTester(ConfigMgmtTool):
                     if scope_manager.is_in_scope(f"https://{h}").in_scope
                 ]
                 p1_results = await asyncio.gather(
-                    *[self._probe_static(client, inner_sem, h) for h in p1_hosts],
+                    *[self._probe_static(client, inner_sem, h, log) for h in p1_hosts],
                     return_exceptions=True,
                 )
                 for r in p1_results:
-                    if isinstance(r, list):
+                    if isinstance(r, Exception):
+                        log.warning("static probe raised exception", extra={"error": str(r)})
+                    elif isinstance(r, list):
                         all_findings.extend(r)
 
                 p2_urls = await self._fetch_phase2_urls(target_id)
@@ -285,11 +287,13 @@ class HttpSecurityHeadersTester(ConfigMgmtTool):
                     if scope_manager.is_in_scope(u).in_scope
                 ]
                 p2_results = await asyncio.gather(
-                    *[self._probe_cors(client, inner_sem, u) for u in p2_urls],
+                    *[self._probe_cors(client, inner_sem, u, log) for u in p2_urls],
                     return_exceptions=True,
                 )
                 for r in p2_results:
-                    if isinstance(r, list):
+                    if isinstance(r, Exception):
+                        log.warning("CORS probe raised exception", extra={"error": str(r)})
+                    elif isinstance(r, list):
                         all_findings.extend(r)
 
             found = len(all_findings)
@@ -339,12 +343,13 @@ class HttpSecurityHeadersTester(ConfigMgmtTool):
         client: httpx.AsyncClient,
         sem: asyncio.Semaphore,
         host: str,
+        log,
     ) -> list[dict]:
         async with sem:
             try:
                 resp = await client.get(f"https://{host}/")
             except httpx.RequestError as exc:
-                logger.debug(f"Static probe failed for {host}: {exc}")
+                log.debug(f"Static probe failed for {host}: {exc}")
                 return []
         return _classify_static_headers(host, dict(resp.headers))
 
@@ -353,12 +358,13 @@ class HttpSecurityHeadersTester(ConfigMgmtTool):
         client: httpx.AsyncClient,
         sem: asyncio.Semaphore,
         url: str,
+        log,
     ) -> list[dict]:
         async with sem:
             try:
                 resp = await client.get(url, headers={"Origin": _CORS_PROBE_ORIGIN})
             except httpx.RequestError as exc:
-                logger.debug(f"CORS probe failed for {url}: {exc}")
+                log.debug(f"CORS probe failed for {url}: {exc}")
                 return []
         if resp.status_code != 200:
             return []
