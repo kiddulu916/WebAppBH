@@ -125,3 +125,29 @@ def test_build_command_cookie_fuzz_checks_status_drop(tool):
 def test_build_command_cookie_fuzz_script_valid_python(tool):
     script = tool.build_command(FakeTarget())[2]
     compile(script, "<string>", "exec")
+
+
+# ── Block 7: Well-known accounts and role switching ───────────────────────────
+
+def test_build_command_script_contains_wellknown_accounts(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert "known_creds" in script
+    assert "login_candidates" in script
+    assert '"admin", "admin"' in script or "('admin', 'admin')" in script
+
+
+def test_build_command_script_probes_login_endpoint(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert "/api/login" in script
+    assert "login_ep" in script
+
+
+def test_build_command_script_uses_serialized_credentials_for_role_switch(tool):
+    script = tool.build_command(FakeTarget(), credentials={"token": "xyz"})[2]
+    assert "switch_paths" in script
+    assert "xyz" in script
+
+
+def test_build_command_wellknown_script_valid_python(tool):
+    script = tool.build_command(FakeTarget(), credentials={"token": "abc"})[2]
+    compile(script, "<string>", "exec")

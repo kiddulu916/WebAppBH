@@ -286,6 +286,78 @@ try:
             "data": {{"error": str(fuzz_err)}},
         }})
 
+    # Block 7: Well-known accounts and role switching (OWASP obj 2 — switch/access another role)
+    try:
+        login_candidates = ["/login", "/api/login", "/signin", "/api/auth/login", "/api/v1/login"]
+        login_ep = None
+        for lep in login_candidates:
+            try:
+                probe = client.head(base_url.rstrip("/") + lep)
+                if probe.status_code != 404:
+                    login_ep = lep
+                    break
+            except Exception:
+                pass
+        if login_ep:
+            login_url = base_url.rstrip("/") + login_ep
+            known_creds = [
+                ("admin", "admin"), ("admin", "password"), ("admin", "123456"),
+                ("administrator", "administrator"), ("root", "root"), ("admin", "Admin1!"),
+            ]
+            for uname, pwd in known_creds:
+                for payload_type, post_kwargs in [
+                    ("json", {{"json": {{"username": uname, "password": pwd}}}}),
+                    ("form", {{"data": {{"username": uname, "password": pwd}}}}),
+                ]:
+                    try:
+                        resp = client.post(login_url, headers=auth_headers, **post_kwargs)
+                        if resp.status_code == 200:
+                            has_token = "set-cookie" in {{k.lower() for k in resp.headers}}
+                            if not has_token:
+                                try:
+                                    body = resp.json()
+                                    has_token = any(k in body for k in ("token", "access_token", "session", "user"))
+                                except Exception:
+                                    pass
+                            if has_token:
+                                results.append({{
+                                    "title": "Default/weak admin credentials accepted",
+                                    "description": f"Login {{uname}}:{{pwd}} at {{login_ep}} ({{payload_type}}) returned session indicator",
+                                    "severity": "high",
+                                    "data": {{"endpoint": login_ep, "username": uname, "format": payload_type, "response_status": resp.status_code}},
+                                }})
+                                break
+                    except Exception:
+                        pass
+        if credentials and (credentials.get("token") or credentials.get("cookie")):
+            cred_headers = {{**auth_headers}}
+            cred_cookies = {{}}
+            if credentials.get("token"):
+                cred_headers["Authorization"] = f"Bearer {{credentials['token']}}"
+            if credentials.get("cookie"):
+                cred_cookies["session"] = credentials["cookie"]
+            switch_paths = ["/admin", "/admin/dashboard", "/admin/users", "/admin/settings",
+                            "/administrator", "/manage", "/api/admin/users", "/api/admin/config"]
+            for sw_path in switch_paths:
+                try:
+                    sw_resp = client.get(base_url.rstrip("/") + sw_path, headers=cred_headers, cookies=cred_cookies)
+                    if sw_resp.status_code == 200:
+                        results.append({{
+                            "title": "Authenticated session reached admin endpoint",
+                            "description": f"Provided credentials accessed {{sw_path}} (HTTP 200)",
+                            "severity": "high",
+                            "data": {{"path": sw_path, "status_code": sw_resp.status_code}},
+                        }})
+                except Exception:
+                    pass
+    except Exception as acct_err:
+        results.append({{
+            "title": "Well-known account probe error",
+            "description": str(acct_err),
+            "severity": "info",
+            "data": {{"error": str(acct_err)}},
+        }})
+
     client.close()
 
 except Exception as e:
