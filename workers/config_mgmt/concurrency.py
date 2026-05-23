@@ -34,6 +34,7 @@ TOOL_WEIGHTS = {
     "admin_param_tamperer":       WeightClass.LIGHT,
     "csp_tester":                 WeightClass.LIGHT,
     "path_confusion_tester":      WeightClass.LIGHT,
+    "http_security_headers_tester": WeightClass.LIGHT,
 }
 
 
