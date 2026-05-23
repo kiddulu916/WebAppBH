@@ -42,21 +42,18 @@ def test_classify_hsts_missing_include_subdomains():
     assert any(v["vulnerability"]["severity"] == "low" for v in vulns)
 
 
-def test_classify_hsts_no_preload_is_observation_not_vuln():
+def test_classify_hsts_no_preload_is_info_vuln():
     results = _classify_hsts("example.com", "max-age=31536000; includeSubDomains")
     vulns = [r for r in results if "vulnerability" in r]
-    assert len(vulns) == 0
-    obs = [r for r in results if "observation" in r]
-    assert any(o["observation"]["value"] == "no_preload" for o in obs)
-    assert not any(o["observation"]["value"] == "compliant" for o in obs)
+    assert len(vulns) == 1
+    assert vulns[0]["vulnerability"]["severity"] == "info"
+    assert "preload" in vulns[0]["vulnerability"]["name"].lower()
+    assert not any("observation" in r for r in results)
 
 
-def test_classify_hsts_compliant():
+def test_classify_hsts_compliant_returns_empty():
     results = _classify_hsts("example.com", "max-age=31536000; includeSubDomains; preload")
-    vulns = [r for r in results if "vulnerability" in r]
-    assert len(vulns) == 0
-    obs = [r for r in results if "observation" in r]
-    assert any(o["observation"]["value"] == "compliant" for o in obs)
+    assert results == []
 
 
 def test_classify_hsts_section_id():
@@ -77,10 +74,9 @@ def test_classify_http_redirect_to_http_is_high():
     assert result["vulnerability"]["severity"] == "high"
 
 
-def test_classify_http_redirect_to_https_is_observation():
+def test_classify_http_redirect_to_https_returns_none():
     result = _classify_http_redirect("example.com", 301, "https://example.com/")
-    assert "observation" in result
-    assert result["observation"]["value"] == "to_https"
+    assert result is None
 
 
 def test_classify_http_redirect_section_id():
@@ -102,3 +98,11 @@ def test_hsts_on_http_absent_is_none():
 
 def test_section_id_constant():
     assert _SECTION_ID == "WSTG-CONF-07"
+
+
+def test_classify_http_redirect_non_redirect_is_info_vuln():
+    result = _classify_http_redirect("example.com", 404, None)
+    assert result is not None
+    assert "vulnerability" in result
+    assert result["vulnerability"]["severity"] == "info"
+    assert result["vulnerability"]["section_id"] == "WSTG-CONF-07"

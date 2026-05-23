@@ -41,7 +41,7 @@ def _parse_hsts_header(header: str) -> dict:
 
 
 def _classify_hsts(host: str, header: str) -> list[dict]:
-    """Return a list of vuln/observation dicts for the given HSTS header value."""
+    """Return a list of vuln dicts for the given HSTS header value."""
     if not header:
         return [{"vulnerability": {
             "name": f"Missing HSTS header on {host}",
@@ -56,10 +56,9 @@ def _classify_hsts(host: str, header: str) -> list[dict]:
 
     parsed = _parse_hsts_header(header)
     results: list[dict] = []
-    vulns: list[dict] = []
 
     if parsed["max_age"] < _MIN_MAX_AGE:
-        vulns.append({"vulnerability": {
+        results.append({"vulnerability": {
             "name": f"HSTS max-age too short on {host}",
             "severity": "low",
             "description": (
@@ -71,7 +70,7 @@ def _classify_hsts(host: str, header: str) -> list[dict]:
         }})
 
     if not parsed["include_subdomains"]:
-        vulns.append({"vulnerability": {
+        results.append({"vulnerability": {
             "name": f"HSTS missing includeSubDomains on {host}",
             "severity": "low",
             "description": (
@@ -82,31 +81,24 @@ def _classify_hsts(host: str, header: str) -> list[dict]:
             "section_id": _SECTION_ID,
         }})
 
-    results.extend(vulns)
-
     if not parsed["preload"]:
-        results.append({"observation": {
-            "type": "hsts_config",
-            "value": "no_preload",
-            "details": {
-                "host": host,
-                "header": header,
-                "note": "preload directive not set — site cannot be added to HSTS preload list",
-            },
+        results.append({"vulnerability": {
+            "name": f"HSTS preload not configured on {host}",
+            "severity": "info",
+            "description": (
+                f"The HSTS header on {host} lacks the preload directive, "
+                "preventing the site from being submitted to the HSTS preload list."
+            ),
+            "location": f"https://{host}/",
+            "section_id": _SECTION_ID,
         }})
 
-    if not vulns and parsed["preload"]:
-        results.append({"observation": {
-            "type": "hsts_config",
-            "value": "compliant",
-            "details": {"host": host, "header": header},
-        }})
-
+    # compliant (preload set, no issues) — positive state, log only, no DB insert
     return results
 
 
-def _classify_http_redirect(host: str, status: int, location: str | None) -> dict:
-    """Return a vuln or observation dict for an HTTP response's redirect behavior."""
+def _classify_http_redirect(host: str, status: int, location: str | None) -> dict | None:
+    """Return a vuln dict for HTTP redirect behaviour, or None for positive states."""
     if status == 200:
         return {"vulnerability": {
             "name": f"HTTP not redirected to HTTPS on {host}",
@@ -121,11 +113,7 @@ def _classify_http_redirect(host: str, status: int, location: str | None) -> dic
 
     if status in (301, 302, 303, 307, 308):
         if location and location.startswith("https://"):
-            return {"observation": {
-                "type": "http_redirect",
-                "value": "to_https",
-                "details": {"host": host, "status": status, "location": location},
-            }}
+            return None  # positive confirmation — log only
         return {"vulnerability": {
             "name": f"HTTP redirects to non-HTTPS URL on {host}",
             "severity": "high",
@@ -136,10 +124,15 @@ def _classify_http_redirect(host: str, status: int, location: str | None) -> dic
             "section_id": _SECTION_ID,
         }}
 
-    return {"observation": {
-        "type": "http_redirect",
-        "value": "non_redirect",
-        "details": {"host": host, "status": status},
+    return {"vulnerability": {
+        "name": f"HTTP endpoint returns {status} instead of redirecting to HTTPS on {host}",
+        "severity": "info",
+        "description": (
+            f"The HTTP version of {host} returns {status} without redirecting to HTTPS. "
+            "HTTP traffic may not be automatically upgraded to HTTPS."
+        ),
+        "location": f"http://{host}/",
+        "section_id": _SECTION_ID,
     }}
 
 
@@ -193,7 +186,9 @@ async def _probe_http(
         try:
             resp = await client.get(f"http://{host}/")
             location = resp.headers.get("location")
-            results.append(_classify_http_redirect(host, resp.status_code, location))
+            redirect_finding = _classify_http_redirect(host, resp.status_code, location)
+            if redirect_finding is not None:
+                results.append(redirect_finding)
             hsts_finding = _hsts_on_http(
                 host, resp.headers.get("strict-transport-security", "")
             )
