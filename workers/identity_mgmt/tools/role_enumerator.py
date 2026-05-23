@@ -1,4 +1,4 @@
-"""Role enumeration testing tool (WSTG-IDENT-001)."""
+"""Role enumeration testing tool (WSTG-IDNT-01)."""
 
 from workers.identity_mgmt.base_tool import IdentityMgmtTool
 from workers.identity_mgmt.concurrency import WeightClass
@@ -14,6 +14,9 @@ class RoleEnumerator(IdentityMgmtTool):
         target_url = getattr(target, 'target_value', str(target))
         base_url = target_url if target_url.startswith(('http://', 'https://')) else f"https://{target_url}"
 
+        import json as _json
+        credentials_repr = _json.dumps(credentials) if credentials is not None else "None"
+
         script = f'''
 import httpx
 import json
@@ -26,9 +29,10 @@ base_url = "{base_url}"
 try:
     client = httpx.Client(follow_redirects=True, timeout=10, verify=False)
 
+    credentials = {credentials_repr}
     auth_headers = {{}}
     if credentials and credentials.get("token"):
-        auth_headers["Authorization"] = f"Bearer {{credentials.get('token')}}"
+        auth_headers["Authorization"] = f"Bearer {{credentials['token']}}"
 
     role_endpoints = [
         "/register", "/signup", "/profile", "/account",
