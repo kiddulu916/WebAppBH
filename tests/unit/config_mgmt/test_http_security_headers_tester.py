@@ -224,6 +224,7 @@ def test_cors_wildcard_with_credentials_true_is_high():
     results = _classify_cors("https://example.com/api", headers)
     assert len(results) == 1
     assert results[0]["vulnerability"]["severity"] == "high"
+    assert results[0]["vulnerability"]["section_id"] == "WSTG-CONF-14"
 
 
 def test_cors_wildcard_with_credentials_false_is_medium():
@@ -234,6 +235,7 @@ def test_cors_wildcard_with_credentials_false_is_medium():
     results = _classify_cors("https://example.com/api", headers)
     assert len(results) == 1
     assert results[0]["vulnerability"]["severity"] == "medium"
+    assert results[0]["vulnerability"]["section_id"] == "WSTG-CONF-14"
 
 
 def test_cors_specific_origin_no_finding():
