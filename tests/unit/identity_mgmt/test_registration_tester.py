@@ -122,3 +122,26 @@ def test_build_command_has_https_enforcement(tool):
 
 def test_build_command_block1_valid_python(tool):
     compile(tool.build_command(FakeTarget())[2], "<string>", "exec")
+
+
+# ── Block 2: Privilege escalation ────────────────────────────────────────────
+
+def test_build_command_has_role_admin(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert '"role"' in script and '"admin"' in script
+
+
+def test_build_command_has_is_admin(tool):
+    assert "is_admin" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_has_account_type(tool):
+    assert "account_type" in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_has_permissions(tool):
+    assert '"permissions"' in tool.build_command(FakeTarget())[2]
+
+
+def test_build_command_block2_valid_python(tool):
+    compile(tool.build_command(FakeTarget())[2], "<string>", "exec")

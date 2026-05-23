@@ -144,6 +144,58 @@ except Exception as e:
         "data": {{"error": str(e)}},
     }})
 
+# ── Block 2: Privilege Escalation via Registration Parameters ────────────────
+
+try:
+    uid = random.randint(10000, 99999)
+    priv_payloads = [
+        {{"role": "admin", "username": f"priv_role_{{uid}}", "email": f"priv_role_{{uid}}@example.com", "password": "T3stP@ssw0rd!"}},
+        {{"is_admin": True, "username": f"priv_isadmin_{{uid}}", "email": f"priv_isadmin_{{uid}}@example.com", "password": "T3stP@ssw0rd!"}},
+        {{"account_type": "admin", "username": f"priv_acct_{{uid}}", "email": f"priv_acct_{{uid}}@example.com", "password": "T3stP@ssw0rd!"}},
+        {{"user_type": "administrator", "username": f"priv_utype_{{uid}}", "email": f"priv_utype_{{uid}}@example.com", "password": "T3stP@ssw0rd!"}},
+        {{"admin": 1, "username": f"priv_admin1_{{uid}}", "email": f"priv_admin1_{{uid}}@example.com", "password": "T3stP@ssw0rd!"}},
+        {{"permissions": ["admin"], "username": f"priv_perm_{{uid}}", "email": f"priv_perm_{{uid}}@example.com", "password": "T3stP@ssw0rd!"}},
+    ]
+    inj_keys = ["role", "is_admin", "account_type", "user_type", "admin", "permissions"]
+
+    for ep in reg_endpoints:
+        url = base_url.rstrip("/") + ep
+        for payload, inj_key in zip(priv_payloads, inj_keys):
+            try:
+                c = make_client()
+                resp = safe_request("POST", url, c, json=payload)
+                c.close()
+                if resp is None:
+                    continue
+                if resp.status_code in (200, 201):
+                    results.append({{
+                        "title": "Privilege escalation parameter accepted at registration",
+                        "description": f"POST to {{ep}} with {{inj_key}}=<elevated> returned {{resp.status_code}}",
+                        "severity": "high",
+                        "data": {{"endpoint": ep, "injected_field": inj_key, "response_status": resp.status_code}},
+                    }})
+                else:
+                    try:
+                        body = resp.json()
+                        if isinstance(body, dict) and body.get(inj_key) == payload[inj_key]:
+                            results.append({{
+                                "title": "Registration response reflects elevated role parameter",
+                                "description": f"Response JSON contains {{inj_key}} with elevated value after POST to {{ep}}",
+                                "severity": "high",
+                                "data": {{"endpoint": ep, "injected_field": inj_key, "reflected_value": str(payload[inj_key])}},
+                            }})
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+except Exception as e:
+    results.append({{
+        "title": "Privilege escalation test error",
+        "description": str(e),
+        "severity": "info",
+        "data": {{"error": str(e)}},
+    }})
+
 print(json.dumps(results))
 '''
         return ["python3", "-c", script]
