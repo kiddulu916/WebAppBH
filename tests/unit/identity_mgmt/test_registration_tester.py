@@ -215,8 +215,15 @@ def test_build_command_has_15_attempt_loop(tool):
 
 def test_build_command_rate_limit_rotates_client(tool):
     script = tool.build_command(FakeTarget())[2]
-    # make_client() appears multiple times (evasion + block 6 per-attempt)
-    assert script.count("make_client()") >= 2
+    # Block 6 adds 2 source-text calls (CAPTCHA GET + 1 inside range(15) body)
+    assert script.count("make_client()") >= 14
+
+
+def test_build_command_has_rate_limit_patterns(tool):
+    script = tool.build_command(FakeTarget())[2]
+    assert "rate_limit_patterns" in script
+    assert "too many" in script
+    assert "slow down" in script
 
 
 def test_build_command_has_captcha_patterns(tool):
