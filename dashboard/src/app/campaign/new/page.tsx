@@ -111,7 +111,8 @@ export default function CampaignCreatorPage() {
         description: description || undefined,
         scope_config: scopeConfig,
         rate_limit: rateLimit,
-        has_credentials: !!credentialConfig,
+        tester_credentials: credentialConfig.tester,
+        testing_user: credentialConfig.testing_user,
       });
       toast.success("Campaign created");
       router.push(`/campaign/${data.id}/overview`);

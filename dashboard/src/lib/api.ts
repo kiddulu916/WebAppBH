@@ -769,7 +769,14 @@ export const api = {
     return request<import("@/types/schema").Campaign>(`/api/v1/campaigns/${id}`);
   },
 
-  createCampaign(data: { name: string; description?: string; scope_config?: unknown; rate_limit?: number; has_credentials?: boolean }) {
+  createCampaign(data: {
+    name: string;
+    description?: string;
+    scope_config?: unknown;
+    rate_limit?: number;
+    tester_credentials?: import("@/types/schema").CredentialConfig["tester"];
+    testing_user?: import("@/types/schema").CredentialConfig["testing_user"];
+  }) {
     return request<{ id: number; name: string; status: string }>("/api/v1/campaigns", {
       method: "POST",
       body: JSON.stringify(data),
