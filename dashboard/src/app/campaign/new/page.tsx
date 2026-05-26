@@ -16,41 +16,38 @@ export default function CampaignCreatorPage() {
   const [outOfScope, setOutOfScope] = useState<string[]>([""]);
   const [rateLimit, setRateLimit] = useState(50);
 
-  // Tester credentials
-  const [hasTesterCreds, setHasTesterCreds] = useState(false);
-  const [testerUsername, setTesterUsername] = useState("");
-  const [testerPassword, setTesterPassword] = useState("");
-  const [testerAuthType, setTesterAuthType] = useState<"form" | "basic" | "bearer" | "oauth">("form");
-  const [testerLoginUrl, setTesterLoginUrl] = useState("");
+  // Account 1 — Attacker/Tester
+  const [hasAccount1, setHasAccount1] = useState(false);
+  const [acct1Username, setAcct1Username] = useState("");
+  const [acct1Password, setAcct1Password] = useState("");
+  const [acct1AuthType, setAcct1AuthType] = useState<"form" | "basic" | "bearer" | "oauth">("form");
+  const [acct1LoginUrl, setAcct1LoginUrl] = useState("");
 
-  // Testing user
-  const [hasTestingUser, setHasTestingUser] = useState(false);
-  const [testingUsername, setTestingUsername] = useState("");
-  const [testingEmail, setTestingEmail] = useState("");
-  const [testingProfileUrl, setTestingProfileUrl] = useState("");
+  // Account 2 — Target User
+  const [hasAccount2, setHasAccount2] = useState(false);
+  const [acct2Username, setAcct2Username] = useState("");
+  const [acct2Email, setAcct2Email] = useState("");
+  const [acct2Password, setAcct2Password] = useState("");
+  const [acct2AuthType, setAcct2AuthType] = useState<"form" | "basic" | "bearer" | "oauth">("form");
+  const [acct2LoginUrl, setAcct2LoginUrl] = useState("");
+  const [acct2ProfileUrl, setAcct2ProfileUrl] = useState("");
 
   const addSeedTarget = () => setSeedTargets([...seedTargets, ""]);
   const removeSeedTarget = (i: number) => setSeedTargets(seedTargets.filter((_, idx) => idx !== i));
   const updateSeedTarget = (i: number, val: string) => {
-    const next = [...seedTargets];
-    next[i] = val;
-    setSeedTargets(next);
+    const next = [...seedTargets]; next[i] = val; setSeedTargets(next);
   };
 
   const addInScope = () => setInScope([...inScope, ""]);
   const removeInScope = (i: number) => setInScope(inScope.filter((_, idx) => idx !== i));
   const updateInScope = (i: number, val: string) => {
-    const next = [...inScope];
-    next[i] = val;
-    setInScope(next);
+    const next = [...inScope]; next[i] = val; setInScope(next);
   };
 
   const addOutOfScope = () => setOutOfScope([...outOfScope, ""]);
   const removeOutOfScope = (i: number) => setOutOfScope(outOfScope.filter((_, idx) => idx !== i));
   const updateOutOfScope = (i: number, val: string) => {
-    const next = [...outOfScope];
-    next[i] = val;
-    setOutOfScope(next);
+    const next = [...outOfScope]; next[i] = val; setOutOfScope(next);
   };
 
   const validate = (): string | null => {
@@ -58,7 +55,6 @@ export default function CampaignCreatorPage() {
     if (seeds.length === 0) return "At least one seed target is required";
     const ins = inScope.filter((s) => s.trim());
     if (ins.length === 0) return "At least one in-scope pattern is required";
-    if (hasTesterCreds && !hasTestingUser) return "If tester credentials provided, testing user is required";
     if (rateLimit < 1 || rateLimit > 200) return "Rate limit must be between 1 and 200";
     return null;
   };
@@ -66,10 +62,7 @@ export default function CampaignCreatorPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const err = validate();
-    if (err) {
-      toast.error(err);
-      return;
-    }
+    if (err) { toast.error(err); return; }
 
     setLoading(true);
 
@@ -78,32 +71,20 @@ export default function CampaignCreatorPage() {
       out_of_scope: outOfScope.filter((s) => s.trim()),
     };
 
-    const credentialConfig: CredentialConfig = {
-      tester: hasTesterCreds
-        ? {
-            username: testerUsername,
-            password: testerPassword,
-            auth_type: testerAuthType,
-            login_url: testerLoginUrl || undefined,
-          }
-        : null,
-      testing_user: hasTestingUser
-        ? {
-            username: testingUsername,
-            email: testingEmail,
-            profile_url: testingProfileUrl || undefined,
-          }
-        : null,
-    };
+    const testerCredentials: CredentialConfig["tester"] = hasAccount1
+      ? { username: acct1Username, password: acct1Password, auth_type: acct1AuthType, login_url: acct1LoginUrl || undefined }
+      : null;
 
-    const payload = {
-      name,
-      description: description || null,
-      seed_targets: seedTargets.filter((s) => s.trim()),
-      scope_config: scopeConfig,
-      credentials: credentialConfig,
-      rate_limit: rateLimit,
-    };
+    const testingUser: CredentialConfig["testing_user"] = hasAccount2
+      ? {
+          username: acct2Username,
+          email: acct2Email,
+          password: acct2Password || undefined,
+          auth_type: acct2AuthType,
+          login_url: acct2LoginUrl || undefined,
+          profile_url: acct2ProfileUrl || undefined,
+        }
+      : null;
 
     try {
       const data = await api.createCampaign({
@@ -111,8 +92,8 @@ export default function CampaignCreatorPage() {
         description: description || undefined,
         scope_config: scopeConfig,
         rate_limit: rateLimit,
-        tester_credentials: credentialConfig.tester,
-        testing_user: credentialConfig.testing_user,
+        tester_credentials: testerCredentials,
+        testing_user: testingUser,
       });
       toast.success("Campaign created");
       router.push(`/campaign/${data.id}/overview`);
@@ -122,6 +103,8 @@ export default function CampaignCreatorPage() {
       setLoading(false);
     }
   };
+
+  const showWarning = hasAccount1 && !hasAccount2;
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
@@ -139,10 +122,7 @@ export default function CampaignCreatorPage() {
           <div>
             <label className="block text-sm font-medium text-text-secondary">Name</label>
             <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
+              type="text" value={name} onChange={(e) => setName(e.target.value)} required
               className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
               placeholder="My Bug Bounty Campaign"
             />
@@ -150,9 +130,7 @@ export default function CampaignCreatorPage() {
           <div>
             <label className="block text-sm font-medium text-text-secondary">Description</label>
             <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
+              value={description} onChange={(e) => setDescription(e.target.value)} rows={3}
               className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
               placeholder="Optional description"
             />
@@ -165,30 +143,16 @@ export default function CampaignCreatorPage() {
           {seedTargets.map((t, i) => (
             <div key={i} className="flex gap-2">
               <input
-                type="text"
-                value={t}
-                onChange={(e) => updateSeedTarget(i, e.target.value)}
+                type="text" value={t} onChange={(e) => updateSeedTarget(i, e.target.value)}
                 className="flex-1 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                 placeholder="example.com"
               />
               {seedTargets.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeSeedTarget(i)}
-                  className="px-3 py-2 text-sm text-danger hover:text-danger/80"
-                >
-                  Remove
-                </button>
+                <button type="button" onClick={() => removeSeedTarget(i)} className="px-3 py-2 text-sm text-danger hover:text-danger/80">Remove</button>
               )}
             </div>
           ))}
-          <button
-            type="button"
-            onClick={addSeedTarget}
-            className="text-sm text-accent hover:underline"
-          >
-            + Add seed target
-          </button>
+          <button type="button" onClick={addSeedTarget} className="text-sm text-accent hover:underline">+ Add seed target</button>
         </section>
 
         {/* Scope config */}
@@ -199,101 +163,57 @@ export default function CampaignCreatorPage() {
             {inScope.map((s, i) => (
               <div key={i} className="flex gap-2 mt-1">
                 <input
-                  type="text"
-                  value={s}
-                  onChange={(e) => updateInScope(i, e.target.value)}
+                  type="text" value={s} onChange={(e) => updateInScope(i, e.target.value)}
                   className="flex-1 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                   placeholder="*.example.com"
                 />
                 {inScope.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeInScope(i)}
-                    className="px-3 py-2 text-sm text-danger hover:text-danger/80"
-                  >
-                    Remove
-                  </button>
+                  <button type="button" onClick={() => removeInScope(i)} className="px-3 py-2 text-sm text-danger hover:text-danger/80">Remove</button>
                 )}
               </div>
             ))}
-            <button
-              type="button"
-              onClick={addInScope}
-              className="text-sm text-accent hover:underline mt-2"
-            >
-              + Add in-scope pattern
-            </button>
+            <button type="button" onClick={addInScope} className="text-sm text-accent hover:underline mt-2">+ Add in-scope pattern</button>
           </div>
           <div>
             <label className="block text-sm font-medium text-text-secondary">Out-of-Scope Patterns</label>
             {outOfScope.map((s, i) => (
               <div key={i} className="flex gap-2 mt-1">
                 <input
-                  type="text"
-                  value={s}
-                  onChange={(e) => updateOutOfScope(i, e.target.value)}
+                  type="text" value={s} onChange={(e) => updateOutOfScope(i, e.target.value)}
                   className="flex-1 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                   placeholder="admin.example.com"
                 />
                 {outOfScope.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeOutOfScope(i)}
-                    className="px-3 py-2 text-sm text-danger hover:text-danger/80"
-                  >
-                    Remove
-                  </button>
+                  <button type="button" onClick={() => removeOutOfScope(i)} className="px-3 py-2 text-sm text-danger hover:text-danger/80">Remove</button>
                 )}
               </div>
             ))}
-            <button
-              type="button"
-              onClick={addOutOfScope}
-              className="text-sm text-accent hover:underline mt-2"
-            >
-              + Add out-of-scope pattern
-            </button>
+            <button type="button" onClick={addOutOfScope} className="text-sm text-accent hover:underline mt-2">+ Add out-of-scope pattern</button>
           </div>
         </section>
 
-        {/* Tester credentials */}
+        {/* Account 1 — Attacker/Tester */}
         <section className="space-y-4 rounded-lg border border-border p-4">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-text-primary">Tester Credentials</h2>
-            <input
-              type="checkbox"
-              checked={hasTesterCreds}
-              onChange={(e) => setHasTesterCreds(e.target.checked)}
-              className="rounded border-border"
-            />
+            <input type="checkbox" checked={hasAccount1} onChange={(e) => setHasAccount1(e.target.checked)} className="rounded border-border" />
+            <h2 className="text-lg font-semibold text-text-primary">Account 1 — Attacker/Tester</h2>
           </div>
-          {hasTesterCreds && (
+          {hasAccount1 && (
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-text-secondary">Username</label>
-                <input
-                  type="text"
-                  value={testerUsername}
-                  onChange={(e) => setTesterUsername(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
-                />
+                <label className="block text-sm font-medium text-text-secondary">Username / Email</label>
+                <input type="text" value={acct1Username} onChange={(e) => setAcct1Username(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-text-secondary">Password</label>
-                <input
-                  type="password"
-                  value={testerPassword}
-                  onChange={(e) => setTesterPassword(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
-                />
+                <input type="password" value={acct1Password} onChange={(e) => setAcct1Password(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-text-secondary">Auth Type</label>
-                <select
-                  value={testerAuthType}
-                  onChange={(e) => setTesterAuthType(e.target.value as "form" | "basic" | "bearer" | "oauth")}
-                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
-                >
+                <select value={acct1AuthType} onChange={(e) => setAcct1AuthType(e.target.value as "form" | "basic" | "bearer" | "oauth")}
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus">
                   <option value="form">Form</option>
                   <option value="basic">Basic</option>
                   <option value="bearer">Bearer</option>
@@ -302,58 +222,67 @@ export default function CampaignCreatorPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-text-secondary">Login URL</label>
-                <input
-                  type="text"
-                  value={testerLoginUrl}
-                  onChange={(e) => setTesterLoginUrl(e.target.value)}
+                <input type="text" value={acct1LoginUrl} onChange={(e) => setAcct1LoginUrl(e.target.value)}
                   className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
-                  placeholder="https://example.com/login"
-                />
+                  placeholder="https://example.com/login" />
               </div>
             </div>
           )}
         </section>
 
-        {/* Testing user */}
+        {/* Warning banner — shown when Account 1 is enabled but Account 2 is not */}
+        {showWarning && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
+            <strong>Two accounts required for IDOR tests.</strong> WSTG-IDNT-03 and authorization tests
+            (WSTG-AUTHZ) require both Account 1 and Account 2 to run de-provisioning and IDOR checks.
+            If Account 2 is not provided, those tests will be skipped and recorded as informational findings.
+          </div>
+        )}
+
+        {/* Account 2 — Target User */}
         <section className="space-y-4 rounded-lg border border-border p-4">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-text-primary">Testing User</h2>
-            <input
-              type="checkbox"
-              checked={hasTestingUser}
-              onChange={(e) => setHasTestingUser(e.target.checked)}
-              className="rounded border-border"
-            />
+            <input type="checkbox" checked={hasAccount2} onChange={(e) => setHasAccount2(e.target.checked)} className="rounded border-border" />
+            <h2 className="text-lg font-semibold text-text-primary">Account 2 — Target User</h2>
           </div>
-          {hasTestingUser && (
+          {hasAccount2 && (
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-text-secondary">Username</label>
-                <input
-                  type="text"
-                  value={testingUsername}
-                  onChange={(e) => setTestingUsername(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
-                />
+                <label className="block text-sm font-medium text-text-secondary">Username / Email</label>
+                <input type="text" value={acct2Username} onChange={(e) => setAcct2Username(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-text-secondary">Email</label>
-                <input
-                  type="email"
-                  value={testingEmail}
-                  onChange={(e) => setTestingEmail(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
-                />
+                <input type="email" value={acct2Email} onChange={(e) => setAcct2Email(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-text-secondary">Profile URL</label>
-                <input
-                  type="text"
-                  value={testingProfileUrl}
-                  onChange={(e) => setTestingProfileUrl(e.target.value)}
+                <label className="block text-sm font-medium text-text-secondary">Password</label>
+                <input type="password" value={acct2Password} onChange={(e) => setAcct2Password(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-secondary">Auth Type</label>
+                <select value={acct2AuthType} onChange={(e) => setAcct2AuthType(e.target.value as "form" | "basic" | "bearer" | "oauth")}
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus">
+                  <option value="form">Form</option>
+                  <option value="basic">Basic</option>
+                  <option value="bearer">Bearer</option>
+                  <option value="oauth">OAuth</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-secondary">Login URL</label>
+                <input type="text" value={acct2LoginUrl} onChange={(e) => setAcct2LoginUrl(e.target.value)}
                   className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
-                  placeholder="https://example.com/profile"
-                />
+                  placeholder="https://example.com/login" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-secondary">Profile URL (optional)</label>
+                <input type="text" value={acct2ProfileUrl} onChange={(e) => setAcct2ProfileUrl(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
+                  placeholder="https://example.com/users/victim" />
               </div>
             </div>
           )}
@@ -362,22 +291,13 @@ export default function CampaignCreatorPage() {
         {/* Rate limit */}
         <section className="space-y-4 rounded-lg border border-border p-4">
           <h2 className="text-lg font-semibold text-text-primary">Rate Limit</h2>
-          <input
-            type="number"
-            value={rateLimit}
-            onChange={(e) => setRateLimit(Number(e.target.value))}
-            min={1}
-            max={200}
-            className="w-32 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
-          />
-          <p className="text-xs text-text-secondary">Requests per second (1-200, default 50)</p>
+          <input type="number" value={rateLimit} onChange={(e) => setRateLimit(Number(e.target.value))}
+            min={1} max={200}
+            className="w-32 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus" />
+          <p className="text-xs text-text-secondary">Requests per second (1–200, default 50)</p>
         </section>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-md btn-launch px-4 py-2 text-sm disabled:opacity-50"
-        >
+        <button type="submit" disabled={loading} className="w-full rounded-md btn-launch px-4 py-2 text-sm disabled:opacity-50">
           {loading ? "Creating..." : "Create Campaign"}
         </button>
       </form>
