@@ -1,4 +1,8 @@
 # orchestrator/routes/campaigns.py
+import json
+import os
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from lib_webbh.database import get_session, Campaign, Target
@@ -14,6 +18,21 @@ class CampaignCreate(BaseModel):
     tester_credentials: dict | None = None
     testing_user: dict | None = None
     rate_limit: int = 50
+
+
+def _write_credentials(
+    target_id: int,
+    tester: dict | None,
+    testing_user: dict | None,
+    base_dir: str = "shared/config",
+) -> None:
+    if not tester and not testing_user:
+        return
+    config_dir = Path(f"{base_dir}/{target_id}")
+    config_dir.mkdir(parents=True, exist_ok=True)
+    creds_path = config_dir / "credentials.json"
+    creds_path.write_text(json.dumps({"tester": tester, "testing_user": testing_user}))
+    os.chmod(creds_path, 0o600)
 
 
 @router.post("", status_code=201)
@@ -42,6 +61,15 @@ async def create_campaign(body: CampaignCreate):
 
             await session.commit()
             await session.refresh(campaign)
+
+            # Write credentials for each target after commit so IDs are assigned
+            from sqlalchemy import select
+            result = await session.execute(
+                select(Target).where(Target.campaign_id == campaign.id)
+            )
+            for tgt in result.scalars().all():
+                _write_credentials(tgt.id, body.tester_credentials, body.testing_user)
+
         except Exception:
             await session.rollback()
             raise
