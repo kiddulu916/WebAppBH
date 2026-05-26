@@ -409,6 +409,9 @@ export interface CredentialConfig {
   testing_user: {
     username: string;
     email: string;
+    password?: string;
+    auth_type?: "form" | "basic" | "bearer" | "oauth";
+    login_url?: string;
     profile_url?: string;
   } | null;
 }
