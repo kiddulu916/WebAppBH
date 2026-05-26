@@ -76,6 +76,13 @@ class InfrastructureMixin:
             return creds["tester"]
         return None
 
+    async def get_testing_user_credentials(self, target_id: int) -> Optional[dict]:
+        """Get the Target User credentials for two-account IDOR testing."""
+        creds = self._load_credentials(target_id)
+        if creds and "testing_user" in creds:
+            return creds["testing_user"]
+        return None
+
     def get_target_user(self, target_id: int) -> Optional[dict]:
         """Get the Testing User identifiers (no password)."""
         creds = self._load_credentials(target_id)
