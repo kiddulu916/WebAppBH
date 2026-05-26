@@ -1,6 +1,6 @@
 """Unit tests for AccountProvisionTester (WSTG-IDNT-03)."""
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -101,8 +101,6 @@ async def test_execute_enriches_credentials_with_testing_user(tester):
          patch("workers.identity_mgmt.tools.account_provision_tester.push_task", new=AsyncMock()), \
          patch("workers.identity_mgmt.base_tool.push_task", new=AsyncMock()), \
          patch("workers.identity_mgmt.base_tool.get_session") as mock_base_session:
-
-        from unittest.mock import MagicMock
 
         # Build a session mock where execute() returns an object with scalar_one_or_none() -> None
         mock_result = MagicMock()

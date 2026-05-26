@@ -46,6 +46,16 @@ class AccountProvisionTester(IdentityMgmtTool):
         testing_user_auth_type = testing_user_creds.get("auth_type", "form")
         testing_user_login_url = testing_user_creds.get("login_url", "")
 
+        tester_username_s = json.dumps(tester_username)
+        tester_password_s = json.dumps(tester_password)
+        tester_auth_type_s = json.dumps(tester_auth_type)
+        tester_login_url_s = json.dumps(tester_login_url)
+        testing_user_username_s = json.dumps(testing_user_username)
+        testing_user_email_s = json.dumps(testing_user_email)
+        testing_user_password_s = json.dumps(testing_user_password)
+        testing_user_auth_type_s = json.dumps(testing_user_auth_type)
+        testing_user_login_url_s = json.dumps(testing_user_login_url)
+
         script = f'''
 import httpx
 import json
@@ -57,15 +67,15 @@ results = []
 base_url = "{base_url}"
 
 # ── Injected credentials ───────────────────────────────────────────────────────────────────────────────
-tester_username = "{tester_username}"
-tester_password = "{tester_password}"
-tester_auth_type = "{tester_auth_type}"
-tester_login_url = "{tester_login_url}"
-testing_user_username = "{testing_user_username}"
-testing_user_email = "{testing_user_email}"
-testing_user_password = "{testing_user_password}"
-testing_user_auth_type = "{testing_user_auth_type}"
-testing_user_login_url = "{testing_user_login_url}"
+tester_username = {tester_username_s}
+tester_password = {tester_password_s}
+tester_auth_type = {tester_auth_type_s}
+tester_login_url = {tester_login_url_s}
+testing_user_username = {testing_user_username_s}
+testing_user_email = {testing_user_email_s}
+testing_user_password = {testing_user_password_s}
+testing_user_auth_type = {testing_user_auth_type_s}
+testing_user_login_url = {testing_user_login_url_s}
 
 # ── Shared helpers ────────────────────────────────────────────────────────────────────────────
 USER_AGENTS = [
@@ -306,9 +316,8 @@ else:
                 ep = path_tmpl.format(id=id_val)
                 url = base_url.rstrip("/") + ep
                 try:
-                    c = make_client()
-                    resp = safe_request("DELETE", url, c, headers=_tester_auth_header)
-                    c.close()
+                    with make_client() as c:
+                        resp = safe_request("DELETE", url, c, headers=_tester_auth_header)
                     if resp is not None and resp.status_code in (200, 204):
                         results.append({{
                             "title": "IDOR: Account de-provisioning another user\'s account",
@@ -316,9 +325,8 @@ else:
                             "severity": "critical",
                             "data": {{"endpoint": ep, "id_used": id_val, "status_code": resp.status_code}},
                         }})
-                    c2 = make_client()
-                    resp2 = safe_request("PATCH", url, c2, json={{"status": "suspended"}}, headers=_tester_auth_header)
-                    c2.close()
+                    with make_client() as c2:
+                        resp2 = safe_request("PATCH", url, c2, json={{"status": "suspended"}}, headers=_tester_auth_header)
                     if resp2 is not None and resp2.status_code in (200, 204):
                         results.append({{
                             "title": "IDOR: Account suspension of another user",
@@ -326,9 +334,8 @@ else:
                             "severity": "critical",
                             "data": {{"endpoint": ep, "id_used": id_val, "status_code": resp2.status_code}},
                         }})
-                    c3 = make_client()
-                    resp3 = safe_request("DELETE", url, c3)
-                    c3.close()
+                    with make_client() as c3:
+                        resp3 = safe_request("DELETE", url, c3)
                     if resp3 is not None and resp3.status_code in (200, 204):
                         results.append({{
                             "title": "Unauthenticated account deletion",
@@ -346,9 +353,8 @@ else:
                 ep = path_tmpl.format(id=id_val)
                 url = base_url.rstrip("/") + ep
                 try:
-                    c = make_client()
-                    resp = safe_request("DELETE", url, c, headers=_tester_auth_header)
-                    c.close()
+                    with make_client() as c:
+                        resp = safe_request("DELETE", url, c, headers=_tester_auth_header)
                     if resp is not None and resp.status_code in (200, 204):
                         results.append({{
                             "title": "Self de-provisioning allowed without re-authentication",
