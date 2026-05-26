@@ -3,10 +3,12 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 from lib_webbh.database import get_session, Campaign, Target
+from lib_webbh import setup_logger
 
+logger = setup_logger("campaigns-route")
 router = APIRouter(prefix="/api/v1/campaigns", tags=["campaigns"])
 
 
@@ -28,7 +30,7 @@ def _write_credentials(
 ) -> None:
     if not tester and not testing_user:
         return
-    config_dir = Path(f"{base_dir}/{target_id}")
+    config_dir = Path(base_dir) / str(target_id)
     config_dir.mkdir(parents=True, exist_ok=True)
     creds_path = config_dir / "credentials.json"
     creds_path.write_text(json.dumps({"tester": tester, "testing_user": testing_user}))
@@ -68,7 +70,13 @@ async def create_campaign(body: CampaignCreate):
                 select(Target).where(Target.campaign_id == campaign.id)
             )
             for tgt in result.scalars().all():
-                _write_credentials(tgt.id, body.tester_credentials, body.testing_user)
+                try:
+                    _write_credentials(tgt.id, body.tester_credentials, body.testing_user)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to write credentials for target",
+                        extra={"target_id": tgt.id, "error": str(exc)},
+                    )
 
         except Exception:
             await session.rollback()
