@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -8,19 +8,31 @@ import type { ScopeConfig, CredentialConfig } from "@/types/schema";
 
 export default function CampaignCreatorPage() {
   const router = useRouter();
+
+  // Fix 4 — type-safe auth type helper
+  const AUTH_TYPES = ["form", "basic", "bearer", "oauth"] as const;
+  type AuthType = (typeof AUTH_TYPES)[number];
+  const toAuthType = (v: string): AuthType =>
+    AUTH_TYPES.includes(v as AuthType) ? (v as AuthType) : "form";
+
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [seedTargets, setSeedTargets] = useState<string[]>([""]);
-  const [inScope, setInScope] = useState<string[]>([""]);
-  const [outOfScope, setOutOfScope] = useState<string[]>([""]);
+
+  // Fix 2 — stable IDs for removable list rows
+  const nextId = useRef(0);
+  const mkId = () => ++nextId.current;
+
+  const [seedTargets, setSeedTargets] = useState(() => [{ id: mkId(), value: "" }]);
+  const [inScope, setInScope] = useState(() => [{ id: mkId(), value: "" }]);
+  const [outOfScope, setOutOfScope] = useState(() => [{ id: mkId(), value: "" }]);
   const [rateLimit, setRateLimit] = useState(50);
 
   // Account 1 — Attacker/Tester
   const [hasAccount1, setHasAccount1] = useState(false);
   const [acct1Username, setAcct1Username] = useState("");
   const [acct1Password, setAcct1Password] = useState("");
-  const [acct1AuthType, setAcct1AuthType] = useState<"form" | "basic" | "bearer" | "oauth">("form");
+  const [acct1AuthType, setAcct1AuthType] = useState<AuthType>("form");
   const [acct1LoginUrl, setAcct1LoginUrl] = useState("");
 
   // Account 2 — Target User
@@ -28,32 +40,29 @@ export default function CampaignCreatorPage() {
   const [acct2Username, setAcct2Username] = useState("");
   const [acct2Email, setAcct2Email] = useState("");
   const [acct2Password, setAcct2Password] = useState("");
-  const [acct2AuthType, setAcct2AuthType] = useState<"form" | "basic" | "bearer" | "oauth">("form");
+  const [acct2AuthType, setAcct2AuthType] = useState<AuthType>("form");
   const [acct2LoginUrl, setAcct2LoginUrl] = useState("");
   const [acct2ProfileUrl, setAcct2ProfileUrl] = useState("");
 
-  const addSeedTarget = () => setSeedTargets([...seedTargets, ""]);
-  const removeSeedTarget = (i: number) => setSeedTargets(seedTargets.filter((_, idx) => idx !== i));
-  const updateSeedTarget = (i: number, val: string) => {
-    const next = [...seedTargets]; next[i] = val; setSeedTargets(next);
-  };
+  const addSeedTarget = () => setSeedTargets((p) => [...p, { id: mkId(), value: "" }]);
+  const removeSeedTarget = (id: number) => setSeedTargets((p) => p.filter((x) => x.id !== id));
+  const updateSeedTarget = (id: number, val: string) =>
+    setSeedTargets((p) => p.map((x) => (x.id === id ? { ...x, value: val } : x)));
 
-  const addInScope = () => setInScope([...inScope, ""]);
-  const removeInScope = (i: number) => setInScope(inScope.filter((_, idx) => idx !== i));
-  const updateInScope = (i: number, val: string) => {
-    const next = [...inScope]; next[i] = val; setInScope(next);
-  };
+  const addInScope = () => setInScope((p) => [...p, { id: mkId(), value: "" }]);
+  const removeInScope = (id: number) => setInScope((p) => p.filter((x) => x.id !== id));
+  const updateInScope = (id: number, val: string) =>
+    setInScope((p) => p.map((x) => (x.id === id ? { ...x, value: val } : x)));
 
-  const addOutOfScope = () => setOutOfScope([...outOfScope, ""]);
-  const removeOutOfScope = (i: number) => setOutOfScope(outOfScope.filter((_, idx) => idx !== i));
-  const updateOutOfScope = (i: number, val: string) => {
-    const next = [...outOfScope]; next[i] = val; setOutOfScope(next);
-  };
+  const addOutOfScope = () => setOutOfScope((p) => [...p, { id: mkId(), value: "" }]);
+  const removeOutOfScope = (id: number) => setOutOfScope((p) => p.filter((x) => x.id !== id));
+  const updateOutOfScope = (id: number, val: string) =>
+    setOutOfScope((p) => p.map((x) => (x.id === id ? { ...x, value: val } : x)));
 
   const validate = (): string | null => {
-    const seeds = seedTargets.filter((s) => s.trim());
+    const seeds = seedTargets.filter((s) => s.value.trim());
     if (seeds.length === 0) return "At least one seed target is required";
-    const ins = inScope.filter((s) => s.trim());
+    const ins = inScope.filter((s) => s.value.trim());
     if (ins.length === 0) return "At least one in-scope pattern is required";
     if (rateLimit < 1 || rateLimit > 200) return "Rate limit must be between 1 and 200";
     return null;
@@ -67,8 +76,8 @@ export default function CampaignCreatorPage() {
     setLoading(true);
 
     const scopeConfig: ScopeConfig = {
-      in_scope: inScope.filter((s) => s.trim()),
-      out_of_scope: outOfScope.filter((s) => s.trim()),
+      in_scope: inScope.filter((s) => s.value.trim()).map((s) => s.value),
+      out_of_scope: outOfScope.filter((s) => s.value.trim()).map((s) => s.value),
     };
 
     const testerCredentials: CredentialConfig["tester"] = hasAccount1
@@ -92,6 +101,7 @@ export default function CampaignCreatorPage() {
         description: description || undefined,
         scope_config: scopeConfig,
         rate_limit: rateLimit,
+        targets: seedTargets.filter((s) => s.value.trim()).map((s) => ({ domain: s.value })),
         tester_credentials: testerCredentials,
         testing_user: testingUser,
       });
@@ -140,15 +150,15 @@ export default function CampaignCreatorPage() {
         {/* Seed targets */}
         <section className="space-y-4 rounded-lg border border-border p-4">
           <h2 className="text-lg font-semibold text-text-primary">Seed Targets</h2>
-          {seedTargets.map((t, i) => (
-            <div key={i} className="flex gap-2">
+          {seedTargets.map((item) => (
+            <div key={item.id} className="flex gap-2">
               <input
-                type="text" value={t} onChange={(e) => updateSeedTarget(i, e.target.value)}
+                type="text" value={item.value} onChange={(e) => updateSeedTarget(item.id, e.target.value)}
                 className="flex-1 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                 placeholder="example.com"
               />
               {seedTargets.length > 1 && (
-                <button type="button" onClick={() => removeSeedTarget(i)} className="px-3 py-2 text-sm text-danger hover:text-danger/80">Remove</button>
+                <button type="button" onClick={() => removeSeedTarget(item.id)} className="px-3 py-2 text-sm text-danger hover:text-danger/80">Remove</button>
               )}
             </div>
           ))}
@@ -160,15 +170,15 @@ export default function CampaignCreatorPage() {
           <h2 className="text-lg font-semibold text-text-primary">Scope Configuration</h2>
           <div>
             <label className="block text-sm font-medium text-text-secondary">In-Scope Patterns</label>
-            {inScope.map((s, i) => (
-              <div key={i} className="flex gap-2 mt-1">
+            {inScope.map((item) => (
+              <div key={item.id} className="flex gap-2 mt-1">
                 <input
-                  type="text" value={s} onChange={(e) => updateInScope(i, e.target.value)}
+                  type="text" value={item.value} onChange={(e) => updateInScope(item.id, e.target.value)}
                   className="flex-1 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                   placeholder="*.example.com"
                 />
                 {inScope.length > 1 && (
-                  <button type="button" onClick={() => removeInScope(i)} className="px-3 py-2 text-sm text-danger hover:text-danger/80">Remove</button>
+                  <button type="button" onClick={() => removeInScope(item.id)} className="px-3 py-2 text-sm text-danger hover:text-danger/80">Remove</button>
                 )}
               </div>
             ))}
@@ -176,15 +186,15 @@ export default function CampaignCreatorPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-text-secondary">Out-of-Scope Patterns</label>
-            {outOfScope.map((s, i) => (
-              <div key={i} className="flex gap-2 mt-1">
+            {outOfScope.map((item) => (
+              <div key={item.id} className="flex gap-2 mt-1">
                 <input
-                  type="text" value={s} onChange={(e) => updateOutOfScope(i, e.target.value)}
+                  type="text" value={item.value} onChange={(e) => updateOutOfScope(item.id, e.target.value)}
                   className="flex-1 rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus"
                   placeholder="admin.example.com"
                 />
                 {outOfScope.length > 1 && (
-                  <button type="button" onClick={() => removeOutOfScope(i)} className="px-3 py-2 text-sm text-danger hover:text-danger/80">Remove</button>
+                  <button type="button" onClick={() => removeOutOfScope(item.id)} className="px-3 py-2 text-sm text-danger hover:text-danger/80">Remove</button>
                 )}
               </div>
             ))}
@@ -208,11 +218,12 @@ export default function CampaignCreatorPage() {
               <div>
                 <label className="block text-sm font-medium text-text-secondary">Password</label>
                 <input type="password" value={acct1Password} onChange={(e) => setAcct1Password(e.target.value)}
+                  autoComplete="current-password"
                   className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-text-secondary">Auth Type</label>
-                <select value={acct1AuthType} onChange={(e) => setAcct1AuthType(e.target.value as "form" | "basic" | "bearer" | "oauth")}
+                <select value={acct1AuthType} onChange={(e) => setAcct1AuthType(toAuthType(e.target.value))}
                   className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus">
                   <option value="form">Form</option>
                   <option value="basic">Basic</option>
@@ -260,11 +271,12 @@ export default function CampaignCreatorPage() {
               <div>
                 <label className="block text-sm font-medium text-text-secondary">Password</label>
                 <input type="password" value={acct2Password} onChange={(e) => setAcct2Password(e.target.value)}
+                  autoComplete="off"
                   className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-text-secondary">Auth Type</label>
-                <select value={acct2AuthType} onChange={(e) => setAcct2AuthType(e.target.value as "form" | "basic" | "bearer" | "oauth")}
+                <select value={acct2AuthType} onChange={(e) => setAcct2AuthType(toAuthType(e.target.value))}
                   className="mt-1 w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm text-text-primary input-focus">
                   <option value="form">Form</option>
                   <option value="basic">Basic</option>

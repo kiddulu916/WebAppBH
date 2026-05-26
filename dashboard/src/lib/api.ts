@@ -774,6 +774,7 @@ export const api = {
     description?: string;
     scope_config?: unknown;
     rate_limit?: number;
+    targets?: Array<{ domain: string; company_name?: string }>;
     tester_credentials?: import("@/types/schema").CredentialConfig["tester"];
     testing_user?: import("@/types/schema").CredentialConfig["testing_user"];
   }) {
