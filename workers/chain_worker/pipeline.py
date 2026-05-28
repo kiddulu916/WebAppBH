@@ -9,9 +9,9 @@ from datetime import datetime
 from typing import Any
 
 from lib_webbh import get_session, setup_logger
-from lib_webbh.database import JobState
+from lib_webbh.database import Campaign, ChainFinding, JobState, Target, Vulnerability
 from lib_webbh.messaging import push_task
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from workers.chain_worker.base_tool import ChainTestTool
 from workers.chain_worker.concurrency import get_semaphore
@@ -39,6 +39,60 @@ STAGES: list[Stage] = [
 ]
 
 STAGE_INDEX: dict[str, int] = {s.name: i for i, s in enumerate(STAGES)}
+
+
+async def _promote_chain_only_findings(target_id: int) -> int:
+    """Promote chain_only=True vulns that appear in a high/critical ChainFinding.
+
+    Returns the count of promoted findings.
+    """
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+
+        if not target or not target.campaign_id:
+            return 0
+
+        campaign = (await session.execute(
+            select(Campaign).where(Campaign.id == target.campaign_id)
+        )).scalar_one_or_none()
+
+        conditional = (campaign.conditional_stages or {}) if campaign else {}
+        chain_exception_stages = {
+            stage for stage, rule in conditional.items()
+            if rule.get("chain_exception")
+        }
+        if not chain_exception_stages:
+            return 0
+
+        chains = (await session.execute(
+            select(ChainFinding).where(
+                ChainFinding.target_id == target_id,
+                ChainFinding.severity.in_(["high", "critical"]),
+            )
+        )).scalars().all()
+
+        qualifying_vuln_ids: set[int] = set()
+        for chain in chains:
+            qualifying_vuln_ids.add(chain.entry_vulnerability_id)
+            linked = chain.linked_vulnerability_ids or {}
+            for vid in linked.get("ids", []):
+                qualifying_vuln_ids.add(int(vid))
+
+        if not qualifying_vuln_ids:
+            return 0
+
+        result = await session.execute(
+            update(Vulnerability)
+            .where(
+                Vulnerability.id.in_(qualifying_vuln_ids),
+                Vulnerability.chain_only.is_(True),
+            )
+            .values(chain_only=False)
+        )
+        await session.commit()
+        return result.rowcount
 
 
 class Pipeline:
@@ -89,6 +143,11 @@ class Pipeline:
                     log.error("Tool failed", extra={"stage": stage.name, "error": str(r)})
                 elif isinstance(r, dict):
                     stats.update(r)
+
+            if stage.name == "chain_execution":
+                promoted = await _promote_chain_only_findings(target_id)
+                if promoted:
+                    log.info("Promoted chain_only findings", count=promoted)
 
             await self._update_phase(target_id, container_name, stage.name)
             await push_task(f"events:{target_id}", {
