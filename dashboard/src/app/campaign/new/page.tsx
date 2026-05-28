@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { ScopeConfig, CredentialConfig } from "@/types/schema";
 import FindEngagementModal from "@/components/FindEngagementModal";
-import type { CampaignFormPrefill } from "@/lib/api";
+import type { CampaignFormPrefill, StageRule } from "@/lib/api";
 
 export default function CampaignCreatorPage() {
   const router = useRouter();
@@ -19,7 +19,7 @@ export default function CampaignCreatorPage() {
 
   const [loading, setLoading] = useState(false);
   const [showEngagementModal, setShowEngagementModal] = useState(false);
-  const [conditionalStages, setConditionalStages] = useState<Record<string, unknown>>({});
+  const [conditionalStages, setConditionalStages] = useState<Record<string, StageRule>>({});
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
@@ -73,7 +73,7 @@ export default function CampaignCreatorPage() {
     if (prefill.out_of_scope.length > 0)
       setOutOfScope(prefill.out_of_scope.map((v) => ({ id: mkId(), value: v })));
     setRateLimit(Math.min(200, Math.max(1, prefill.rate_limit ?? 50)));
-    setConditionalStages(prefill.conditional_stages as Record<string, unknown>);
+    setConditionalStages(prefill.conditional_stages);
     toast.success(`Engagement data applied from ${prefill.program_name || "program"}`);
   };
 
