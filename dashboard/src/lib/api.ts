@@ -828,3 +828,68 @@ export const api = {
     );
   },
 };
+
+/* ------------------------------------------------------------------ */
+/* Engagements                                                         */
+/* ------------------------------------------------------------------ */
+
+export interface ProgramCandidate {
+  name: string;
+  handle: string;
+  url: string;
+  platform: string;
+}
+
+export interface StageRule {
+  out_of_scope: boolean;
+  chain_exception: boolean;
+  reason: string;
+}
+
+export interface CampaignFormPrefill {
+  program_name: string;
+  seed_targets: string[];
+  in_scope: string[];
+  out_of_scope: string[];
+  rate_limit: number | null;
+  custom_headers: Record<string, string>;
+  guidelines: string;
+  conditional_stages: Record<string, StageRule>;
+  parse_warnings: string[];
+}
+
+export type EngagementSearchResponse =
+  | { type: "prefill"; data: CampaignFormPrefill }
+  | { type: "candidates"; data: ProgramCandidate[] };
+
+export interface EngagementSearchPayload {
+  platform: string;
+  company_name: string;
+  credentials?: { token?: string; username?: string };
+}
+
+export interface EngagementFetchPayload {
+  platform: string;
+  handle: string;
+  url: string;
+  credentials?: { token?: string; username?: string };
+  use_llm?: boolean;
+}
+
+export async function searchEngagement(
+  payload: EngagementSearchPayload
+): Promise<EngagementSearchResponse> {
+  return request<EngagementSearchResponse>("/api/v1/engagements/search", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchEngagement(
+  payload: EngagementFetchPayload
+): Promise<CampaignFormPrefill> {
+  return request<CampaignFormPrefill>("/api/v1/engagements/fetch", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
