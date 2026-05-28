@@ -385,6 +385,9 @@ app.include_router(_health_router)
 from orchestrator.routes.resources import router as resources_router, set_guard
 app.include_router(resources_router)
 
+from orchestrator.routes.engagements import router as engagements_router
+app.include_router(engagements_router)
+
 from orchestrator.rate_limit import rate_limit_check  # noqa: E402
 from orchestrator.metrics import metrics_response, api_latency, targets_created, bounties_submitted, scans_triggered, connected_sse_clients  # noqa: E402
 import time as _time  # noqa: E402
