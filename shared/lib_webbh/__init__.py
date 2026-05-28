@@ -93,6 +93,14 @@ from lib_webbh.scan_intelligence import (
     ToolRanking,
 )
 
+# Platform engagement fetcher
+from lib_webbh.platform_api.engagement_fetcher import (
+    CampaignFormPrefill,
+    EngagementResult,
+    ProgramCandidate,
+    StageRule,
+)
+
 __all__ = [
     "get_engine",
     "get_session",
@@ -169,4 +177,8 @@ __all__ = [
     "parse_rate_rule",
     "CheckpointMixin",
     "PathTreeBuilder",
+    "CampaignFormPrefill",
+    "EngagementResult",
+    "ProgramCandidate",
+    "StageRule",
 ]

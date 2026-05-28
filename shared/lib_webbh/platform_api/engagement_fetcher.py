@@ -685,3 +685,56 @@ class EngagementMapper:
                 "reason": str(rule.get("reason", "")),
             }
         return prefill
+
+
+# ---------------------------------------------------------------------------
+# Public entry points
+# ---------------------------------------------------------------------------
+
+async def search_programs(
+    platform: str,
+    company_name: str,
+    credentials: dict | None = None,
+) -> list[ProgramCandidate]:
+    """Phase 1 — find matching programs by company name on the given platform."""
+    creds = credentials or {}
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        if platform == "hackerone":
+            return await _search_hackerone(client, company_name, creds)
+        elif platform == "bugcrowd":
+            return await _search_bugcrowd(client, company_name)
+        elif platform == "intigriti":
+            return await _search_intigriti(client, company_name)
+        elif platform == "yeswehack":
+            return await _search_yeswehack(client, company_name)
+        else:
+            raise ValueError(f"Unsupported platform: {platform!r}")
+
+
+async def fetch_engagement(
+    platform: str,
+    handle: str,
+    url: str,
+    credentials: dict | None = None,
+    use_llm: bool = True,
+) -> CampaignFormPrefill:
+    """Phase 2 — fetch full policy for a known program and map to CampaignFormPrefill."""
+    creds = credentials or {}
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        if platform == "hackerone":
+            raw = await _fetch_hackerone(client, handle, creds)
+        elif platform == "bugcrowd":
+            raw = await _fetch_bugcrowd(client, url)
+        elif platform == "intigriti":
+            raw = await _fetch_intigriti(client, url)
+        elif platform == "yeswehack":
+            raw = await _fetch_yeswehack(client, url)
+        else:
+            raise ValueError(f"Unsupported platform: {platform!r}")
+
+    engagement = _parse_policy(raw, platform, handle)
+    mapper = EngagementMapper()
+    prefill = mapper.map(engagement)
+    if use_llm:
+        prefill = await mapper.apply_llm_pass(engagement, prefill)
+    return prefill
