@@ -359,3 +359,223 @@ async def _search_yeswehack(
         for p in items
         if p.get("slug")
     ]
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Fetch functions (return normalised raw dict)
+# ---------------------------------------------------------------------------
+
+_RAW_KEYS = ("program_name", "in_scope_raw", "out_of_scope_raw", "guidelines")
+
+
+async def _fetch_hackerone(
+    client: httpx.AsyncClient,
+    handle: str,
+    credentials: dict,
+) -> dict:
+    token = credentials.get("token", "")
+    username = credentials.get("username", "")
+    resp = await client.get(
+        f"https://api.hackerone.com/v1/programs/{handle}",
+        auth=(username, token),
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    attrs = data.get("data", {}).get("attributes", {})
+    scopes_data = (
+        data.get("data", {})
+        .get("relationships", {})
+        .get("structured_scopes", {})
+        .get("data", [])
+    )
+    in_scope_raw, out_of_scope_raw = [], []
+    for s in scopes_data:
+        sa = s.get("attributes", {})
+        entry = {
+            "asset_type": sa.get("asset_type", "unknown").lower(),
+            "asset_value": sa.get("asset_identifier", ""),
+            "eligible_for_bounty": sa.get("eligible_for_bounty", False),
+            "in_scope": not sa.get("out_of_scope", False),
+        }
+        if entry["in_scope"]:
+            in_scope_raw.append(entry)
+        else:
+            out_of_scope_raw.append(entry)
+    return {
+        "program_name": attrs.get("name", handle),
+        "in_scope_raw": in_scope_raw,
+        "out_of_scope_raw": out_of_scope_raw,
+        "guidelines": attrs.get("policy", ""),
+    }
+
+
+async def _fetch_bugcrowd(client: httpx.AsyncClient, url: str) -> dict:
+    resp = await client.get(url, headers=_BROWSER_HEADERS)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    tag = soup.find(attrs={"data-react-class": "ProgramBrief"})
+    warnings: list[str] = []
+    if not tag:
+        return {"program_name": "", "in_scope_raw": [], "out_of_scope_raw": [],
+                "guidelines": "", "_warnings": ["Bugcrowd: could not find program data block"]}
+    try:
+        props = json.loads(tag["data-react-props"])
+        prog = props.get("program", {})
+    except (KeyError, json.JSONDecodeError):
+        return {"program_name": "", "in_scope_raw": [], "out_of_scope_raw": [],
+                "guidelines": "", "_warnings": ["Bugcrowd: failed to parse program data"]}
+
+    in_scope_raw, out_of_scope_raw = [], []
+    for group in prog.get("target_groups", []):
+        for t in group.get("targets", []):
+            entry = {
+                "asset_type": t.get("category", "website").lower(),
+                "asset_value": t.get("name", ""),
+                "eligible_for_bounty": t.get("in_scope", False),
+            }
+            if t.get("in_scope", True):
+                in_scope_raw.append(entry)
+            else:
+                out_of_scope_raw.append(entry)
+
+    return {
+        "program_name": prog.get("name", ""),
+        "in_scope_raw": in_scope_raw,
+        "out_of_scope_raw": out_of_scope_raw,
+        "guidelines": prog.get("briefing_text", ""),
+        "_warnings": warnings,
+    }
+
+
+async def _fetch_intigriti(client: httpx.AsyncClient, url: str) -> dict:
+    resp = await client.get(url, headers=_BROWSER_HEADERS)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    tag = soup.find("script", {"id": "__INTIGRITI_SCOPE__"})
+    if not tag:
+        return {"program_name": "", "in_scope_raw": [], "out_of_scope_raw": [],
+                "guidelines": "", "_warnings": ["Intigriti: could not find scope data block"]}
+    raw = tag.string
+    if not raw or not raw.strip():
+        return {"program_name": "", "in_scope_raw": [], "out_of_scope_raw": [],
+                "guidelines": "", "_warnings": ["Intigriti: empty scope data block"]}
+    try:
+        data = json.loads(raw)
+        prog = data.get("program", {})
+    except json.JSONDecodeError:
+        return {"program_name": "", "in_scope_raw": [], "out_of_scope_raw": [],
+                "guidelines": "", "_warnings": ["Intigriti: failed to parse scope data"]}
+
+    domains = prog.get("domains", {})
+    in_scope_raw = [
+        {"asset_type": d.get("type", "url"), "asset_value": d.get("value", ""),
+         "eligible_for_bounty": d.get("eligible_for_bounty", True)}
+        for d in domains.get("in_scope", [])
+    ]
+    out_of_scope_raw = [
+        {"asset_type": d.get("type", "url"), "asset_value": d.get("value", ""),
+         "eligible_for_bounty": False}
+        for d in domains.get("out_of_scope", [])
+    ]
+    return {
+        "program_name": prog.get("name", ""),
+        "in_scope_raw": in_scope_raw,
+        "out_of_scope_raw": out_of_scope_raw,
+        "guidelines": prog.get("policy", ""),
+        "_warnings": [],
+    }
+
+
+async def _fetch_yeswehack(client: httpx.AsyncClient, url: str) -> dict:
+    resp = await client.get(url, headers=_BROWSER_HEADERS)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    tag = soup.find("script", {"id": "__NUXT_DATA__"})
+    if not tag:
+        return {"program_name": "", "in_scope_raw": [], "out_of_scope_raw": [],
+                "guidelines": "", "_warnings": ["YesWeHack: could not find data block"]}
+    raw = tag.string
+    if not raw or not raw.strip():
+        return {"program_name": "", "in_scope_raw": [], "out_of_scope_raw": [],
+                "guidelines": "", "_warnings": ["YesWeHack: empty data block"]}
+    try:
+        data = json.loads(raw)
+        prog = data.get("program", {})
+    except json.JSONDecodeError:
+        return {"program_name": "", "in_scope_raw": [], "out_of_scope_raw": [],
+                "guidelines": "", "_warnings": ["YesWeHack: failed to parse program data"]}
+
+    in_scope_raw, out_of_scope_raw = [], []
+    for s in prog.get("scopes", []):
+        entry = {
+            "asset_type": s.get("scope_type", "web_application"),
+            "asset_value": s.get("asset", ""),
+            "eligible_for_bounty": s.get("eligible_bounty", False),
+        }
+        if s.get("out_of_scope", False):
+            out_of_scope_raw.append(entry)
+        else:
+            in_scope_raw.append(entry)
+
+    return {
+        "program_name": prog.get("title", ""),
+        "in_scope_raw": in_scope_raw,
+        "out_of_scope_raw": out_of_scope_raw,
+        "guidelines": prog.get("guidelines", ""),
+        "_warnings": [],
+    }
+
+
+def _parse_policy(raw: dict, platform: str, handle: str) -> EngagementResult:
+    """Convert a normalised raw dict from any _fetch_* function into EngagementResult."""
+    warnings: list[str] = list(raw.get("_warnings", []))
+
+    in_scope = [
+        ScopeEntry(
+            asset_type=e.get("asset_type", "unknown"),
+            asset_value=e.get("asset_value", ""),
+            eligible_for_bounty=e.get("eligible_for_bounty", True),
+        )
+        for e in raw.get("in_scope_raw", [])
+        if e.get("asset_value")
+    ]
+    out_of_scope_entries = [
+        ScopeEntry(
+            asset_type=e.get("asset_type", "unknown"),
+            asset_value=e.get("asset_value", ""),
+            eligible_for_bounty=False,
+        )
+        for e in raw.get("out_of_scope_raw", [])
+        if e.get("asset_value")
+    ]
+
+    guidelines = raw.get("guidelines", "")
+
+    # Parse rate limit
+    rate_limit: int | None = None
+    m = _RATE_LIMIT_RE.search(guidelines)
+    if m:
+        val = int(m.group(1))
+        unit = m.group(2).lower()
+        rate_limit = val if unit.startswith("s") else max(1, val // 60)
+
+    # Parse custom headers
+    custom_headers: dict[str, str] = {}
+    for hm in _CUSTOM_HEADER_RE.finditer(guidelines):
+        custom_headers[hm.group(1).strip()] = hm.group(2).strip()
+
+    if not in_scope and not out_of_scope_entries:
+        warnings.append("Scope data could not be parsed — fill manually")
+
+    return EngagementResult(
+        platform=platform,
+        handle=handle,
+        program_name=raw.get("program_name", ""),
+        in_scope=in_scope,
+        out_of_scope_entries=out_of_scope_entries,
+        rate_limit=rate_limit,
+        custom_headers=custom_headers,
+        guidelines=guidelines,
+        stage_rules=[],
+        parse_warnings=warnings,
+    )

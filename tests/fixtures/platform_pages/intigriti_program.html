@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><title>Acme Corp Scope - Intigriti</title></head>
+<body>
+<script id="__INTIGRITI_SCOPE__" type="application/json">
+{
+  "program": {
+    "name": "Acme Corp",
+    "handle": "acme-corp",
+    "policy": "No SQL injection. No SSRF unless proves deeper impact. Include X-Intigriti-Test: true header. Rate limit: 50 requests per second.",
+    "domains": {
+      "in_scope": [
+        {"type": "url", "value": "*.acme.com", "eligible_for_bounty": true},
+        {"type": "url", "value": "api.acme.com", "eligible_for_bounty": true}
+      ],
+      "out_of_scope": [
+        {"type": "url", "value": "status.acme.com"}
+      ]
+    }
+  }
+}
+</script>
+</body>
+</html>
