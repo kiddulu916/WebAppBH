@@ -251,6 +251,8 @@ async def _search_hackerone(
     for prog in data.get("data", []):
         attrs = prog.get("attributes", {})
         handle = attrs.get("handle", "")
+        if not handle:
+            continue
         candidates.append(ProgramCandidate(
             name=attrs.get("name", handle),
             handle=handle,
@@ -287,7 +289,7 @@ async def _search_bugcrowd(
             platform="bugcrowd",
         )
         for p in programs
-        if p.get("program_type") == "bug_bounty"
+        if p.get("program_type") == "bug_bounty" and p.get("program_id")
     ]
 
 
@@ -305,8 +307,11 @@ async def _search_intigriti(
     tag = soup.find("script", {"id": "__INTIGRITI_DATA__"})
     if not tag:
         return []
+    raw = tag.string
+    if not raw or not raw.strip():
+        return []
     try:
-        data = json.loads(tag.string or "")
+        data = json.loads(raw)
         programs = data.get("programs", [])
     except json.JSONDecodeError:
         return []
@@ -318,6 +323,7 @@ async def _search_intigriti(
             platform="intigriti",
         )
         for p in programs
+        if p.get("programHandle") and p.get("name")
     ]
 
 
@@ -335,8 +341,11 @@ async def _search_yeswehack(
     tag = soup.find("script", {"id": "__NUXT_DATA__"})
     if not tag:
         return []
+    raw = tag.string
+    if not raw or not raw.strip():
+        return []
     try:
-        data = json.loads(tag.string or "")
+        data = json.loads(raw)
         items = data.get("programs", {}).get("items", [])
     except json.JSONDecodeError:
         return []
@@ -348,4 +357,5 @@ async def _search_yeswehack(
             platform="yeswehack",
         )
         for p in items
+        if p.get("slug")
     ]
