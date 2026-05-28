@@ -20,6 +20,7 @@ class CampaignCreate(BaseModel):
     tester_credentials: dict | None = None
     testing_user: dict | None = None
     rate_limit: int = 50
+    conditional_stages: dict | None = None
 
 
 def _write_credentials(
@@ -47,6 +48,7 @@ async def create_campaign(body: CampaignCreate):
                 scope_config=body.scope_config,
                 rate_limit=body.rate_limit,
                 has_credentials=body.tester_credentials is not None,
+                conditional_stages=body.conditional_stages,
             )
             session.add(campaign)
             await session.flush()

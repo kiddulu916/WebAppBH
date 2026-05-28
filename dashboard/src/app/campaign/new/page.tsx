@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { ScopeConfig, CredentialConfig } from "@/types/schema";
+import FindEngagementModal from "@/components/FindEngagementModal";
+import type { CampaignFormPrefill } from "@/lib/api";
 
 export default function CampaignCreatorPage() {
   const router = useRouter();
@@ -16,6 +18,8 @@ export default function CampaignCreatorPage() {
     AUTH_TYPES.includes(v as AuthType) ? (v as AuthType) : "form";
 
   const [loading, setLoading] = useState(false);
+  const [showEngagementModal, setShowEngagementModal] = useState(false);
+  const [conditionalStages, setConditionalStages] = useState<Record<string, unknown>>({});
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
@@ -58,6 +62,20 @@ export default function CampaignCreatorPage() {
   const removeOutOfScope = (id: number) => setOutOfScope((p) => p.filter((x) => x.id !== id));
   const updateOutOfScope = (id: number, val: string) =>
     setOutOfScope((p) => p.map((x) => (x.id === id ? { ...x, value: val } : x)));
+
+  const handleEngagementApply = (prefill: CampaignFormPrefill) => {
+    setShowEngagementModal(false);
+    if (prefill.program_name) setName(prefill.program_name);
+    if (prefill.seed_targets.length > 0)
+      setSeedTargets(prefill.seed_targets.map((v) => ({ id: mkId(), value: v })));
+    if (prefill.in_scope.length > 0)
+      setInScope(prefill.in_scope.map((v) => ({ id: mkId(), value: v })));
+    if (prefill.out_of_scope.length > 0)
+      setOutOfScope(prefill.out_of_scope.map((v) => ({ id: mkId(), value: v })));
+    setRateLimit(Math.min(200, Math.max(1, prefill.rate_limit ?? 50)));
+    setConditionalStages(prefill.conditional_stages as Record<string, unknown>);
+    toast.success(`Engagement data applied from ${prefill.program_name || "program"}`);
+  };
 
   const validate = (): string | null => {
     const seeds = seedTargets.filter((s) => s.value.trim());
@@ -104,6 +122,7 @@ export default function CampaignCreatorPage() {
         targets: seedTargets.filter((s) => s.value.trim()).map((s) => ({ domain: s.value })),
         tester_credentials: testerCredentials,
         testing_user: testingUser,
+        conditional_stages: Object.keys(conditionalStages).length > 0 ? conditionalStages : undefined,
       });
       toast.success("Campaign created");
       router.push(`/campaign/${data.id}/overview`);
@@ -124,6 +143,24 @@ export default function CampaignCreatorPage() {
           Configure seed targets, scope, credentials, and rate limits.
         </p>
       </div>
+
+      {/* Find Engagement */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setShowEngagementModal(true)}
+          className="rounded-md border border-accent/60 px-4 py-2 text-sm text-accent hover:bg-accent/10 transition-colors"
+        >
+          Find Engagement
+        </button>
+      </div>
+
+      {showEngagementModal && (
+        <FindEngagementModal
+          onApply={handleEngagementApply}
+          onClose={() => setShowEngagementModal(false)}
+        />
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic info */}
