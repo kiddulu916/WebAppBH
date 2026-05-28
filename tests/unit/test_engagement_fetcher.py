@@ -151,3 +151,90 @@ def test_parse_policy_empty_scope_adds_warning():
            "guidelines": "", "_warnings": []}
     result = _parse_policy(raw, "bugcrowd", "test")
     assert any("fill manually" in w for w in result.parse_warnings)
+
+
+def _make_result(guidelines: str = "", in_scope=None, out_of_scope=None):
+    from lib_webbh.platform_api.engagement_fetcher import EngagementResult
+    from lib_webbh.platform_api.base import ScopeEntry
+    return EngagementResult(
+        platform="bugcrowd",
+        handle="test",
+        program_name="Test Corp",
+        in_scope=in_scope or [
+            ScopeEntry("domain", "*.test.com", True),
+            ScopeEntry("wildcard", "api.test.com", True),
+        ],
+        out_of_scope_entries=out_of_scope or [
+            ScopeEntry("domain", "admin.test.com", False),
+        ],
+        rate_limit=30,
+        custom_headers={"X-Test": "true"},
+        guidelines=guidelines,
+        stage_rules=[],
+    )
+
+
+def test_mapper_basic_prefill():
+    from lib_webbh.platform_api.engagement_fetcher import EngagementMapper
+    mapper = EngagementMapper()
+    result = _make_result()
+    prefill = mapper.map(result)
+
+    assert prefill.program_name == "Test Corp"
+    assert "*.test.com" in prefill.in_scope
+    assert "api.test.com" in prefill.in_scope
+    assert "admin.test.com" in prefill.out_of_scope
+    assert "*.test.com" in prefill.seed_targets
+    assert prefill.rate_limit == 30
+    assert prefill.custom_headers == {"X-Test": "true"}
+
+
+def test_mapper_hard_disable_stage():
+    from lib_webbh.platform_api.engagement_fetcher import EngagementMapper
+    mapper = EngagementMapper()
+    result = _make_result(guidelines="No CSRF testing allowed.")
+    prefill = mapper.map(result)
+
+    assert "csrf" in prefill.conditional_stages
+    rule = prefill.conditional_stages["csrf"]
+    assert rule["out_of_scope"] is True
+    assert rule["chain_exception"] is False
+
+
+def test_mapper_chain_exception_stage():
+    from lib_webbh.platform_api.engagement_fetcher import EngagementMapper
+    mapper = EngagementMapper()
+    result = _make_result(
+        guidelines="No CSRF unless proves critical impact. No SQL injection."
+    )
+    prefill = mapper.map(result)
+
+    csrf_rule = prefill.conditional_stages.get("csrf", {})
+    assert csrf_rule.get("out_of_scope") is True
+    assert csrf_rule.get("chain_exception") is True
+
+    sql_rule = prefill.conditional_stages.get("sql_injection", {})
+    assert sql_rule.get("out_of_scope") is True
+    assert sql_rule.get("chain_exception") is False
+
+
+def test_mapper_rate_limit_defaults_to_50_when_none():
+    from lib_webbh.platform_api.engagement_fetcher import EngagementMapper, EngagementResult
+    from lib_webbh.platform_api.base import ScopeEntry
+    result = EngagementResult(
+        platform="bugcrowd", handle="test", program_name="Test",
+        in_scope=[ScopeEntry("domain", "x.com", True)],
+        out_of_scope_entries=[], rate_limit=None,
+        custom_headers={}, guidelines="", stage_rules=[],
+    )
+    prefill = EngagementMapper().map(result)
+    assert prefill.rate_limit == 50
+
+
+def test_mapper_keyword_map_coverage():
+    """Every stage in PIPELINE_STAGES must appear in ATTACK_KEYWORD_MAP."""
+    from lib_webbh.platform_api.engagement_fetcher import ATTACK_KEYWORD_MAP
+    from lib_webbh.playbooks import PIPELINE_STAGES
+    all_stages = [s for stages in PIPELINE_STAGES.values() for s in stages]
+    missing = [s for s in all_stages if s not in ATTACK_KEYWORD_MAP]
+    assert missing == [], f"Missing from ATTACK_KEYWORD_MAP: {missing}"

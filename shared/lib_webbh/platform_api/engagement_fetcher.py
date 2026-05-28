@@ -579,3 +579,110 @@ def _parse_policy(raw: dict, platform: str, handle: str) -> EngagementResult:
         stage_rules=[],
         parse_warnings=warnings,
     )
+
+
+# ---------------------------------------------------------------------------
+# EngagementMapper — pure transformation, no I/O
+# ---------------------------------------------------------------------------
+
+class EngagementMapper:
+    """Convert EngagementResult -> CampaignFormPrefill using keyword map + optional LLM."""
+
+    _SEED_TYPES = {"domain", "wildcard", "url"}
+    _SCOPE_TYPES = {"domain", "wildcard", "url", "cidr"}
+
+    def map(self, result: EngagementResult) -> CampaignFormPrefill:
+        seed_targets = [
+            e.asset_value for e in result.in_scope
+            if e.asset_type.lower() in self._SEED_TYPES and e.asset_value
+        ]
+        in_scope = [
+            e.asset_value for e in result.in_scope
+            if e.asset_type.lower() in self._SCOPE_TYPES and e.asset_value
+        ]
+        out_of_scope = [
+            e.asset_value for e in result.out_of_scope_entries
+            if e.asset_value
+        ]
+
+        conditional_stages = self._apply_keyword_map(result.guidelines)
+
+        return CampaignFormPrefill(
+            program_name=result.program_name,
+            seed_targets=seed_targets,
+            in_scope=in_scope,
+            out_of_scope=out_of_scope,
+            rate_limit=result.rate_limit if result.rate_limit is not None else 50,
+            custom_headers=result.custom_headers,
+            guidelines=result.guidelines,
+            conditional_stages=conditional_stages,
+            parse_warnings=list(result.parse_warnings),
+        )
+
+    def _apply_keyword_map(self, text: str) -> dict[str, dict]:
+        """Pass 1: keyword scan to find disallowed attack types."""
+        lower = text.lower()
+        result: dict[str, dict] = {}
+        for stage, keywords in ATTACK_KEYWORD_MAP.items():
+            for kw in keywords:
+                idx = lower.find(kw.lower())
+                if idx == -1:
+                    continue
+                # Check for negation in the 40 chars before the keyword
+                context_before = lower[max(0, idx - 40): idx]
+                if not any(neg in context_before for neg in ("no ", "not ", "prohibit", "disallow", "forbidden", "avoid", "do not")):
+                    continue
+                # Check for exception clause in the 100 chars after the keyword match
+                context_after = text[idx: idx + 100]
+                chain_exception = bool(_EXCEPTION_RE.search(context_after))
+                if stage not in result:
+                    result[stage] = {
+                        "out_of_scope": True,
+                        "chain_exception": chain_exception,
+                        "reason": f"Policy mentions: '{kw}'",
+                    }
+                elif chain_exception and not result[stage]["chain_exception"]:
+                    # Upgrade to chain_exception if a later keyword match has the exception clause
+                    result[stage]["chain_exception"] = True
+                break
+        return result
+
+    async def apply_llm_pass(
+        self, result: EngagementResult, prefill: CampaignFormPrefill
+    ) -> CampaignFormPrefill:
+        """Pass 2: LLM enrichment — fills gaps the keyword map missed."""
+        from lib_webbh.llm_client import LLMClient
+        import json as _json
+
+        client = LLMClient()
+        prompt = (
+            "You are a bug bounty rules parser. Given the following program policy text, "
+            "return a JSON array of attack types that are out of scope. "
+            "For each, include: stage (from this list: "
+            + ", ".join(ATTACK_KEYWORD_MAP.keys())
+            + "), out_of_scope (true), chain_exception (true if the policy says the attack "
+            "is allowed if it proves deeper/critical impact, else false), reason (short quote). "
+            "Return ONLY valid JSON. Policy:\n\n"
+            + result.guidelines
+        )
+        try:
+            response = await client.generate(prompt, json_mode=True, temperature=0.1)
+            rules = _json.loads(response.text)
+            if not isinstance(rules, list):
+                raise ValueError("LLM returned non-list")
+        except Exception:
+            prefill.parse_warnings.append("LLM enrichment unavailable — keyword map only")
+            return prefill
+
+        for rule in rules:
+            stage = rule.get("stage", "")
+            if stage not in ATTACK_KEYWORD_MAP:
+                continue
+            if stage in prefill.conditional_stages:
+                continue  # keyword map takes precedence
+            prefill.conditional_stages[stage] = {
+                "out_of_scope": bool(rule.get("out_of_scope", True)),
+                "chain_exception": bool(rule.get("chain_exception", False)),
+                "reason": str(rule.get("reason", "")),
+            }
+        return prefill
