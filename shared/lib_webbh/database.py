@@ -165,6 +165,7 @@ class Campaign(TimestampMixin, Base):
         JSON, default=lambda: [{"amount": 50, "unit": "req/s"}], nullable=True,
     )
     has_credentials: Mapped[bool] = mapped_column(Boolean, default=False)
+    conditional_stages: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -360,6 +361,7 @@ class Vulnerability(TimestampMixin, Base):
         Index("ix_vulns_section", "section_id"),
         Index("ix_vulns_worker", "worker_type"),
         Index("ix_vulns_confirmed", "confirmed"),
+        Index("ix_vulns_chain_only", "chain_only"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -382,6 +384,7 @@ class Vulnerability(TimestampMixin, Base):
     vuln_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     false_positive: Mapped[bool] = mapped_column(Boolean, default=False)
+    chain_only: Mapped[bool] = mapped_column(Boolean, default=False)
     evidence: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     target: Mapped["Target"] = relationship(back_populates="vulnerabilities")

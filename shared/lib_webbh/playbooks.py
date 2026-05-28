@@ -99,6 +99,8 @@ class StageConfig:
     name: str
     enabled: bool = True
     tool_timeout: int = 600  # seconds
+    out_of_scope: bool = False       # platform marks this attack type OOS
+    chain_exception: bool = False    # OOS lifted if finding contributes to hard-impact chain
 
 
 @dataclass
