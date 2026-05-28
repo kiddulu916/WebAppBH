@@ -31,6 +31,11 @@ def test_vulnerability_has_chain_only_column():
     assert "chain_only" in cols
 
 
+def test_vulnerability_chain_only_not_nullable():
+    col = Vulnerability.__table__.c.chain_only
+    assert col.nullable is False
+
+
 def test_vulnerability_chain_only_index():
     index_names = {idx.name for idx in Vulnerability.__table__.indexes}
     assert "ix_vulns_chain_only" in index_names

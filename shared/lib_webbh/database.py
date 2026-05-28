@@ -384,7 +384,7 @@ class Vulnerability(TimestampMixin, Base):
     vuln_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     false_positive: Mapped[bool] = mapped_column(Boolean, default=False)
-    chain_only: Mapped[bool] = mapped_column(Boolean, default=False)
+    chain_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     evidence: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     target: Mapped["Target"] = relationship(back_populates="vulnerabilities")
