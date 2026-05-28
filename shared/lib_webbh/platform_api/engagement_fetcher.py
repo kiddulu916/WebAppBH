@@ -64,7 +64,7 @@ class CampaignFormPrefill:
     seed_targets: list[str]
     in_scope: list[str]
     out_of_scope: list[str]
-    rate_limit: int
+    rate_limit: int | None
     custom_headers: dict[str, str]
     guidelines: str
     conditional_stages: dict[str, dict]
@@ -212,7 +212,8 @@ ATTACK_KEYWORD_MAP: dict[str, list[str]] = {
     "export":                       ["report export", "pdf export"],
 }
 
-# Regex: detect exception clause within 80 chars after a keyword disablement
+# Regex: detect exception clause — MUST be applied to the sentence/paragraph containing
+# the OOS keyword, not the full policy text (to avoid false positives from unrelated mentions).
 _EXCEPTION_RE = re.compile(
     r"unless\s.{0,80}(critical|deeper|higher|greater|harder|significant|severe)\s*impact",
     re.IGNORECASE,

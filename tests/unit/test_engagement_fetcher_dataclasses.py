@@ -92,7 +92,16 @@ def test_rate_limit_re_per_minute():
 
 
 def test_custom_header_re():
-    text = "Please include X-Bug-Bounty: hunter-name in all requests"
+    text = "Please include X-Bug-Bounty: hunter-name, in all requests"
     m = _CUSTOM_HEADER_RE.search(text)
     assert m is not None
     assert m.group(1) == "X-Bug-Bounty"
+    assert m.group(2).strip() == "hunter-name"
+
+
+def test_campaign_form_prefill_rate_limit_optional():
+    prefill = CampaignFormPrefill(
+        program_name="Test", seed_targets=[], in_scope=[], out_of_scope=[],
+        rate_limit=None, custom_headers={}, guidelines="", conditional_stages={},
+    )
+    assert prefill.rate_limit is None
