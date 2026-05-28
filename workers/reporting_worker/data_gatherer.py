@@ -6,11 +6,14 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from lib_webbh import setup_logger
 from lib_webbh.database import (
     ApiSchema, Asset, CloudAsset, Location, Observation, Target, Vulnerability,
     get_session,
 )
 from workers.reporting_worker.models import ReportContext
+
+logger = setup_logger("reporting_data_gatherer")
 
 
 async def gather_report_data(target_id: int, screenshot_base: str = "/app/shared/raw") -> ReportContext:
@@ -19,11 +22,20 @@ async def gather_report_data(target_id: int, screenshot_base: str = "/app/shared
             select(Target).where(Target.id == target_id)
         )).scalar_one()
 
-        vulns = (await session.execute(
+        all_vulns = (await session.execute(
             select(Vulnerability)
             .where(Vulnerability.target_id == target_id)
             .options(selectinload(Vulnerability.asset).selectinload(Asset.locations))
         )).scalars().all()
+
+        suppressed = [v for v in all_vulns if v.chain_only]
+        vulns = [v for v in all_vulns if not v.chain_only]
+
+        for v in suppressed:
+            logger.debug(
+                "Suppressing chain-only finding — no qualifying chain found",
+                id=v.id, stage=v.stage_name,
+            )
 
         assets = (await session.execute(
             select(Asset)
