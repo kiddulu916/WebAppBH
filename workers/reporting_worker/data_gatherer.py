@@ -17,6 +17,7 @@ logger = setup_logger("reporting_data_gatherer")
 
 
 async def gather_report_data(target_id: int, screenshot_base: str = "/app/shared/raw") -> ReportContext:
+    log = logger.bind(target_id=target_id)
     async with get_session() as session:
         target = (await session.execute(
             select(Target).where(Target.id == target_id)
@@ -32,9 +33,9 @@ async def gather_report_data(target_id: int, screenshot_base: str = "/app/shared
         vulns = [v for v in all_vulns if not v.chain_only]
 
         for v in suppressed:
-            logger.debug(
+            log.debug(
                 "Suppressing chain-only finding — no qualifying chain found",
-                id=v.id, stage=v.stage_name,
+                id=v.id, stage=v.stage_name or "unknown",
             )
 
         assets = (await session.execute(
