@@ -632,8 +632,8 @@ class EngagementMapper:
                 context_before = lower[max(0, idx - 40): idx]
                 if not any(neg in context_before for neg in ("no ", "not ", "prohibit", "disallow", "forbidden", "avoid", "do not")):
                     continue
-                # Check for exception clause in the 100 chars after the keyword match
-                context_after = text[idx: idx + 100]
+                # Check for exception clause in the 100 chars after the keyword
+                context_after = text[idx + len(kw): idx + len(kw) + 100]
                 chain_exception = bool(_EXCEPTION_RE.search(context_after))
                 if stage not in result:
                     result[stage] = {
@@ -641,10 +641,9 @@ class EngagementMapper:
                         "chain_exception": chain_exception,
                         "reason": f"Policy mentions: '{kw}'",
                     }
+                    break
                 elif chain_exception and not result[stage]["chain_exception"]:
-                    # Upgrade to chain_exception if a later keyword match has the exception clause
                     result[stage]["chain_exception"] = True
-                break
         return result
 
     async def apply_llm_pass(

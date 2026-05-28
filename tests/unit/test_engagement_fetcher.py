@@ -231,6 +231,35 @@ def test_mapper_rate_limit_defaults_to_50_when_none():
     assert prefill.rate_limit == 50
 
 
+def test_mapper_chain_exception_upgrade_via_second_keyword():
+    """If a stage has two keywords and the second one has an exception clause,
+    the stage should be upgraded to chain_exception=True even if the first didn't have one."""
+    from lib_webbh.platform_api.engagement_fetcher import EngagementMapper, ATTACK_KEYWORD_MAP
+
+    # brute force and credential stuffing both map to lockout_mechanism
+    # (verify this first)
+    assert "lockout_mechanism" in ATTACK_KEYWORD_MAP
+    kws = ATTACK_KEYWORD_MAP["lockout_mechanism"]
+    assert len(kws) >= 2  # needs at least 2 keywords to test upgrade
+
+    # First keyword triggers OOS without exception, second keyword's window has exception clause
+    # lockout_mechanism keywords: ["brute force", "credential stuffing", "account lockout", "brute-force"]
+    # Build text where "brute force" appears without exception, and "credential stuffing" appears with one
+    guidelines = (
+        "No brute force attacks. "
+        "No credential stuffing unless demonstrates critical impact on user accounts."
+    )
+
+    mapper = EngagementMapper()
+    result = _make_result(guidelines=guidelines)
+    prefill = mapper.map(result)
+
+    rule = prefill.conditional_stages.get("lockout_mechanism", {})
+    assert rule.get("out_of_scope") is True
+    # Should be True because "credential stuffing" keyword has exception clause in its window
+    assert rule.get("chain_exception") is True
+
+
 def test_mapper_keyword_map_coverage():
     """Every stage in PIPELINE_STAGES must appear in ATTACK_KEYWORD_MAP."""
     from lib_webbh.platform_api.engagement_fetcher import ATTACK_KEYWORD_MAP
