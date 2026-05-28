@@ -2,6 +2,6 @@
 <html>
 <head><title>Acme Corp - Bugcrowd</title></head>
 <body>
-<div data-react-class="ProgramBrief" data-react-props='{"program":{"code":"acme-corp","name":"Acme Corp","briefing_text":"No CSRF unless can prove critical impact. No automated rate limit testing. No brute force. Include X-Bug-Bounty: hunter, in all requests. Max 30 requests per second.","max_request_rate":30,"target_groups":[{"name":"Web","targets":[{"name":"*.acme.com","category":"website","in_scope":true},{"name":"api.acme.com","category":"api","in_scope":true},{"name":"status.acme.com","category":"website","in_scope":false}]}]}}'></div>
+<div data-react-class="ProgramBrief" data-react-props='{"program":{"code":"acme-corp","name":"Acme Corp","briefing_text":"No CSRF unless can prove critical impact. No automated rate limit testing. No brute force. Include X-Bug-Bounty: hunter, in all requests. Max 30 requests per second.","max_request_rate":30,"target_groups":[{"name":"Web","targets":[{"name":"*.acme.com","category":"website","in_scope":true,"eligible_for_bounty":true},{"name":"api.acme.com","category":"api","in_scope":true,"eligible_for_bounty":false},{"name":"status.acme.com","category":"website","in_scope":false,"eligible_for_bounty":false}]}]}}'></div>
 </body>
 </html>

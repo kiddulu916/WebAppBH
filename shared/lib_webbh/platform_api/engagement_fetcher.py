@@ -431,7 +431,7 @@ async def _fetch_bugcrowd(client: httpx.AsyncClient, url: str) -> dict:
             entry = {
                 "asset_type": t.get("category", "website").lower(),
                 "asset_value": t.get("name", ""),
-                "eligible_for_bounty": t.get("in_scope", False),
+                "eligible_for_bounty": t.get("eligible_for_bounty", t.get("bounty", t.get("in_scope", False))),
             }
             if t.get("in_scope", True):
                 in_scope_raw.append(entry)

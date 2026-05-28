@@ -95,6 +95,12 @@ def test_fetch_bugcrowd_parses_scope():
     assert "X-Bug-Bounty" in result.custom_headers
     assert result.custom_headers["X-Bug-Bounty"] == "hunter"
 
+    # Verify eligible_for_bounty is read independently from in_scope
+    wildcard_entry = next(e for e in result.in_scope if e.asset_value == "*.acme.com")
+    api_entry = next(e for e in result.in_scope if e.asset_value == "api.acme.com")
+    assert wildcard_entry.eligible_for_bounty is True
+    assert api_entry.eligible_for_bounty is False  # in_scope=True but eligible_for_bounty=False
+
 
 def test_fetch_intigriti_parses_scope():
     from lib_webbh.platform_api.engagement_fetcher import _fetch_intigriti, _parse_policy
