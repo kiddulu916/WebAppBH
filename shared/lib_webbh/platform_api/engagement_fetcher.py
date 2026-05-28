@@ -5,6 +5,7 @@ Phase 2 (fetch_engagement): program URL/handle -> EngagementResult -> CampaignFo
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 
@@ -227,3 +228,124 @@ _RATE_LIMIT_RE = re.compile(
 
 # Regex: find custom X- headers required by the platform
 _CUSTOM_HEADER_RE = re.compile(r"(X-[A-Za-z0-9\-]+)\s*:\s*([^\n\r,]+)", re.MULTILINE)
+
+# ---------------------------------------------------------------------------
+# Phase 1 — Search functions
+# ---------------------------------------------------------------------------
+
+async def _search_hackerone(
+    client: httpx.AsyncClient,
+    company_name: str,
+    credentials: dict,
+) -> list[ProgramCandidate]:
+    token = credentials.get("token", "")
+    username = credentials.get("username", "")
+    resp = await client.get(
+        "https://api.hackerone.com/v1/hackers/programs",
+        params={"query": company_name, "sort": "name:ascending", "page[size]": 10},
+        auth=(username, token),
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    candidates = []
+    for prog in data.get("data", []):
+        attrs = prog.get("attributes", {})
+        handle = attrs.get("handle", "")
+        candidates.append(ProgramCandidate(
+            name=attrs.get("name", handle),
+            handle=handle,
+            url=f"https://hackerone.com/{handle}",
+            platform="hackerone",
+        ))
+    return candidates
+
+
+async def _search_bugcrowd(
+    client: httpx.AsyncClient,
+    company_name: str,
+) -> list[ProgramCandidate]:
+    resp = await client.get(
+        "https://bugcrowd.com/programs",
+        params={"q": company_name},
+        headers=_BROWSER_HEADERS,
+    )
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    tag = soup.find(attrs={"data-react-class": "ResearcherProgramCards"})
+    if not tag:
+        return []
+    try:
+        props = json.loads(tag["data-react-props"])
+        programs = props.get("programs", [])
+    except (KeyError, json.JSONDecodeError):
+        return []
+    return [
+        ProgramCandidate(
+            name=p.get("name", p.get("program_id", "")),
+            handle=p.get("program_id", ""),
+            url=f"https://bugcrowd.com{p.get('program_url', '')}",
+            platform="bugcrowd",
+        )
+        for p in programs
+        if p.get("program_type") == "bug_bounty"
+    ]
+
+
+async def _search_intigriti(
+    client: httpx.AsyncClient,
+    company_name: str,
+) -> list[ProgramCandidate]:
+    resp = await client.get(
+        "https://app.intigriti.com/programs",
+        params={"search": company_name},
+        headers=_BROWSER_HEADERS,
+    )
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    tag = soup.find("script", {"id": "__INTIGRITI_DATA__"})
+    if not tag:
+        return []
+    try:
+        data = json.loads(tag.string or "")
+        programs = data.get("programs", [])
+    except json.JSONDecodeError:
+        return []
+    return [
+        ProgramCandidate(
+            name=p.get("name", ""),
+            handle=p.get("programHandle", ""),
+            url=p.get("url", ""),
+            platform="intigriti",
+        )
+        for p in programs
+    ]
+
+
+async def _search_yeswehack(
+    client: httpx.AsyncClient,
+    company_name: str,
+) -> list[ProgramCandidate]:
+    resp = await client.get(
+        "https://yeswehack.com/programs",
+        params={"text": company_name},
+        headers=_BROWSER_HEADERS,
+    )
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    tag = soup.find("script", {"id": "__NUXT_DATA__"})
+    if not tag:
+        return []
+    try:
+        data = json.loads(tag.string or "")
+        items = data.get("programs", {}).get("items", [])
+    except json.JSONDecodeError:
+        return []
+    return [
+        ProgramCandidate(
+            name=p.get("title", p.get("slug", "")),
+            handle=p.get("slug", ""),
+            url=p.get("url", f"https://yeswehack.com/programs/{p.get('slug', '')}"),
+            platform="yeswehack",
+        )
+        for p in items
+    ]
