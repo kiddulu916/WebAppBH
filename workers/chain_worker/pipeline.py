@@ -41,6 +41,46 @@ STAGES: list[Stage] = [
 STAGE_INDEX: dict[str, int] = {s.name: i for i, s in enumerate(STAGES)}
 
 
+async def _tag_chain_exception_findings(target_id: int) -> int:
+    """Mark chain_only=True on vulns from chain-exception stages before evaluation.
+
+    This runs once at pipeline start so chain_evaluation and chain_execution can
+    see which findings require chain promotion before they are reportable.
+    Returns the count of tagged findings.
+    """
+    async with get_session() as session:
+        target = (await session.execute(
+            select(Target).where(Target.id == target_id)
+        )).scalar_one_or_none()
+
+        if not target or not target.campaign_id:
+            return 0
+
+        campaign = (await session.execute(
+            select(Campaign).where(Campaign.id == target.campaign_id)
+        )).scalar_one_or_none()
+
+        conditional = (campaign.conditional_stages or {}) if campaign else {}
+        chain_exception_stages = {
+            stage for stage, rule in conditional.items()
+            if rule.get("chain_exception")
+        }
+        if not chain_exception_stages:
+            return 0
+
+        result = await session.execute(
+            update(Vulnerability)
+            .where(
+                Vulnerability.target_id == target_id,
+                Vulnerability.stage_name.in_(chain_exception_stages),
+                Vulnerability.chain_only.is_(False),
+            )
+            .values(chain_only=True)
+        )
+        await session.commit()
+        return result.rowcount
+
+
 async def _promote_chain_only_findings(target_id: int) -> int:
     """Promote chain_only=True vulns that appear in a high/critical ChainFinding.
 
@@ -106,6 +146,12 @@ class Pipeline:
         log = logger.bind(target_id=target_id)
         start_index = await self._get_resume_index(target_id, container_name)
         kwargs: dict[str, Any] = {}
+
+        # Tag findings from chain-exception stages before chain evaluation begins
+        if start_index == 0:
+            tagged = await _tag_chain_exception_findings(target_id)
+            if tagged:
+                log.info("Tagged chain-exception findings as chain_only", count=tagged)
 
         for i in range(start_index, len(STAGES)):
             stage = STAGES[i]

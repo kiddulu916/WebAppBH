@@ -6,7 +6,7 @@ from dataclasses import asdict
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from lib_webbh import setup_logger
+from lib_webbh import redact_sensitive, setup_logger
 from lib_webbh.platform_api.engagement_fetcher import (
     fetch_engagement,
     search_programs,
@@ -50,7 +50,7 @@ async def search_engagement(body: EngagementSearchRequest):
             credentials=body.credentials,
         )
     except Exception as exc:
-        logger.warning("Engagement search failed", error=str(exc))
+        logger.warning("Engagement search failed", error=redact_sensitive(str(exc)))
         raise HTTPException(status_code=502, detail=f"Platform search failed: {exc}") from exc
 
     if not candidates:
@@ -70,7 +70,7 @@ async def search_engagement(body: EngagementSearchRequest):
                 use_llm=False,
             )
         except Exception as exc:
-            logger.warning("Auto-fetch failed", error=str(exc))
+            logger.warning("Auto-fetch failed", error=redact_sensitive(str(exc)))
             raise HTTPException(status_code=502, detail=f"Program fetch failed: {exc}") from exc
         return {"type": "prefill", "data": asdict(prefill)}
 
@@ -92,7 +92,7 @@ async def fetch_engagement_endpoint(body: EngagementFetchRequest):
             use_llm=body.use_llm,
         )
     except Exception as exc:
-        logger.warning("Engagement fetch failed", error=str(exc))
+        logger.warning("Engagement fetch failed", error=redact_sensitive(str(exc)))
         raise HTTPException(status_code=502, detail=f"Program fetch failed: {exc}") from exc
 
     return asdict(prefill)

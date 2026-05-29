@@ -641,9 +641,11 @@ class EngagementMapper:
                         "chain_exception": chain_exception,
                         "reason": f"Policy mentions: '{kw}'",
                     }
-                    break
+                    if chain_exception:
+                        break  # already True; no further keywords can upgrade further
                 elif chain_exception and not result[stage]["chain_exception"]:
                     result[stage]["chain_exception"] = True
+                    break  # upgraded to True; stop scanning
         return result
 
     async def apply_llm_pass(
