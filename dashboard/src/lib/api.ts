@@ -452,7 +452,7 @@ export const api = {
     });
   },
 
-  updateTargetProfile(targetId: number, profile: { custom_headers?: Record<string, string>; rate_limits?: Array<{ amount: number; unit: string }> | Record<string, number>; account_enum?: import("@/types/schema").AccountEnumSettings }) {
+  updateTargetProfile(targetId: number, profile: { custom_headers?: Record<string, string>; rate_limits?: Array<{ amount: number; unit: string }> | Record<string, number>; account_enum?: import("@/types/schema").AccountEnumSettings; default_creds?: import("@/types/schema").DefaultCredsSettings }) {
     return request<{ target_id: number; target_profile: import("@/types/schema").TargetProfile }>(`/api/v1/targets/${targetId}`, {
       method: "PATCH",
       body: JSON.stringify(profile),

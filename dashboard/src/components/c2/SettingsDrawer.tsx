@@ -46,6 +46,15 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
     pattern_gen: ae.techniques?.pattern_gen ?? true,
     cms_wp: ae.techniques?.cms_wp ?? true,
   });
+  const dc = currentProfile?.default_creds ?? {};
+  const [dcProxyPool, setDcProxyPool] = useState<string>((dc.proxy_pool ?? []).join("\n"));
+  const [dcHydraWait, setDcHydraWait] = useState<string>(
+    dc.hydra_wait_secs != null ? String(dc.hydra_wait_secs) : "",
+  );
+  const [dcNucleiRate, setDcNucleiRate] = useState<string>(
+    dc.nuclei_rate_limit != null ? String(dc.nuclei_rate_limit) : "",
+  );
+
   const [saving, setSaving] = useState(false);
   const [cleanSlateConfirm, setCleanSlateConfirm] = useState(false);
   const [cleaning, setCleaning] = useState(false);
@@ -80,7 +89,13 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
       if (aeMaxCandidates) account_enum.max_candidates = Number(aeMaxCandidates);
       if (aeDelayMs) account_enum.request_delay_ms = Number(aeDelayMs);
 
-      const res = await api.updateTargetProfile(targetId, { custom_headers, rate_limits, account_enum });
+      const default_creds: import("@/types/schema").DefaultCredsSettings = {
+        proxy_pool: dcProxyPool.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean),
+      };
+      if (dcHydraWait) default_creds.hydra_wait_secs = Math.max(5, Number(dcHydraWait));
+      if (dcNucleiRate) default_creds.nuclei_rate_limit = Number(dcNucleiRate);
+
+      const res = await api.updateTargetProfile(targetId, { custom_headers, rate_limits, account_enum, default_creds });
       if (activeTarget) {
         setActiveTarget({ ...activeTarget, target_profile: res.target_profile });
       }
@@ -223,6 +238,40 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
               placeholder="Seed usernames/emails (one per line)"
               rows={3}
               className="w-full rounded border border-border bg-bg-tertiary px-2 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none disabled:opacity-50"
+            />
+          </div>
+
+          {/* Default Credentials (WSTG-ATHN-02) */}
+          <div className="space-y-3 border-t border-border pt-4">
+            <label className="text-xs font-medium text-text-secondary">Default Credentials (WSTG-ATHN-02)</label>
+
+            <div className="flex gap-2">
+              <input
+                data-testid="dc-hydra-wait"
+                type="number"
+                value={dcHydraWait}
+                onChange={(e) => setDcHydraWait(e.target.value)}
+                placeholder="Hydra delay s (15)"
+                min={5}
+                className="flex-1 rounded border border-border bg-bg-tertiary px-2 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+              />
+              <input
+                data-testid="dc-nuclei-rate"
+                type="number"
+                value={dcNucleiRate}
+                onChange={(e) => setDcNucleiRate(e.target.value)}
+                placeholder="Nuclei req/s (10)"
+                className="flex-1 rounded border border-border bg-bg-tertiary px-2 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+              />
+            </div>
+
+            <textarea
+              data-testid="dc-proxy-pool"
+              value={dcProxyPool}
+              onChange={(e) => setDcProxyPool(e.target.value)}
+              placeholder="X-Forwarded-For IPs for rotation (one per line)"
+              rows={3}
+              className="w-full rounded border border-border bg-bg-tertiary px-2 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
             />
           </div>
 

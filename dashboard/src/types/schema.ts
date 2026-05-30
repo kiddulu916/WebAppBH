@@ -43,6 +43,12 @@ export interface Timestamps {
 // Target profile JSONB shape
 // ---------------------------------------------------------------------------
 
+export interface DefaultCredsSettings {
+  proxy_pool?: string[];
+  hydra_wait_secs?: number;
+  nuclei_rate_limit?: number;
+}
+
 export interface AccountEnumSettings {
   enabled?: boolean;
   techniques?: {
@@ -68,6 +74,7 @@ export interface TargetProfile {
   rate_limits?: Array<{ amount: number; unit: string }> | Record<string, number>;
   custom_headers?: Record<string, string>;
   account_enum?: AccountEnumSettings;
+  default_creds?: DefaultCredsSettings;
   [key: string]: unknown;
 }
 
