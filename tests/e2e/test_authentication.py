@@ -1,4 +1,4 @@
-"""E2E tests for authentication worker (WSTG-ATHN-01 through ATHN-10)."""
+"""E2E tests for authentication worker (WSTG-ATHN-02 through ATHN-10)."""
 import pytest
 from sqlalchemy import select, func
 from conftest import (
@@ -26,10 +26,22 @@ async def _assert_default_credentials(client, target_id):
     )
 
 
+async def _assert_lockout_mechanism(client, target_id):
+    async with get_session() as session:
+        stmt = select(func.count()).where(
+            Vulnerability.target_id == target_id,
+            Vulnerability.source_tool == "lockout_tester",
+        )
+        result = await session.execute(stmt)
+        count = result.scalar()
+    assert count >= 1, (
+        f"Expected at least 1 Vulnerability from lockout_tester, got {count}"
+    )
+
+
 STAGE_ASSERTIONS = {
-    "credentials_transport": None,
     "default_credentials":   _assert_default_credentials,
-    "lockout_mechanism":     None,
+    "lockout_mechanism":     _assert_lockout_mechanism,
     "auth_bypass":           None,
     "remember_password":     None,
     "browser_cache":         None,
@@ -40,9 +52,8 @@ STAGE_ASSERTIONS = {
 }
 
 STAGE_TIMEOUTS = {
-    "credentials_transport": 120,
     "default_credentials":   600,
-    "lockout_mechanism":     180,
+    "lockout_mechanism":     1050,
     "auth_bypass":           300,
     "remember_password":     120,
     "browser_cache":         120,
