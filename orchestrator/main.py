@@ -139,6 +139,7 @@ class AlertUpdate(BaseModel):
 class TargetProfileUpdate(BaseModel):
     custom_headers: Optional[dict] = None
     rate_limits: Optional[dict] = None
+    account_enum: Optional[dict] = None
 
 
 class ReportCreate(BaseModel):
@@ -1607,6 +1608,8 @@ async def update_target_profile(target_id: int, body: TargetProfileUpdate):
             profile["custom_headers"] = body.custom_headers
         if body.rate_limits is not None:
             profile["rate_limits"] = body.rate_limits
+        if body.account_enum is not None:
+            profile["account_enum"] = body.account_enum
         target.target_profile = profile
         attributes.flag_modified(target, "target_profile")
         await session.commit()

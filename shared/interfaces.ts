@@ -37,6 +37,7 @@ export interface TargetProfile {
   in_scope_regex?: string[];
   rate_limits?: Record<string, number>;
   custom_headers?: Record<string, string>;
+  account_enum?: Record<string, unknown>;
   [key: string]: unknown;
 }
 

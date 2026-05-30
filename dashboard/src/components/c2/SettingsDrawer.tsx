@@ -29,6 +29,23 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
     }
     return String((rl as Record<string, number>).pps ?? "");
   });
+  const ae = currentProfile?.account_enum ?? {};
+  const [aeEnabled, setAeEnabled] = useState<boolean>(ae.enabled ?? true);
+  const [aeMaxCandidates, setAeMaxCandidates] = useState<string>(
+    ae.max_candidates != null ? String(ae.max_candidates) : "",
+  );
+  const [aeDelayMs, setAeDelayMs] = useState<string>(
+    ae.request_delay_ms != null ? String(ae.request_delay_ms) : "",
+  );
+  const [aeSeeds, setAeSeeds] = useState<string>((ae.custom_seeds ?? []).join("\n"));
+  const [aeTechniques, setAeTechniques] = useState<Record<string, boolean>>({
+    login_oracle: ae.techniques?.login_oracle ?? true,
+    reset_oracle: ae.techniques?.reset_oracle ?? true,
+    reg_oracle: ae.techniques?.reg_oracle ?? true,
+    uri_probe: ae.techniques?.uri_probe ?? true,
+    pattern_gen: ae.techniques?.pattern_gen ?? true,
+    cms_wp: ae.techniques?.cms_wp ?? true,
+  });
   const [saving, setSaving] = useState(false);
   const [cleanSlateConfirm, setCleanSlateConfirm] = useState(false);
   const [cleaning, setCleaning] = useState(false);
@@ -54,7 +71,16 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
       }
       const rate_limits: Record<string, number> = {};
       if (pps) rate_limits.pps = Number(pps);
-      const res = await api.updateTargetProfile(targetId, { custom_headers, rate_limits });
+
+      const account_enum: import("@/types/schema").AccountEnumSettings = {
+        enabled: aeEnabled,
+        techniques: aeTechniques,
+        custom_seeds: aeSeeds.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean),
+      };
+      if (aeMaxCandidates) account_enum.max_candidates = Number(aeMaxCandidates);
+      if (aeDelayMs) account_enum.request_delay_ms = Number(aeDelayMs);
+
+      const res = await api.updateTargetProfile(targetId, { custom_headers, rate_limits, account_enum });
       if (activeTarget) {
         setActiveTarget({ ...activeTarget, target_profile: res.target_profile });
       }
@@ -138,6 +164,67 @@ export default function SettingsDrawer({ open, onClose, targetId, currentProfile
           >
             {saving ? "Saving..." : "Save Settings"}
           </button>
+
+          {/* Account Enumeration (WSTG-IDNT-04) */}
+          <div className="space-y-3 border-t border-border pt-4">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-text-secondary">Account Enumeration (WSTG-IDNT-04)</label>
+              <input
+                data-testid="ae-enabled"
+                type="checkbox"
+                checked={aeEnabled}
+                onChange={(e) => setAeEnabled(e.target.checked)}
+                className="h-4 w-4 accent-accent"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {Object.keys(aeTechniques).map((key) => (
+                <label key={key} className="flex items-center gap-2 text-[11px] text-text-muted">
+                  <input
+                    data-testid={`ae-tech-${key}`}
+                    type="checkbox"
+                    checked={aeTechniques[key]}
+                    disabled={!aeEnabled}
+                    onChange={(e) => setAeTechniques({ ...aeTechniques, [key]: e.target.checked })}
+                    className="h-3.5 w-3.5 accent-accent"
+                  />
+                  {key}
+                </label>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                data-testid="ae-max-candidates"
+                type="number"
+                value={aeMaxCandidates}
+                disabled={!aeEnabled}
+                onChange={(e) => setAeMaxCandidates(e.target.value)}
+                placeholder="Max candidates (6)"
+                className="flex-1 rounded border border-border bg-bg-tertiary px-2 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none disabled:opacity-50"
+              />
+              <input
+                data-testid="ae-delay-ms"
+                type="number"
+                value={aeDelayMs}
+                disabled={!aeEnabled}
+                onChange={(e) => setAeDelayMs(e.target.value)}
+                placeholder="Delay ms (150)"
+                className="flex-1 rounded border border-border bg-bg-tertiary px-2 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none disabled:opacity-50"
+              />
+            </div>
+
+            <textarea
+              data-testid="ae-seeds"
+              value={aeSeeds}
+              disabled={!aeEnabled}
+              onChange={(e) => setAeSeeds(e.target.value)}
+              placeholder="Seed usernames/emails (one per line)"
+              rows={3}
+              className="w-full rounded border border-border bg-bg-tertiary px-2 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none disabled:opacity-50"
+            />
+          </div>
 
           {/* Danger Zone */}
           <div className="mt-8 border-t border-danger/20 pt-4">
