@@ -140,6 +140,7 @@ class TargetProfileUpdate(BaseModel):
     custom_headers: Optional[dict] = None
     rate_limits: Optional[dict] = None
     account_enum: Optional[dict] = None
+    default_creds: Optional[dict] = None
 
 
 class ReportCreate(BaseModel):
@@ -1610,6 +1611,8 @@ async def update_target_profile(target_id: int, body: TargetProfileUpdate):
             profile["rate_limits"] = body.rate_limits
         if body.account_enum is not None:
             profile["account_enum"] = body.account_enum
+        if body.default_creds is not None:
+            profile["default_creds"] = body.default_creds
         target.target_profile = profile
         attributes.flag_modified(target, "target_profile")
         await session.commit()
@@ -2693,6 +2696,10 @@ def _generate_tool_configs(target_id: int, profile: dict) -> None:
     # Rate-limit config
     rate_limits = profile.get("rate_limits", {})
     (config_dir / "rate_limits.json").write_text(json.dumps(rate_limits, indent=2))
+
+    # Default credentials scan config (consumed by authentication worker)
+    default_creds_cfg = profile.get("default_creds", {})
+    (config_dir / "default_creds.json").write_text(json.dumps(default_creds_cfg, indent=2))
 
     # Scope rules (consumed by ScopeManager in workers)
     scope_keys = ("in_scope_domains", "out_scope_domains", "in_scope_cidrs", "in_scope_regex")
