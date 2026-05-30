@@ -1,0 +1,10 @@
+admin:admin
+admin:password
+admin:admin123
+admin:123456
+root:root
+root:toor
+tomcat:tomcat
+manager:manager
+admin:
+guest:guest
