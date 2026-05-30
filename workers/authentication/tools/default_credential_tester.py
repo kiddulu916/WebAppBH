@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 import httpx
 from sqlalchemy import select
 
-from lib_webbh import Asset, JobState, Observation, get_session, push_task, setup_logger
+from lib_webbh import Asset, JobState, Vulnerability, get_session, push_task, setup_logger
 from lib_webbh.scope import ScopeManager
 
 from workers.authentication.base_tool import AuthenticationTool
@@ -309,19 +309,19 @@ class DefaultCredentialTester(AuthenticationTool):
     async def _get_lockout_threshold(self, target_id: int) -> int | None:
         async with get_session() as session:
             stmt = (
-                select(Observation)
+                select(Vulnerability)
                 .where(
-                    Observation.target_id == target_id,
-                    Observation.source_tool == "lockout_tester",
+                    Vulnerability.target_id == target_id,
+                    Vulnerability.source_tool == "lockout_tester",
                 )
-                .order_by(Observation.id.desc())
+                .order_by(Vulnerability.id.desc())
                 .limit(1)
             )
             result = await session.execute(stmt)
-            obs = result.scalar_one_or_none()
+            vuln = result.scalar_one_or_none()
 
-        if obs and isinstance(obs.data, dict):
-            return obs.data.get("lockout_at_attempt")
+        if vuln and isinstance(vuln.evidence, dict):
+            return vuln.evidence.get("lockout_at_attempt")
         return None
 
     async def _run_hydra_for_url(
@@ -375,15 +375,17 @@ class DefaultCredentialTester(AuthenticationTool):
         severity = "critical" if item.get("username") else "info"
 
         async with get_session() as session:
-            obs = Observation(
+            vuln = Vulnerability(
                 target_id=target_id,
-                observation_type="authentication",
-                source_tool=self.name,
-                title=title,
                 severity=severity,
-                data=item,
+                title=title,
+                source_tool=self.name,
+                section_id="4.2",
+                worker_type="authentication",
+                stage_name="default_credentials",
+                evidence=item,
             )
-            session.add(obs)
+            session.add(vuln)
             await session.commit()
 
         await push_task(f"events:{target_id}", {
