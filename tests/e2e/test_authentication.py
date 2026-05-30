@@ -1,8 +1,10 @@
 """E2E tests for authentication worker (WSTG-ATHN-01 through ATHN-10)."""
 import pytest
+from sqlalchemy import select, func
 from conftest import (
     assert_job_completed, cleanup_target, create_target,
 )
+from lib_webbh import Vulnerability, get_session
 
 pytestmark = pytest.mark.e2e
 
@@ -10,9 +12,23 @@ WORKER = "authentication"
 PLAYBOOK = "e2e_authentication"
 LAST_STAGE = "multi_channel_auth"
 
+
+async def _assert_default_credentials(client, target_id):
+    async with get_session() as session:
+        stmt = select(func.count()).where(
+            Vulnerability.target_id == target_id,
+            Vulnerability.source_tool == "default_credential_tester",
+        )
+        result = await session.execute(stmt)
+        count = result.scalar()
+    assert count >= 1, (
+        f"Expected at least 1 Vulnerability from default_credential_tester, got {count}"
+    )
+
+
 STAGE_ASSERTIONS = {
     "credentials_transport": None,
-    "default_credentials":   None,
+    "default_credentials":   _assert_default_credentials,
     "lockout_mechanism":     None,
     "auth_bypass":           None,
     "remember_password":     None,
@@ -25,7 +41,7 @@ STAGE_ASSERTIONS = {
 
 STAGE_TIMEOUTS = {
     "credentials_transport": 120,
-    "default_credentials":   300,
+    "default_credentials":   600,
     "lockout_mechanism":     180,
     "auth_bypass":           300,
     "remember_password":     120,
