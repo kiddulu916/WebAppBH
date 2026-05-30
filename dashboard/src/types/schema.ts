@@ -43,6 +43,23 @@ export interface Timestamps {
 // Target profile JSONB shape
 // ---------------------------------------------------------------------------
 
+export interface AccountEnumSettings {
+  enabled?: boolean;
+  techniques?: {
+    login_oracle?: boolean;
+    reset_oracle?: boolean;
+    reg_oracle?: boolean;
+    uri_probe?: boolean;
+    pattern_gen?: boolean;
+    cms_wp?: boolean;
+  };
+  max_candidates?: number;
+  request_delay_ms?: number;
+  baseline_samples?: number;
+  timing_samples?: number;
+  custom_seeds?: string[];
+}
+
 export interface TargetProfile {
   in_scope_domains?: string[];
   out_scope_domains?: string[];
@@ -50,6 +67,7 @@ export interface TargetProfile {
   in_scope_regex?: string[];
   rate_limits?: Array<{ amount: number; unit: string }> | Record<string, number>;
   custom_headers?: Record<string, string>;
+  account_enum?: AccountEnumSettings;
   [key: string]: unknown;
 }
 
