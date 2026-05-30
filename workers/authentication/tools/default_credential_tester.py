@@ -1,261 +1,513 @@
-"""Default credential testing tool."""
+"""Default credential testing tool (WSTG-ATHN-02)."""
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import re
+import tempfile
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlparse
+
+import httpx
+from sqlalchemy import select
+
+from lib_webbh import Asset, JobState, Observation, get_session, push_task, setup_logger
+from lib_webbh.scope import ScopeManager
 
 from workers.authentication.base_tool import AuthenticationTool
-from workers.authentication.concurrency import WeightClass
+from workers.authentication.concurrency import WeightClass, get_semaphore
+
+logger = setup_logger("auth-tool")
+
+TOOL_TIMEOUT = int(os.environ.get("TOOL_TIMEOUT", "600"))
+COOLDOWN_HOURS = int(os.environ.get("COOLDOWN_HOURS", "24"))
+
+_CAPTCHA_RE = re.compile(
+    r"recaptcha|hcaptcha|h-captcha|turnstile|captcha\.js|g-recaptcha|cf-turnstile",
+    re.IGNORECASE,
+)
+_LOCKOUT_RE = re.compile(
+    r"too many|account.?lock|temporarily.?block|cooldown|rate.?limit",
+    re.IGNORECASE,
+)
+_HYDRA_HIT_RE = re.compile(
+    r"\[\d+\]\[[\w-]+\] host: \S+\s+login: (\S+)\s+password: (\S*)",
+)
+
+PAIRS_TOP10 = "/wordlists/auth/pairs_top10.txt"
+PAIRS_TOP3 = "/wordlists/auth/pairs_top3.txt"
+NUCLEI_COMMUNITY_DIR = "/nuclei-templates/community/http/default-logins/"
+NUCLEI_CUSTOM_DIR = "/nuclei-templates/custom/"
+
+DEFAULT_PATHS = [
+    "/admin", "/admin/login", "/login", "/signin",
+    "/wp-login.php", "/administrator",
+    "/manager/html", "/console",
+    "/phpmyadmin", "/pma", "/cpanel",
+    "/dashboard", "/panel",
+    "/j_security_check",
+    "/api/login", "/api/v1/login",
+]
 
 
 class DefaultCredentialTester(AuthenticationTool):
-    """Test for default credentials (WSTG-ATHN-002)."""
+    """Test for default credentials (WSTG-ATHN-02).
+
+    Runs Nuclei default-logins templates as the primary engine, then falls back
+    to conservative Hydra brute-force on URLs Nuclei did not hit.
+    """
 
     name = "default_credential_tester"
     weight_class = WeightClass.HEAVY
 
-    def build_command(self, target, credentials=None):
-        target_value = getattr(target, 'target_value', str(target))
-        base_url = target_value if target_value.startswith(('http://', 'https://')) else f"https://{target_value}"
+    # Abstract contract stubs — execute() is fully overridden.
+    def build_command(self, target, credentials=None) -> list[str]:
+        return ["true"]
 
-        script = f'''
-import httpx
-import json
-import sys
-import asyncio
-from urllib.parse import urljoin, urlparse
+    def parse_output(self, stdout: str) -> list:
+        return []
 
-results = []
-base_url = "{base_url}"
+    # ------------------------------------------------------------------
+    # Settings
+    # ------------------------------------------------------------------
 
-# Common default credential combinations
-DEFAULT_CREDS = [
-    ("admin", "admin"),
-    ("admin", "password"),
-    ("admin", "admin123"),
-    ("admin", "123456"),
-    ("root", "root"),
-    ("root", "toor"),
-    ("root", "password"),
-    ("test", "test"),
-    ("user", "user"),
-    ("user", "password"),
-    ("administrator", "administrator"),
-    ("administrator", "admin"),
-    ("administrator", "password"),
-    ("guest", "guest"),
-    ("guest", "password"),
-    ("demo", "demo"),
-    ("demo", "password"),
-    ("support", "support"),
-    ("support", "password"),
-    ("operator", "operator"),
-    ("sysadmin", "sysadmin"),
-    ("webadmin", "webadmin"),
-    ("manager", "manager"),
-]
+    def _load_settings(self, target_id: int) -> dict:
+        config_dir = Path(f"/app/shared/config/{target_id}")
+        return self._load_settings_from_dir(config_dir)
 
-# Common login paths to test
-LOGIN_PATHS = [
-    "/login",
-    "/admin",
-    "/admin/login",
-    "/admin/index.php",
-    "/wp-login.php",
-    "/administrator",
-    "/auth",
-    "/auth/login",
-    "/signin",
-    "/sign-in",
-    "/user/login",
-    "/accounts/login",
-    "/account/login",
-    "/login.php",
-    "/login.aspx",
-    "/login.html",
-    "/j_security_check",
-    "/manager/html",
-    "/console",
-    "/api/login",
-    "/api/auth",
-    "/api/v1/login",
-    "/api/v1/auth",
-    "/rest/login",
-    "/sso/login",
-    "/portal/login",
-    "/dashboard/login",
-    "/control",
-    "/panel",
-    "/cpanel",
-    "/webmail",
-    "/phpmyadmin",
-    "/pma",
-]
+    def _load_settings_from_dir(self, config_dir: Path) -> dict:
+        """Load and merge settings from config JSON files. Returns a flat settings dict."""
+        def _read(name: str) -> dict:
+            try:
+                p = config_dir / name
+                if p.exists():
+                    return json.loads(p.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
+            return {}
 
-def safe_post(url, data=None, json_data=None, headers=None, timeout=10):
-    try:
-        return httpx.post(url, data=data, json=json_data, headers=headers or {{}}, timeout=timeout, follow_redirects=False, verify=False)
-    except Exception:
-        return None
+        rate_limits = _read("rate_limits.json")
+        custom_headers = _read("custom_headers.json")
+        default_creds = _read("default_creds.json")
 
-def safe_get(url, timeout=10):
-    try:
-        return httpx.get(url, timeout=timeout, follow_redirects=False, verify=False)
-    except Exception:
-        return None
+        pps = int(default_creds.get("nuclei_rate_limit") or rate_limits.get("pps", 10))
+        hydra_wait = max(5, int(default_creds.get("hydra_wait_secs", 15)))
+        proxy_pool = list(default_creds.get("proxy_pool", []))
 
-def is_successful_login(response, original_response=None):
-    """Heuristic to detect successful login."""
-    if response is None:
-        return False
-    
-    # Check for redirect to dashboard/admin area
-    if response.status_code in (301, 302, 303, 307, 308):
-        location = response.headers.get("location", "").lower()
-        if any(x in location for x in ["dashboard", "admin", "home", "welcome", "portal", "console"]):
-            if not any(x in location for x in ["login", "error", "fail", "invalid"]):
-                return True
-    
-    # Check response for success indicators
-    text = response.text.lower() if response.text else ""
-    
-    # Success indicators
-    success_indicators = ["welcome", "dashboard", "logout", "sign out", "my account", "profile", "admin panel"]
-    # Failure indicators
-    failure_indicators = ["invalid", "incorrect", "failed", "error", "wrong", "unauthorized", "forbidden", "denied"]
-    
-    success_count = sum(1 for x in success_indicators if x in text)
-    failure_count = sum(1 for x in failure_indicators if x in text)
-    
-    # Check for session cookies
-    has_session_cookie = any("session" in c.name.lower() or "token" in c.name.lower() for c in response.cookies)
-    
-    if has_session_cookie and failure_count == 0:
-        return True
-    
-    if success_count > failure_count and success_count >= 2:
-        return True
-    
-    # Check if response is significantly different from failed login
-    if original_response and response.text:
-        if len(response.text) != len(original_response.text):
-            # Different response size might indicate different behavior
-            pass
-    
-    return False
+        return {
+            "pps": pps,
+            "hydra_wait": hydra_wait,
+            "proxy_pool": proxy_pool,
+            "custom_headers": dict(custom_headers),
+        }
 
-def get_failed_login_response(login_url):
-    """Get a baseline failed login response for comparison."""
-    return safe_post(login_url, data={{"username": "nonexistent_user_xyz", "password": "wrong_password_xyz"}})
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
-# Test each login path with default credentials
-tested_paths = []
-successful_logins = []
+    def _rotate_ip(self, pool: list[str], attempt: int) -> str | None:
+        if not pool:
+            return None
+        return pool[attempt % len(pool)]
 
-for path in LOGIN_PATHS:
-    login_url = urljoin(base_url, path)
-    
-    # First check if the path exists
-    r = safe_get(login_url, timeout=5)
-    if r is None or r.status_code in (404, 403, 401):
-        # Path might still accept POST even if GET returns 404
-        if r and r.status_code == 404:
-            continue
-    
-    tested_paths.append(path)
-    
-    # Get baseline failed response
-    failed_response = get_failed_login_response(login_url)
-    
-    for username, password in DEFAULT_CREDS:
-        # Try form-based login
-        form_data = {{"username": username, "password": password}}
-        r = safe_post(login_url, data=form_data)
-        
-        if r and is_successful_login(r, failed_response):
-            successful_logins.append({{
-                "path": path,
+    def _is_captcha_protected(self, response_text: str) -> bool:
+        return bool(_CAPTCHA_RE.search(response_text))
+
+    def _has_lockout_signal(self, stdout: str) -> bool:
+        return bool(_LOCKOUT_RE.search(stdout))
+
+    def _select_hydra_pairs(self, lockout_threshold: int | None) -> str:
+        if lockout_threshold is not None and lockout_threshold <= 5:
+            return PAIRS_TOP3
+        return PAIRS_TOP10
+
+    # ------------------------------------------------------------------
+    # URL discovery
+    # ------------------------------------------------------------------
+
+    async def _discover_urls(self, base_url: str, target_id: int) -> list[str]:
+        async with get_session() as session:
+            stmt = select(Asset).where(
+                Asset.target_id == target_id,
+                Asset.asset_type == "admin_interface",
+            )
+            result = await session.execute(stmt)
+            assets = result.scalars().all()
+
+        if assets:
+            return [a.asset_value for a in assets]
+
+        found: list[str] = []
+        async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=5.0) as client:
+            for path in DEFAULT_PATHS:
+                url = base_url.rstrip("/") + path
+                try:
+                    r = await client.get(url)
+                    if r.status_code in (200, 401, 403):
+                        found.append(url)
+                except Exception:
+                    pass
+        return found
+
+    async def _filter_captcha(self, urls: list[str]) -> list[str]:
+        clean: list[str] = []
+        async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=8.0) as client:
+            for url in urls:
+                try:
+                    r = await client.get(url)
+                    if not self._is_captcha_protected(r.text):
+                        clean.append(url)
+                except Exception:
+                    clean.append(url)
+        return clean
+
+    # ------------------------------------------------------------------
+    # Nuclei phase
+    # ------------------------------------------------------------------
+
+    def _build_nuclei_cmd(
+        self,
+        urls_file: str,
+        pps: int,
+        custom_headers: dict,
+        rotated_ip: str | None,
+    ) -> list[str]:
+        cmd = [
+            "nuclei",
+            "-l", urls_file,
+            "-t", NUCLEI_COMMUNITY_DIR,
+            "-t", NUCLEI_CUSTOM_DIR,
+            "-rate-limit", str(pps),
+            "-timeout", "10",
+            "-retries", "1",
+            "-silent",
+            "-json",
+            "-no-interactsh",
+        ]
+        if rotated_ip:
+            cmd += ["-H", f"X-Forwarded-For: {rotated_ip}"]
+        for key, val in custom_headers.items():
+            cmd += ["-H", f"{key}: {val}"]
+        return cmd
+
+    def _parse_nuclei_jsonl(self, stdout: str) -> list[dict]:
+        results: list[dict] = []
+        for line in stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            template_id = obj.get("template-id", "")
+            matched_at = obj.get("matched-at", "")
+            extracted = obj.get("extracted-results") or []
+
+            username = extracted[0] if len(extracted) > 0 else ""
+            password = extracted[1] if len(extracted) > 1 else ""
+
+            results.append({
+                "url": matched_at,
                 "username": username,
                 "password": password,
-                "status_code": r.status_code,
-            }})
-            results.append({{
-                "title": f"Default credentials accepted: {{username}}/{{password}}",
-                "description": f"Default credentials were accepted at {{login_url}}. Username: {{username}}, Password: {{password}}",
-                "severity": "critical",
-                "data": {{
-                    "login_url": login_url,
-                    "username": username,
-                    "password": password,
-                    "status_code": r.status_code,
-                    "response_headers": dict(r.headers),
-                    "cookies": {{c.name: c.value for c in r.cookies}}
-                }}
-            }})
-            break  # Found working creds, move to next path
-        
-        # Try JSON-based login
-        json_data = {{"username": username, "password": password}}
-        headers = {{"Content-Type": "application/json"}}
-        r = safe_post(login_url, json=json_data, headers=headers)
-        
-        if r and is_successful_login(r, failed_response):
-            successful_logins.append({{
-                "path": path,
-                "username": username,
-                "password": password,
-                "status_code": r.status_code,
-            }})
-            results.append({{
-                "title": f"Default credentials accepted (JSON): {{username}}/{{password}}",
-                "description": f"Default credentials were accepted at {{login_url}} via JSON API. Username: {{username}}, Password: {{password}}",
-                "severity": "critical",
-                "data": {{
-                    "login_url": login_url,
-                    "username": username,
-                    "password": password,
-                    "auth_type": "json",
-                    "status_code": r.status_code
-                }}
-            }})
-            break  # Found working creds, move to next path
+                "auth_type": "form",
+                "template_id": template_id,
+                "framework": template_id.split("-")[0] if template_id else None,
+            })
+        return results
 
-# Also test with provided credentials if available
-provided_creds = {credentials}
-if provided_creds:
-    login_url = provided_creds.get("login_url", urljoin(base_url, "/login"))
-    username = provided_creds.get("username", "admin")
-    password = provided_creds.get("password", "admin")
-    
-    r = safe_post(login_url, data={{"username": username, "password": password}})
-    if r and is_successful_login(r):
-        results.append({{
-            "title": f"Provided default credentials accepted: {{username}}/{{password}}",
-            "description": f"Provided credentials were accepted at {{login_url}}",
-            "severity": "critical",
-            "data": {{
-                "login_url": login_url,
-                "username": username,
-                "password": password
-            }}
-        }})
+    async def _run_nuclei(
+        self,
+        urls: list[str],
+        settings: dict,
+        attempt: int,
+    ) -> tuple[list[dict], set[str]]:
+        rotated_ip = self._rotate_ip(settings["proxy_pool"], attempt)
 
-# Summary
-if not results:
-    results.append({{
-        "title": "No default credentials found",
-        "description": f"Tested {{len(DEFAULT_CREDS)}} default credential combinations against {{len(tested_paths)}} login paths. No successful logins detected.",
-        "severity": "info",
-        "data": {{
-            "tested_paths": tested_paths[:10],
-            "paths_count": len(tested_paths),
-            "credential_combos_tested": len(DEFAULT_CREDS)
-        }}
-    }})
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("\n".join(urls))
+            urls_file = f.name
 
-print(json.dumps(results))
-'''
-        return ["python3", "-c", script]
-
-    def parse_output(self, stdout):
-        import json
         try:
-            return json.loads(stdout.strip())
-        except (json.JSONDecodeError, ValueError):
+            cmd = self._build_nuclei_cmd(
+                urls_file, settings["pps"], settings["custom_headers"], rotated_ip
+            )
+            try:
+                stdout = await self.run_subprocess(cmd, timeout=TOOL_TIMEOUT)
+            except (asyncio.TimeoutError, FileNotFoundError):
+                return [], set()
+
+            hits = self._parse_nuclei_jsonl(stdout)
+            covered = {h["url"] for h in hits}
+            return hits, covered
+        finally:
+            try:
+                os.unlink(urls_file)
+            except OSError:
+                pass
+
+    # ------------------------------------------------------------------
+    # Hydra phase
+    # ------------------------------------------------------------------
+
+    def _build_hydra_cmd(
+        self,
+        url: str,
+        pairs_file: str,
+        hydra_wait: int,
+        custom_headers: dict,
+        rotated_ip: str | None,
+        is_basic_auth: bool,
+    ) -> list[str]:
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        path = parsed.path or "/"
+        scheme = parsed.scheme
+
+        if is_basic_auth:
+            module = "https-get" if scheme == "https" else "http-get"
+            module_str = path
+        else:
+            module = "https-form-post" if scheme == "https" else "http-form-post"
+            module_str = f"{path}:username=^USER^&password=^PASS^:F=invalid"
+            if rotated_ip:
+                module_str += f":H=X-Forwarded-For: {rotated_ip}"
+            for key, val in custom_headers.items():
+                module_str += f":H={key}: {val}"
+
+        return [
+            "hydra",
+            "-C", pairs_file,
+            "-t", "1",
+            "-w", str(hydra_wait),
+            "-f",
+            "-s", str(port),
+            host,
+            module,
+            module_str,
+        ]
+
+    def _parse_hydra_output(self, stdout: str, url: str, is_basic_auth: bool) -> list[dict]:
+        results: list[dict] = []
+        for match in _HYDRA_HIT_RE.finditer(stdout):
+            username, password = match.group(1), match.group(2)
+            results.append({
+                "url": url,
+                "username": username,
+                "password": password,
+                "auth_type": "basic" if is_basic_auth else "form",
+                "template_id": None,
+                "framework": None,
+            })
+        return results
+
+    async def _get_lockout_threshold(self, target_id: int) -> int | None:
+        async with get_session() as session:
+            stmt = (
+                select(Observation)
+                .where(
+                    Observation.target_id == target_id,
+                    Observation.source_tool == "lockout_tester",
+                )
+                .order_by(Observation.id.desc())
+                .limit(1)
+            )
+            result = await session.execute(stmt)
+            obs = result.scalar_one_or_none()
+
+        if obs and isinstance(obs.data, dict):
+            return obs.data.get("lockout_at_attempt")
+        return None
+
+    async def _run_hydra_for_url(
+        self,
+        url: str,
+        settings: dict,
+        lockout_threshold: int | None,
+        attempt: int,
+    ) -> list[dict]:
+        rotated_ip = self._rotate_ip(settings["proxy_pool"], attempt)
+        pairs_file = self._select_hydra_pairs(lockout_threshold)
+        is_basic_auth = False
+
+        async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=8.0) as client:
+            try:
+                r = await client.get(url)
+                if self._is_captcha_protected(r.text):
+                    return []
+                is_basic_auth = "basic" in r.headers.get("www-authenticate", "").lower()
+            except Exception:
+                pass
+
+        cmd = self._build_hydra_cmd(
+            url=url,
+            pairs_file=pairs_file,
+            hydra_wait=settings["hydra_wait"],
+            custom_headers=settings["custom_headers"],
+            rotated_ip=rotated_ip,
+            is_basic_auth=is_basic_auth,
+        )
+        try:
+            stdout = await self.run_subprocess(cmd, timeout=TOOL_TIMEOUT)
+        except (asyncio.TimeoutError, FileNotFoundError):
             return []
+
+        if self._has_lockout_signal(stdout):
+            return []
+
+        return self._parse_hydra_output(stdout, url, is_basic_auth)
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    async def _save_hit(self, item: dict, target_id: int) -> None:
+        title = (
+            f"Default credentials accepted: {item['username']}/{item['password']} @ {item['url']}"
+            if item.get("username")
+            else item.get("title", "Default credential scan complete")
+        )
+        severity = "critical" if item.get("username") else "info"
+
+        async with get_session() as session:
+            obs = Observation(
+                target_id=target_id,
+                observation_type="authentication",
+                source_tool=self.name,
+                title=title,
+                severity=severity,
+                data=item,
+            )
+            session.add(obs)
+            await session.commit()
+
+        await push_task(f"events:{target_id}", {
+            "event": "NEW_OBSERVATION",
+            "target_id": target_id,
+            "observation_type": "authentication",
+            "title": title,
+            "severity": severity,
+            "source_tool": self.name,
+        })
+
+    # ------------------------------------------------------------------
+    # execute()
+    # ------------------------------------------------------------------
+
+    async def execute(
+        self,
+        target,
+        scope_manager: ScopeManager,
+        target_id: int,
+        container_name: str,
+        credentials: dict | None = None,
+    ) -> dict:
+        log = logger.bind(target_id=target_id, asset_type="auth")
+
+        if await self.check_cooldown(target_id, container_name):
+            log.info(f"Skipping {self.name} — within cooldown period")
+            return {"found": 0, "inserted": 0, "skipped_cooldown": True}
+
+        sem = get_semaphore(self.weight_class)
+        await sem.acquire()
+        try:
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS",
+                "container": container_name,
+                "tool": self.name,
+                "progress": 0,
+                "message": f"{self.name} started",
+            })
+
+            settings = self._load_settings(target_id)
+
+            target_value = getattr(target, "target_value", str(target))
+            base_url = (
+                target_value
+                if target_value.startswith(("http://", "https://"))
+                else f"https://{target_value}"
+            )
+
+            urls = await self._discover_urls(base_url, target_id)
+            if not urls:
+                await self._save_hit({
+                    "title": "No login paths found to test",
+                    "url": base_url,
+                    "username": "",
+                    "password": "",
+                    "auth_type": "summary",
+                    "template_id": None,
+                    "framework": None,
+                }, target_id)
+                return {"found": 0, "inserted": 1, "skipped_cooldown": False}
+
+            urls = await self._filter_captcha(urls)
+            all_hits: list[dict] = []
+
+            nuclei_hits, covered_urls = await self._run_nuclei(urls, settings, attempt=0)
+            all_hits.extend(nuclei_hits)
+
+            uncovered = [u for u in urls if u not in covered_urls]
+            lockout_threshold = await self._get_lockout_threshold(target_id)
+
+            for attempt, url in enumerate(uncovered):
+                hydra_hits = await self._run_hydra_for_url(
+                    url, settings, lockout_threshold, attempt
+                )
+                all_hits.extend(hydra_hits)
+
+            for item in all_hits:
+                await self._save_hit(item, target_id)
+
+            # Always emit a summary observation so the stage shows activity
+            await self._save_hit({
+                "title": (
+                    f"Default credentials test complete: {len(all_hits)} hit(s) "
+                    f"across {len(urls)} path(s)"
+                ),
+                "url": base_url,
+                "username": "",
+                "password": "",
+                "auth_type": "summary",
+                "template_id": None,
+                "framework": None,
+                "urls_tested": len(urls),
+                "hits": len(all_hits),
+            }, target_id)
+
+            async with get_session() as session:
+                stmt = select(JobState).where(
+                    JobState.target_id == target_id,
+                    JobState.container_name == container_name,
+                )
+                result = await session.execute(stmt)
+                job = result.scalar_one_or_none()
+                if job:
+                    job.last_tool_executed = self.name
+                    job.last_seen = datetime.utcnow()
+                    await session.commit()
+
+            stats = {
+                "found": len(all_hits),
+                "inserted": len(all_hits) + 1,
+                "skipped_cooldown": False,
+            }
+
+            await push_task(f"events:{target_id}", {
+                "event": "TOOL_PROGRESS",
+                "container": container_name,
+                "tool": self.name,
+                "progress": 100,
+                "message": f"{self.name}: {len(all_hits)} hit(s) found",
+            })
+
+            log.info(f"{self.name} complete", extra={"tool": self.name, **stats})
+            return stats
+
+        finally:
+            sem.release()
