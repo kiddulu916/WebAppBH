@@ -19,7 +19,6 @@ from workers.authentication.concurrency import WeightClass, get_semaphore
 
 logger = setup_logger("auth-tool")
 
-TOOL_TIMEOUT = int(os.environ.get("TOOL_TIMEOUT", "600"))
 MAX_ATTEMPTS = 20
 DURATION_POLL_INTERVAL = 300  # 5 minutes in seconds
 _NON_EXISTENT_USER = "nonexistent_user_xyz_12345"
@@ -80,7 +79,12 @@ class LockoutTester(AuthenticationTool):
     # URL discovery
     # ------------------------------------------------------------------
 
-    async def _discover_login_urls(self, base_url: str, target_id: int) -> list[str]:
+    async def _discover_login_urls(
+        self,
+        base_url: str,
+        target_id: int,
+        scope_manager: ScopeManager | None = None,
+    ) -> list[str]:
         async with get_session() as session:
             stmt = select(Asset).where(
                 Asset.target_id == target_id,
@@ -92,17 +96,21 @@ class LockoutTester(AuthenticationTool):
         if assets:
             return [a.asset_value for a in assets]
 
+        # Scope-check candidates before probing
+        candidates = [base_url.rstrip("/") + path for path in DEFAULT_LOGIN_PATHS]
+        if scope_manager is not None:
+            candidates = [u for u in candidates if scope_manager.is_in_scope(u).in_scope]
+
         found: list[str] = []
         async with httpx.AsyncClient(
             verify=False, follow_redirects=False, timeout=5.0
         ) as client:
-            for path in DEFAULT_LOGIN_PATHS:
-                url = base_url.rstrip("/") + path
+            for url in candidates:
                 try:
                     r = await client.get(url)
                     if r.status_code in (200, 401, 403):
                         found.append(url)
-                except Exception:
+                except httpx.RequestError:
                     pass
         return found
 
@@ -223,14 +231,14 @@ class LockoutTester(AuthenticationTool):
             if not _CAPTCHA_RE.search(page_text):
                 return findings
 
-            # Bypass 1: Direct POST skipping UI
+            # Bypass 1: Direct POST skipping UI — only 200/302 indicates actual bypass
             try:
                 r_post = await client.post(
                     url,
                     data={"username": "testuser", "password": "testpass"},
                 )
                 if (
-                    r_post.status_code in (200, 302, 401, 403)
+                    r_post.status_code in (200, 302)
                     and not _CAPTCHA_RE.search(r_post.text or "")
                 ):
                     findings.append({
@@ -272,7 +280,7 @@ class LockoutTester(AuthenticationTool):
                     },
                 })
 
-            # Bypass 3: Known-token resubmission
+            # Bypass 3: Known-token resubmission — only 200/302 indicates actual bypass
             token_match = re.search(
                 r'name=["\'](?:g-recaptcha-response|h-captcha-response|captcha)["\']'
                 r'[^>]*value=["\']([^"\']+)["\']',
@@ -292,7 +300,7 @@ class LockoutTester(AuthenticationTool):
                         },
                     )
                     if (
-                        r_replay.status_code in (200, 302, 401, 403)
+                        r_replay.status_code in (200, 302)
                         and not _CAPTCHA_RE.search(r_replay.text or "")
                     ):
                         findings.append({
@@ -340,7 +348,14 @@ class LockoutTester(AuthenticationTool):
             locked_body = (r_locked.text or "").lower()
             nonexist_body = (r_nonexist.text or "").lower()
 
-            if locked_body != nonexist_body:
+            # Compare status codes and lockout-indicator presence rather than full body text
+            # (full-body comparison produces false positives on dynamic content like CSRF tokens)
+            status_differs = r_locked.status_code != r_nonexist.status_code
+            lockout_pattern_differs = bool(_LOCKOUT_RE.search(locked_body)) != bool(
+                _LOCKOUT_RE.search(nonexist_body)
+            )
+
+            if status_differs or lockout_pattern_differs:
                 findings.append({
                     "title": "User enumeration via lockout error message difference",
                     "description": (
@@ -354,6 +369,8 @@ class LockoutTester(AuthenticationTool):
                         "nonexist_response_len": len(r_nonexist.text or ""),
                         "locked_status": r_locked.status_code,
                         "nonexist_status": r_nonexist.status_code,
+                        "lockout_pattern_in_locked": bool(_LOCKOUT_RE.search(locked_body)),
+                        "lockout_pattern_in_nonexist": bool(_LOCKOUT_RE.search(nonexist_body)),
                     },
                 })
 
@@ -377,6 +394,14 @@ class LockoutTester(AuthenticationTool):
             log.info(f"Skipping {self.name} — within cooldown period")
             return {"found": 0, "inserted": 0, "skipped_cooldown": True}
 
+        # Initialize accumulators before semaphore scope so they're accessible after release
+        all_findings: list[dict] = []
+        duration_polls: list[tuple[str, int | None]] = []  # (url, lockout_at_attempt)
+        username = (credentials or {}).get("username", "testuser")
+        settings: dict = {"probe_delay": 0.5, "custom_headers": {}}
+        base_url = ""
+        urls: list[str] = []
+
         sem = get_semaphore(self.weight_class)
         await sem.acquire()
         try:
@@ -389,7 +414,6 @@ class LockoutTester(AuthenticationTool):
             })
 
             settings = self._load_settings(target_id)
-            username = (credentials or {}).get("username", "testuser")
 
             target_value = getattr(target, "target_value", str(target))
             base_url = (
@@ -398,13 +422,11 @@ class LockoutTester(AuthenticationTool):
                 else f"https://{target_value}"
             )
 
-            urls = await self._discover_login_urls(base_url, target_id)
+            urls = await self._discover_login_urls(base_url, target_id, scope_manager)
             urls = [u for u in urls if scope_manager.is_in_scope(u).in_scope]
 
-            all_findings: list[dict] = []
-
             for url in urls:
-                # Phase 1: Threshold
+                # Phase 1: Threshold (fast)
                 lockout_detected, lockout_at_attempt = await self._probe_threshold(
                     url, username, settings
                 )
@@ -436,91 +458,91 @@ class LockoutTester(AuthenticationTool):
                             "lockout_at_attempt": lockout_at_attempt,
                         },
                     })
-
-                    # Phase 2: Duration
-                    unlock_minutes = await self._poll_duration(url, username, settings)
-                    if unlock_minutes is not None and unlock_minutes < 5:
-                        all_findings.append({
-                            "title": (
-                                f"Account lockout duration too short ({unlock_minutes} min)"
-                            ),
-                            "description": (
-                                f"Account at {url} unlocked after only {unlock_minutes} "
-                                "minute(s). OWASP recommends a minimum of 5 minutes."
-                            ),
-                            "severity": "medium",
-                            "data": {"url": url, "unlock_minutes": unlock_minutes},
-                        })
-                    else:
-                        unlock_label = (
-                            f"{unlock_minutes} min" if unlock_minutes else ">15 min"
-                        )
-                        all_findings.append({
-                            "title": f"Lockout duration: {unlock_label}",
-                            "description": (
-                                f"Account at {url} remained locked for {unlock_label}."
-                            ),
-                            "severity": "info",
-                            "data": {"url": url, "unlock_minutes": unlock_minutes},
-                        })
-
-                    # Phase 4: User enumeration (requires a locked account)
+                    # Schedule duration poll to run after semaphore is released
+                    duration_polls.append((url, lockout_at_attempt))
+                    # Phase 4: User enumeration (fast — run inside semaphore)
                     all_findings.extend(
                         await self._probe_user_enum(url, username, settings)
                     )
 
-                # Phase 3: CAPTCHA bypass (always runs regardless of lockout)
+                # Phase 3: CAPTCHA bypass (always runs, fast)
                 all_findings.extend(await self._probe_captcha(url, settings))
-
-            for item in all_findings:
-                await self._save_finding(item, target_id)
-
-            # Summary always emitted so e2e assertion always finds ≥1 Vulnerability row
-            summary = {
-                "title": (
-                    f"Lockout test complete: {len(all_findings)} finding(s) "
-                    f"across {len(urls)} URL(s)"
-                ),
-                "description": (
-                    f"Tested {len(urls)} login endpoint(s) for lockout mechanism weaknesses."
-                ),
-                "severity": "info",
-                "data": {
-                    "target": base_url,
-                    "urls_tested": len(urls),
-                    "findings": len(all_findings),
-                },
-            }
-            await self._save_finding(summary, target_id)
-
-            async with get_session() as session:
-                stmt = select(JobState).where(
-                    JobState.target_id == target_id,
-                    JobState.container_name == container_name,
-                )
-                result = await session.execute(stmt)
-                job = result.scalar_one_or_none()
-                if job:
-                    job.last_tool_executed = self.name
-                    job.last_seen = datetime.utcnow()
-                    await session.commit()
-
-            stats = {
-                "found": len(all_findings),
-                "inserted": len(all_findings) + 1,
-                "skipped_cooldown": False,
-            }
-
-            await push_task(f"events:{target_id}", {
-                "event": "TOOL_PROGRESS",
-                "container": container_name,
-                "tool": self.name,
-                "progress": 100,
-                "message": f"{self.name}: {len(all_findings)} finding(s)",
-            })
-
-            log.info(f"{self.name} complete", extra={"tool": self.name, **stats})
-            return stats
 
         finally:
             sem.release()
+
+        # Duration polls run OUTSIDE the semaphore — each poll sleeps up to 15 min
+        for url, _lockout_at_attempt in duration_polls:
+            unlock_minutes = await self._poll_duration(url, username, settings)
+            if unlock_minutes is not None and unlock_minutes <= 5:
+                all_findings.append({
+                    "title": (
+                        f"Account lockout duration too short ({unlock_minutes} min)"
+                    ),
+                    "description": (
+                        f"Account at {url} unlocked after only {unlock_minutes} "
+                        "minute(s). OWASP recommends a minimum of 5 minutes."
+                    ),
+                    "severity": "medium",
+                    "data": {"url": url, "unlock_minutes": unlock_minutes},
+                })
+            else:
+                unlock_label = (
+                    f"{unlock_minutes} min" if unlock_minutes else ">15 min"
+                )
+                all_findings.append({
+                    "title": f"Lockout duration: {unlock_label}",
+                    "description": f"Account at {url} remained locked for {unlock_label}.",
+                    "severity": "info",
+                    "data": {"url": url, "unlock_minutes": unlock_minutes},
+                })
+
+        for item in all_findings:
+            await self._save_finding(item, target_id)
+
+        # Summary always emitted so e2e assertion always finds ≥1 Vulnerability row
+        summary = {
+            "title": (
+                f"Lockout test complete: {len(all_findings)} finding(s) "
+                f"across {len(urls)} URL(s)"
+            ),
+            "description": (
+                f"Tested {len(urls)} login endpoint(s) for lockout mechanism weaknesses."
+            ),
+            "severity": "info",
+            "data": {
+                "target": base_url,
+                "urls_tested": len(urls),
+                "findings": len(all_findings),
+            },
+        }
+        await self._save_finding(summary, target_id)
+
+        async with get_session() as session:
+            stmt = select(JobState).where(
+                JobState.target_id == target_id,
+                JobState.container_name == container_name,
+            )
+            result = await session.execute(stmt)
+            job = result.scalar_one_or_none()
+            if job:
+                job.last_tool_executed = self.name
+                job.last_seen = datetime.utcnow()
+                await session.commit()
+
+        stats = {
+            "found": len(all_findings),
+            "inserted": len(all_findings) + 1,
+            "skipped_cooldown": False,
+        }
+
+        await push_task(f"events:{target_id}", {
+            "event": "TOOL_PROGRESS",
+            "container": container_name,
+            "tool": self.name,
+            "progress": 100,
+            "message": f"{self.name}: {len(all_findings)} finding(s)",
+        })
+
+        log.info(f"{self.name} complete", extra={"tool": self.name, **stats})
+        return stats
