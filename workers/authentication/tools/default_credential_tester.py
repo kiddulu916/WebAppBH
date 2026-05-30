@@ -447,6 +447,7 @@ class DefaultCredentialTester(AuthenticationTool):
                 return {"found": 0, "inserted": 1, "skipped_cooldown": False}
 
             urls = await self._filter_captcha(urls)
+            urls = [u for u in urls if scope_manager.is_in_scope(u).in_scope]
             all_hits: list[dict] = []
 
             nuclei_hits, covered_urls = await self._run_nuclei(urls, settings, attempt=0)
