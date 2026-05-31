@@ -1,6 +1,5 @@
 """Authentication tools."""
 
-from workers.authentication.tools.credential_transport_tester import CredentialTransportTester
 from workers.authentication.tools.default_credential_tester import DefaultCredentialTester
 from workers.authentication.tools.lockout_tester import LockoutTester
 from workers.authentication.tools.auth_bypass_tester import AuthBypassTester
@@ -12,7 +11,6 @@ from workers.authentication.tools.password_change_tester import PasswordChangeTe
 from workers.authentication.tools.multi_channel_auth_tester import MultiChannelAuthTester
 
 __all__ = [
-    "CredentialTransportTester",
     "DefaultCredentialTester",
     "LockoutTester",
     "AuthBypassTester",

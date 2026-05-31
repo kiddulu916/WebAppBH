@@ -28,10 +28,10 @@ PIPELINE_STAGES: dict[str, list[str]] = {
     ],
     "identity_mgmt": [
         "role_definitions", "registration_process", "account_provisioning",
-        "account_enumeration", "weak_username_policy",
+        "account_enumeration",
     ],
     "authentication": [
-        "credentials_transport", "default_credentials", "lockout_mechanism",
+        "default_credentials", "lockout_mechanism",
         "auth_bypass", "remember_password", "browser_cache",
         "weak_password_policy", "security_questions", "password_change",
         "multi_channel_auth",

@@ -44,10 +44,8 @@ export const WORKER_STAGES: Record<string, { id: string; name: string; stageName
     { id: "2", name: "Registration Process", stageName: "registration_process", sectionId: "WSTG-IDNT-02" },
     { id: "3", name: "Account Provisioning", stageName: "account_provisioning", sectionId: "WSTG-IDNT-03" },
     { id: "4", name: "Account Enumeration", stageName: "account_enumeration", sectionId: "WSTG-IDNT-04" },
-    { id: "5", name: "Weak Username Policy", stageName: "weak_username_policy", sectionId: "WSTG-IDNT-05" },
   ],
   authentication: [
-    { id: "1", name: "Credentials Transported over Unencrypted Channel", stageName: "credentials_transport", sectionId: "WSTG-ATHN-01" },
     { id: "2", name: "Default Credentials", stageName: "default_credentials", sectionId: "WSTG-ATHN-02" },
     { id: "3", name: "Weak Lock Out Mechanism", stageName: "lockout_mechanism", sectionId: "WSTG-ATHN-03" },
     { id: "4", name: "Authentication Bypass", stageName: "auth_bypass", sectionId: "WSTG-ATHN-04" },

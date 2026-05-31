@@ -8,7 +8,7 @@ from workers.identity_mgmt.tools.username_policy_tester import UsernamePolicyTes
 
 __all__ = [
     "RoleEnumerator",
-    "RegistrationTester", 
+    "RegistrationTester",
     "AccountProvisionTester",
     "AccountEnumerator",
     "UsernamePolicyTester",

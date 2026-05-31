@@ -1,11 +1,11 @@
-"""Username policy testing tool (WSTG-IDENT-005)."""
+"""Username policy testing tool (merged into WSTG-IDNT-04)."""
 
 from workers.identity_mgmt.base_tool import IdentityMgmtTool
 from workers.identity_mgmt.concurrency import WeightClass
 
 
 class UsernamePolicyTester(IdentityMgmtTool):
-    """Test for weak username policies (WSTG-IDENT-005)."""
+    """Test for weak username policies (merged into WSTG-IDNT-04)."""
 
     name = "username_policy_tester"
     weight_class = WeightClass.HEAVY
@@ -47,7 +47,6 @@ try:
             pass
 
     if not found_reg_eps:
-        # Try to find any endpoint that accepts POST with username
         common_eps = ["/api/user", "/api/v1/user", "/users", "/api/users"]
         for ep in common_eps:
             try:
@@ -94,7 +93,6 @@ try:
                 except Exception:
                     pass
 
-            # Test single character username
             for char in ["a", "1", "_"]:
                 try:
                     resp = client.post(url, json={{
@@ -147,7 +145,6 @@ try:
                     if resp.status_code in (200, 201, 302):
                         accepted_reserved.append(reserved)
                     elif resp.status_code == 409 or "taken" in resp.text.lower() or "exists" in resp.text.lower():
-                        # Username taken - may be a reserved account that exists
                         results.append({{
                             "title": "Reserved username already registered",
                             "description": f"Reserved username '{{reserved}}' appears to be registered on {{ep}}",
@@ -182,35 +179,22 @@ try:
             url = base_url.rstrip("/") + ep
             collision_username = f"collision_test_{{unique_id}}"
 
-            # Register first time
             resp1 = client.post(url, json={{
                 "username": collision_username,
                 "email": f"collision1_{{unique_id}}@example.com",
                 "password": "TestPass123!",
             }})
-
-            # Try to register same username again
             resp2 = client.post(url, json={{
                 "username": collision_username,
                 "email": f"collision2_{{unique_id}}@example.com",
                 "password": "TestPass123!",
             }})
-
-            # Case variation
             resp3 = client.post(url, json={{
                 "username": collision_username.upper(),
                 "email": f"collision3_{{unique_id}}@example.com",
                 "password": "TestPass123!",
             }})
 
-            # Similar with dots/underscores
-            resp4 = client.post(url, json={{
-                "username": collision_username.replace("_", "."),
-                "email": f"collision4_{{unique_id}}@example.com",
-                "password": "TestPass123!",
-            }})
-
-            # Check if duplicate was accepted
             if resp2.status_code in (200, 201, 302):
                 results.append({{
                     "title": "Username collision - duplicate accepted",
@@ -224,7 +208,6 @@ try:
                     }}
                 }})
 
-            # Check case sensitivity handling
             if resp3.status_code in (200, 201, 302) and resp1.status_code in (200, 201, 302):
                 results.append({{
                     "title": "Case-insensitive username collision",
@@ -244,11 +227,11 @@ try:
     # 4. Test for username impersonation risks
     # ============================================================
     impersonation_usernames = [
-        "admin ", " admin", " admin ",  # Whitespace variations
-        "Admin", "ADMIN", "AdMiN",  # Case variations
-        "admin\u200b", "admin\u00a0",  # Unicode whitespace
-        "admin.", ".admin",  # Dot variations
-        "_admin", "admin_",  # Underscore variations
+        "admin ", " admin", " admin ",
+        "Admin", "ADMIN", "AdMiN",
+        "admin​", "admin ",
+        "admin.", ".admin",
+        "_admin", "admin_",
     ]
 
     for ep in found_reg_eps:
@@ -280,48 +263,7 @@ try:
             pass
 
     # ============================================================
-    # 5. Test for Unicode homograph attacks
-    # ============================================================
-    homograph_usernames = [
-        "admin",  # Cyrillic 'a' + Latin 'dmin'
-        "admin",  # Greek alpha + Latin 'dmin'
-        "user",  # Cyrillic 'u' + Latin 'ser'
-        "root",  # Cyrillic 'o' + Latin 'rt'
-        "test",  # Cyrillic 't' + Latin 'est'
-        "support",  # Cyrillic 's' + Latin 'upport'
-    ]
-
-    for ep in found_reg_eps:
-        try:
-            url = base_url.rstrip("/") + ep
-
-            for homograph in homograph_usernames:
-                try:
-                    resp = client.post(url, json={{
-                        "username": homograph,
-                        "email": f"homograph_{{unique_id}}@example.com",
-                        "password": "TestPass123!",
-                    }})
-
-                    if resp.status_code in (200, 201, 302):
-                        results.append({{
-                            "title": "Unicode homograph username accepted",
-                            "description": f"Registration endpoint {{ep}} accepted Unicode homograph username",
-                            "severity": "medium",
-                            "data": {{
-                                "endpoint": ep,
-                                "homograph_username": repr(homograph),
-                                "looks_like": homograph.encode('ascii', 'ignore').decode('ascii')
-                            }}
-                        }})
-                except Exception:
-                    pass
-
-        except Exception:
-            pass
-
-    # ============================================================
-    # 6. Test for username length limits
+    # 5. Test for username length limits
     # ============================================================
     length_tests = [
         ("a" * 1, "1_char"),
@@ -374,7 +316,7 @@ try:
             pass
 
     # ============================================================
-    # 7. Test for special character handling in usernames
+    # 6. Test for special character handling in usernames
     # ============================================================
     special_char_usernames = [
         ("user<script>alert(1)</script>", "xss_attempt"),
@@ -383,14 +325,11 @@ try:
         ("user{{{{config}}}}", "template_injection"),
         ("user/../etc/passwd", "path_traversal"),
         ("user%00null", "null_byte"),
-        ("user\\n\\r", "newline_injection"),
         ("<img src=x onerror=alert(1)>", "xss_img"),
         ("user\" onclick=\"alert(1)", "xss_attr"),
         ("${{7*7}}", "ssti"),
         ("{{7*7}}", "jinja_ssti"),
-        ("user@domain.com", "email_as_username"),
         ("user name", "space_in_username"),
-        ("user\tname", "tab_in_username"),
     ]
 
     for ep in found_reg_eps:
@@ -422,7 +361,7 @@ try:
                         }})
                     elif resp.status_code == 500:
                         results.append({{
-                            "title": f"Server error on special character username",
+                            "title": "Server error on special character username",
                             "description": f"Registration endpoint {{ep}} returned 500 for {{attack_type}} payload",
                             "severity": "high",
                             "data": {{

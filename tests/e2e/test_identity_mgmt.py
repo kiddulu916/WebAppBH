@@ -1,4 +1,4 @@
-"""E2E tests for identity_mgmt worker (WSTG-IDNT-01 through IDNT-05)."""
+"""E2E tests for identity_mgmt worker (WSTG-IDNT-01 through IDNT-04)."""
 import pytest
 from conftest import (
     assert_assets, assert_job_completed,
@@ -9,14 +9,13 @@ pytestmark = pytest.mark.e2e
 
 WORKER = "identity_mgmt"
 PLAYBOOK = "e2e_identity_mgmt"
-LAST_STAGE = "weak_username_policy"
+LAST_STAGE = "account_enumeration"
 
 STAGE_ASSERTIONS = {
     "role_definitions":       lambda c, tid: assert_assets(c, tid),
     "registration_process":   lambda c, tid: assert_assets(c, tid),
     "account_provisioning":   None,
     "account_enumeration":    None,
-    "weak_username_policy":   None,
 }
 
 STAGE_TIMEOUTS = {
@@ -24,7 +23,6 @@ STAGE_TIMEOUTS = {
     "registration_process":   120,
     "account_provisioning":   120,
     "account_enumeration":    180,
-    "weak_username_policy":   120,
 }
 
 

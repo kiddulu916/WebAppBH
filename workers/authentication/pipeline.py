@@ -1,4 +1,4 @@
-"""Authentication pipeline: 10 sequential stages."""
+"""Authentication pipeline: 9 sequential stages."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from lib_webbh.pipeline_checkpoint import CheckpointMixin
 
 from workers.authentication.base_tool import AuthenticationTool
 from workers.authentication.tools import (
-    CredentialTransportTester,
     DefaultCredentialTester,
     LockoutTester,
     AuthBypassTester,
@@ -33,7 +32,6 @@ class Stage:
 
 
 STAGES = [
-    Stage("credentials_transport", [CredentialTransportTester]),
     Stage("default_credentials", [DefaultCredentialTester]),
     Stage("lockout_mechanism", [LockoutTester]),
     Stage("auth_bypass", [AuthBypassTester]),

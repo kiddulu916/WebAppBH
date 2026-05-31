@@ -1,4 +1,4 @@
-"""Identity management pipeline: 5 sequential stages."""
+"""Identity management pipeline: 4 sequential stages."""
 
 from __future__ import annotations
 
@@ -31,8 +31,7 @@ STAGES = [
     Stage("role_definitions", [RoleEnumerator]),
     Stage("registration_process", [RegistrationTester]),
     Stage("account_provisioning", [AccountProvisionTester]),
-    Stage("account_enumeration", [AccountEnumerator]),
-    Stage("weak_username_policy", [UsernamePolicyTester]),
+    Stage("account_enumeration", [AccountEnumerator, UsernamePolicyTester]),
 ]
 
 STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}
