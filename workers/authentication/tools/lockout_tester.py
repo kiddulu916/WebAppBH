@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -460,13 +459,15 @@ class LockoutTester(AuthenticationTool):
                     })
                     # Schedule duration poll to run after semaphore is released
                     duration_polls.append((url, lockout_at_attempt))
-                    # Phase 4: User enumeration (fast — run inside semaphore)
-                    all_findings.extend(
-                        await self._probe_user_enum(url, username, settings)
-                    )
 
                 # Phase 3: CAPTCHA bypass (always runs, fast)
                 all_findings.extend(await self._probe_captcha(url, settings))
+
+                # Phase 4: User enumeration — only meaningful when account is locked
+                if lockout_detected:
+                    all_findings.extend(
+                        await self._probe_user_enum(url, username, settings)
+                    )
 
         finally:
             sem.release()
