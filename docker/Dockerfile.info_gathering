@@ -3,7 +3,8 @@ FROM webbh-base:latest
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    nmap libpcap-dev git wget golang whatweb make python3-pip build-essential gcc libc6-dev && \
+    nmap libpcap-dev git wget unzip golang \
+    whatweb make python3-pip build-essential gcc libc6-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # Build massdns from source (not in standard Debian repos)
@@ -11,24 +12,75 @@ RUN git clone --depth 1 https://github.com/blechschmidt/massdns.git /tmp/massdns
     cd /tmp/massdns && make && cp bin/massdns /usr/local/bin/massdns && \
     rm -rf /tmp/massdns
 
-# Go tools installed via go install
-RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-RUN go install github.com/projectdiscovery/httpx/cmd/httpx@latest
-RUN go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
-RUN go install github.com/projectdiscovery/katana/cmd/katana@latest
-RUN go install github.com/tomnomnom/assetfinder@latest
-RUN go install github.com/tomnomnom/waybackurls@latest
-RUN go install github.com/hakluke/hakrawler@latest
-RUN go install -v github.com/owasp-amass/amass/v4/...@latest
-RUN go install github.com/rverton/webanalyze/cmd/webanalyze@latest
-RUN go install github.com/ffuf/ffuf@latest
+# ── Pre-built binaries (avoid go install @latest flakiness) ──────────────────
+# Update ARG values when upgrading — verify at https://github.com/<repo>/releases
 
-# Stage 2 (WSTG-INFO-02) tooling
-RUN go install -v github.com/projectdiscovery/tlsx/cmd/tlsx@latest \
-    && mv /root/go/bin/tlsx /usr/local/bin/tlsx
+ARG SUBFINDER_VERSION=2.14.0
+ARG HTTPX_VERSION=1.6.10
+ARG NAABU_VERSION=2.3.1
+ARG KATANA_VERSION=1.1.0
+ARG TLSX_VERSION=1.1.6
+ARG AMASS_VERSION=4.2.0
+ARG FFUF_VERSION=2.1.0
+ARG GITLEAKS_VERSION=8.18.4
 
-# WSTG-INFO-05 secret scanning tools
-RUN go install github.com/zricethezav/gitleaks/v8@latest
+# subfinder
+RUN wget -q "https://github.com/projectdiscovery/subfinder/releases/download/v${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION}_linux_amd64.zip" \
+    -O /tmp/subfinder.zip && \
+    unzip /tmp/subfinder.zip subfinder -d /usr/local/bin/ && \
+    chmod +x /usr/local/bin/subfinder && rm /tmp/subfinder.zip
+
+# httpx
+RUN wget -q "https://github.com/projectdiscovery/httpx/releases/download/v${HTTPX_VERSION}/httpx_${HTTPX_VERSION}_linux_amd64.zip" \
+    -O /tmp/httpx.zip && \
+    unzip /tmp/httpx.zip httpx -d /usr/local/bin/ && \
+    chmod +x /usr/local/bin/httpx && rm /tmp/httpx.zip
+
+# naabu
+RUN wget -q "https://github.com/projectdiscovery/naabu/releases/download/v${NAABU_VERSION}/naabu_${NAABU_VERSION}_linux_amd64.zip" \
+    -O /tmp/naabu.zip && \
+    unzip /tmp/naabu.zip naabu -d /usr/local/bin/ && \
+    chmod +x /usr/local/bin/naabu && rm /tmp/naabu.zip
+
+# katana
+RUN wget -q "https://github.com/projectdiscovery/katana/releases/download/v${KATANA_VERSION}/katana_${KATANA_VERSION}_linux_amd64.zip" \
+    -O /tmp/katana.zip && \
+    unzip /tmp/katana.zip katana -d /usr/local/bin/ && \
+    chmod +x /usr/local/bin/katana && rm /tmp/katana.zip
+
+# tlsx
+RUN wget -q "https://github.com/projectdiscovery/tlsx/releases/download/v${TLSX_VERSION}/tlsx_${TLSX_VERSION}_linux_amd64.zip" \
+    -O /tmp/tlsx.zip && \
+    unzip /tmp/tlsx.zip tlsx -d /usr/local/bin/ && \
+    chmod +x /usr/local/bin/tlsx && rm /tmp/tlsx.zip
+
+# amass — binary only; building from source is too memory-intensive for CI
+RUN wget -q "https://github.com/owasp-amass/amass/releases/download/v${AMASS_VERSION}/amass_linux_amd64.zip" \
+    -O /tmp/amass.zip && \
+    unzip /tmp/amass.zip "amass_linux_amd64/amass" -d /tmp/amass_bin/ && \
+    mv /tmp/amass_bin/amass_linux_amd64/amass /usr/local/bin/amass && \
+    chmod +x /usr/local/bin/amass && rm -rf /tmp/amass.zip /tmp/amass_bin/
+
+# ffuf
+RUN wget -q "https://github.com/ffuf/ffuf/releases/download/v${FFUF_VERSION}/ffuf_${FFUF_VERSION}_linux_amd64.tar.gz" \
+    -O /tmp/ffuf.tar.gz && \
+    tar -xzf /tmp/ffuf.tar.gz -C /usr/local/bin/ ffuf && \
+    chmod +x /usr/local/bin/ffuf && rm /tmp/ffuf.tar.gz
+
+# gitleaks
+RUN wget -q "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+    -O /tmp/gitleaks.tar.gz && \
+    tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin/ gitleaks && \
+    chmod +x /usr/local/bin/gitleaks && rm /tmp/gitleaks.tar.gz
+
+# ── Lightweight Go tools — compiled via system Go (fast, rarely break) ────────
+RUN go install github.com/tomnomnom/assetfinder@latest && \
+    go install github.com/tomnomnom/waybackurls@latest && \
+    go install github.com/hakluke/hakrawler@latest && \
+    go install github.com/rverton/webanalyze/cmd/webanalyze@latest && \
+    mv /root/go/bin/* /usr/local/bin/ 2>/dev/null || true
+
+# trufflehog
 RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
     | sh -s -- -b /usr/local/bin
 
@@ -47,6 +99,6 @@ RUN pip install -e /app/shared/lib_webbh
 WORKDIR /app
 ENV PIP_DEFAULT_TIMEOUT=300
 ENV WORKER_TYPE=info_gathering
-ENV PATH="/root/go/bin:${PATH}"
+ENV PATH="/usr/local/bin:${PATH}"
 
 CMD ["python", "-m", "workers.info_gathering.main"]

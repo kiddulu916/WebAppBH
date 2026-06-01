@@ -1,35 +1,46 @@
 # ============================================================
-# Stage 1: Go tool builder
-# ============================================================
-FROM golang:1.24-bookworm AS go-builder
-
-ENV GOPATH=/go
-ENV PATH=$GOPATH/bin:$PATH
-
-RUN go install github.com/ffuf/ffuf/v2@latest
-RUN go install github.com/haccer/subjack@latest
-RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-RUN go install github.com/sa7mon/s3scanner@latest
-
-# ============================================================
-# Stage 2: Runtime
+# Runtime
 # ============================================================
 FROM webbh-base:latest
 
 ENV PIP_DEFAULT_TIMEOUT=300
 
+# Pin tool versions — update ARGs when upgrading
+ARG NUCLEI_VERSION=3.8.0
+ARG FFUF_VERSION=2.1.0
+ARG S3SCANNER_VERSION=3.1.1
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     nmap \
     hydra \
-    wget && \
+    wget \
+    unzip && \
     rm -rf /var/lib/apt/lists/*
 
-# Go binaries
-COPY --from=go-builder /go/bin/ffuf     /usr/local/bin/
-COPY --from=go-builder /go/bin/subjack  /usr/local/bin/
-COPY --from=go-builder /go/bin/nuclei   /usr/local/bin/
-COPY --from=go-builder /go/bin/s3scanner /usr/local/bin/
+# nuclei — pre-built binary
+RUN wget -q "https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_amd64.zip" \
+    -O /tmp/nuclei.zip && \
+    unzip /tmp/nuclei.zip nuclei -d /usr/local/bin/ && \
+    chmod +x /usr/local/bin/nuclei && \
+    rm /tmp/nuclei.zip
+
+# ffuf — pre-built binary
+RUN wget -q "https://github.com/ffuf/ffuf/releases/download/v${FFUF_VERSION}/ffuf_${FFUF_VERSION}_linux_amd64.tar.gz" \
+    -O /tmp/ffuf.tar.gz && \
+    tar -xzf /tmp/ffuf.tar.gz -C /usr/local/bin/ ffuf && \
+    chmod +x /usr/local/bin/ffuf && \
+    rm /tmp/ffuf.tar.gz
+
+# s3scanner — pre-built binary
+RUN wget -q "https://github.com/sa7mon/s3scanner/releases/download/v${S3SCANNER_VERSION}/s3scanner_${S3SCANNER_VERSION}_linux_amd64.deb" \
+    -O /tmp/s3scanner.deb && \
+    dpkg -i /tmp/s3scanner.deb && \
+    rm /tmp/s3scanner.deb
+
+# subjack: unmaintained (last release 2018), does not compile with Go 1.22+.
+# The subdomain_takeover_checker handles a missing binary gracefully (logs warning,
+# skips Phase 2). Nuclei community templates cover takeover detection instead.
 
 # azcopy v10 — pre-built Linux binary from Microsoft
 RUN wget -q -O /tmp/azcopy.tar.gz https://aka.ms/downloadazcopy-v10-linux && \
@@ -44,7 +55,7 @@ COPY workers/config_mgmt/nuclei-templates/ /nuclei-templates/custom/
 # Community nuclei templates fetched at build time
 RUN nuclei -update-templates -ud /nuclei-templates/community || true
 
-# subjack fingerprints database
+# subjack fingerprints database (still useful for nuclei template matching)
 RUN wget -q -O /fingerprints.json \
     https://raw.githubusercontent.com/haccer/subjack/master/fingerprints.json || true
 
