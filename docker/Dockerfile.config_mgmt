@@ -64,7 +64,7 @@ COPY workers/__init__.py /app/workers/__init__.py
 COPY workers/config_mgmt /app/workers/config_mgmt
 COPY shared/ /app/shared/
 RUN pip install --no-cache-dir -e /app/shared/lib_webbh
-RUN pip install --no-cache-dir cloud-enum aiohttp cspbypass>=0.1.0
+RUN pip install --no-cache-dir aiohttp cspbypass>=0.1.0
 
 # Admin interface wordlist
 RUN mkdir -p /wordlists

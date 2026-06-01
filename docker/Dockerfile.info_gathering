@@ -4,7 +4,8 @@ FROM webbh-base:latest
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     nmap libpcap-dev git wget unzip golang \
-    whatweb make python3-pip build-essential gcc libc6-dev && \
+    whatweb make python3-pip build-essential gcc libc6-dev \
+    curl autoconf make automake libtool pkg-config && \
     rm -rf /var/lib/apt/lists/*
 
 # Build massdns from source (not in standard Debian repos)
@@ -16,13 +17,12 @@ RUN git clone --depth 1 https://github.com/blechschmidt/massdns.git /tmp/massdns
 # Update ARG values when upgrading — verify at https://github.com/<repo>/releases
 
 ARG SUBFINDER_VERSION=2.14.0
-ARG HTTPX_VERSION=1.6.10
-ARG NAABU_VERSION=2.3.1
-ARG KATANA_VERSION=1.1.0
-ARG TLSX_VERSION=1.1.6
-ARG AMASS_VERSION=4.2.0
+ARG HTTPX_VERSION=1.9.0
+ARG NAABU_VERSION=2.6.1
+ARG KATANA_VERSION=1.6.1
+ARG TLSX_VERSION=1.2.2
 ARG FFUF_VERSION=2.1.0
-ARG GITLEAKS_VERSION=8.18.4
+ARG GITLEAKS_VERSION=8.30.1
 
 # subfinder
 RUN wget -q "https://github.com/projectdiscovery/subfinder/releases/download/v${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION}_linux_amd64.zip" \
@@ -54,12 +54,8 @@ RUN wget -q "https://github.com/projectdiscovery/tlsx/releases/download/v${TLSX_
     unzip /tmp/tlsx.zip tlsx -d /usr/local/bin/ && \
     chmod +x /usr/local/bin/tlsx && rm /tmp/tlsx.zip
 
-# amass — binary only; building from source is too memory-intensive for CI
-RUN wget -q "https://github.com/owasp-amass/amass/releases/download/v${AMASS_VERSION}/amass_linux_amd64.zip" \
-    -O /tmp/amass.zip && \
-    unzip /tmp/amass.zip "amass_linux_amd64/amass" -d /tmp/amass_bin/ && \
-    mv /tmp/amass_bin/amass_linux_amd64/amass /usr/local/bin/amass && \
-    chmod +x /usr/local/bin/amass && rm -rf /tmp/amass.zip /tmp/amass_bin/
+# amass — compiled via system Go (fast, rarely break)
+RUN CGO_ENABLED=0 go install -v github.com/owasp-amass/amass/v5/cmd/amass@main
 
 # ffuf
 RUN wget -q "https://github.com/ffuf/ffuf/releases/download/v${FFUF_VERSION}/ffuf_${FFUF_VERSION}_linux_amd64.tar.gz" \

@@ -282,26 +282,53 @@ def _classify_s3scanner_result(entry: dict) -> dict | None:
     }
 
 
-# ── cloud_enum ────────────────────────────────────────────────────────────────
+# ── cloud storage enumeration ─────────────────────────────────────────────────
 
-def _parse_cloud_enum_output(text: str) -> dict[str, list[str]]:
-    """Parse cloud_enum stdout into a dict mapping provider to raw URL list.
+_CLOUD_SUFFIXES = [
+    "", "-dev", "-prod", "-staging", "-backup", "-test", "-qa",
+    "-data", "-logs", "-assets", "-static", "-media", "-cdn",
+    "-uploads", "-storage", "-files", "-public", "-private",
+    "-www", "-api", "-app", "-web", "-img", "-images",
+]
 
-    cloud_enum prefixes each discovered resource with '[+] AWS:', '[+] Azure:',
-    or '[+] GCP:'. Lines not matching any of these prefixes are silently skipped.
-    Returns {"s3": [...], "azure": [...], "gcs": [...]}.
-    """
-    result: dict[str, list[str]] = {"s3": [], "azure": [], "gcs": []}
+_BUCKET_NAME_RE = re.compile(r'^[a-z0-9][a-z0-9\-]*[a-z0-9]$')
+
+
+def _generate_cloud_candidates(domain: str, org: str) -> set[str]:
+    """Generate bucket/storage-account name candidates from domain and org keywords."""
+    bases = {
+        org.lower(),
+        domain.lower(),
+        domain.lower().replace(".", "-"),
+        domain.lower().replace(".", ""),
+    }
+    candidates: set[str] = set()
+    for base in bases:
+        for suffix in _CLOUD_SUFFIXES:
+            name = base + suffix
+            # AWS S3 bucket name rules: 3–63 chars, lowercase alphanumeric + hyphens
+            if 3 <= len(name) <= 63 and _BUCKET_NAME_RE.match(name):
+                candidates.add(name)
+    return candidates
+
+
+def _parse_nuclei_cloud_output(text: str) -> list[str]:
+    """Parse nuclei JSONL output and return matched-at URLs."""
+    urls: list[str] = []
     for line in text.splitlines():
-        lower = line.lower()
-        for prefix, key in (("[+] aws:", "s3"), ("[+] azure:", "azure"), ("[+] gcp:", "gcs")):
-            if prefix in lower:
-                idx = lower.index(prefix) + len(prefix)
-                url = line[idx:].strip()
-                if url:
-                    result[key].append(url)
-                break
-    return result
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+            if isinstance(entry, dict):
+                # nuclei v2 uses "matched-at"; v3 keeps the same key
+                matched_at = entry.get("matched-at", "")
+                if matched_at:
+                    urls.append(matched_at)
+        except (json.JSONDecodeError, KeyError):
+            pass
+    return urls
 
 
 # ── azcopy / Azure ────────────────────────────────────────────────────────────
@@ -564,31 +591,59 @@ class CloudStorageAuditor(ConfigMgmtTool):
                 ),
             })
 
-            # ── Phase 2: Enumerate (cloud_enum) ───────────────────────────
+            # ── Phase 2: Enumerate (nuclei cloud/misconfiguration templates) ──
+            # Generate candidate names, build provider URLs, probe with nuclei.
+            candidates = _generate_cloud_candidates(target_domain, org_name)
+            enum_urls: list[str] = []
+            for name in sorted(candidates):
+                enum_urls.append(f"https://{name}.s3.amazonaws.com")
+                enum_urls.append(f"https://{name}.blob.core.windows.net")
+                enum_urls.append(f"https://storage.googleapis.com/{name}")
+
+            tmp_enum = None
             try:
-                enum_stdout = await self.run_subprocess(
-                    ["cloud_enum", "-k", target_domain, "-k", org_name]
-                )
-                enum_results = _parse_cloud_enum_output(enum_stdout)
-                for s3_url in enum_results["s3"]:
-                    raw_host = s3_url.replace("https://", "").replace("http://", "").strip("/")
-                    r = _normalize_s3_ref(raw_host)
-                    if r:
-                        s3_buckets.add(r[0])
-                for az_url in enum_results["azure"]:
-                    raw_host = az_url.replace("https://", "").replace("http://", "").strip("/")
-                    r = _normalize_azure_ref(raw_host)
-                    if r:
-                        azure_refs.add(r)
-                for gcs_url in enum_results["gcs"]:
-                    raw_host = gcs_url.replace("https://", "").replace("http://", "").strip("/")
-                    r = _normalize_gcs_ref(raw_host)
-                    if r:
-                        gcs_buckets.add(r)
-            except FileNotFoundError:
-                log.warning(f"{self.name}: cloud_enum not found, skipping Phase 2")
-            except asyncio.TimeoutError:
-                log.warning(f"{self.name}: cloud_enum timed out, skipping Phase 2")
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", prefix="csa_enum_", delete=False
+                ) as f:
+                    f.write("\n".join(enum_urls))
+                    tmp_enum = f.name
+
+                try:
+                    nuclei_stdout = await self.run_subprocess([
+                        "nuclei", "-l", tmp_enum,
+                        "-t", "/nuclei-templates/community/cloud/",
+                        "-t", "/nuclei-templates/community/misconfiguration/",
+                        "-json", "-silent", "-no-color",
+                        "-etags", "intrusive",
+                    ])
+                    for matched_url in _parse_nuclei_cloud_output(nuclei_stdout):
+                        raw_host = (
+                            matched_url
+                            .replace("https://", "")
+                            .replace("http://", "")
+                            .strip("/")
+                        )
+                        r_s3 = _normalize_s3_ref(raw_host)
+                        if r_s3:
+                            s3_buckets.add(r_s3[0])
+                            continue
+                        r_az = _normalize_azure_ref(raw_host)
+                        if r_az:
+                            azure_refs.add(r_az)
+                            continue
+                        r_gcs = _normalize_gcs_ref(raw_host)
+                        if r_gcs:
+                            gcs_buckets.add(r_gcs)
+                except FileNotFoundError:
+                    log.warning(f"{self.name}: nuclei not found, skipping Phase 2")
+                except asyncio.TimeoutError:
+                    log.warning(f"{self.name}: nuclei timed out, skipping Phase 2")
+            finally:
+                if tmp_enum and os.path.exists(tmp_enum):
+                    try:
+                        os.unlink(tmp_enum)
+                    except OSError:
+                        pass
 
             await push_task(f"events:{target_id}", {
                 "event": "TOOL_PROGRESS", "container": container_name,
