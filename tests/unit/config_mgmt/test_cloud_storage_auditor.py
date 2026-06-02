@@ -9,7 +9,7 @@ from workers.config_mgmt.tools.cloud_storage_auditor import (
     _normalize_gcs_ref,
     _parse_s3scanner_output,
     _classify_s3scanner_result,
-    _parse_cloud_enum_output,
+    _parse_nuclei_cloud_output,
     _parse_azcopy_output,
     _classify_azure_probe,
     _classify_gcs_probe,
@@ -302,52 +302,51 @@ def test_classify_s3_always_sets_section_id():
     assert result["vulnerability"]["section_id"] == _SECTION_ID
 
 
-# ── _parse_cloud_enum_output ──────────────────────────────────────────────────
+# ── _parse_nuclei_cloud_output ───────────────────────────────────────────────
 
-def test_parse_cloud_enum_empty_returns_empty_lists():
-    result = _parse_cloud_enum_output("")
-    assert result == {"s3": [], "azure": [], "gcs": []}
-
-
-def test_parse_cloud_enum_aws_line():
-    text = "[+] AWS: https://exampleco.s3.amazonaws.com"
-    result = _parse_cloud_enum_output(text)
-    assert len(result["s3"]) == 1
-    assert result["s3"][0] == "https://exampleco.s3.amazonaws.com"
+def test_parse_nuclei_cloud_empty_returns_empty_list():
+    result = _parse_nuclei_cloud_output("")
+    assert result == []
 
 
-def test_parse_cloud_enum_azure_line():
-    text = "[+] Azure: https://exampleco.blob.core.windows.net"
-    result = _parse_cloud_enum_output(text)
-    assert len(result["azure"]) == 1
-    assert result["azure"][0] == "https://exampleco.blob.core.windows.net"
+def test_parse_nuclei_cloud_single_json_line():
+    text = '{"matched-at": "https://exampleco.s3.amazonaws.com"}'
+    result = _parse_nuclei_cloud_output(text)
+    assert len(result) == 1
+    assert result[0] == "https://exampleco.s3.amazonaws.com"
 
 
-def test_parse_cloud_enum_gcp_line():
-    text = "[+] GCP: https://storage.googleapis.com/exampleco"
-    result = _parse_cloud_enum_output(text)
-    assert len(result["gcs"]) == 1
-    assert result["gcs"][0] == "https://storage.googleapis.com/exampleco"
-
-
-def test_parse_cloud_enum_unknown_lines_skipped():
-    text = "Scanning...\n[+] AWS: https://exampleco.s3.amazonaws.com\nDone."
-    result = _parse_cloud_enum_output(text)
-    assert len(result["s3"]) == 1
-    assert result["azure"] == []
-    assert result["gcs"] == []
-
-
-def test_parse_cloud_enum_multiple_providers():
+def test_parse_nuclei_cloud_multiple_json_lines():
     text = (
-        "[+] AWS: https://exampleco.s3.amazonaws.com\n"
-        "[+] Azure: https://exampleco.blob.core.windows.net\n"
-        "[+] GCP: https://storage.googleapis.com/exampleco\n"
+        '{"matched-at": "https://exampleco.s3.amazonaws.com"}\n'
+        '{"matched-at": "https://exampleco.blob.core.windows.net"}\n'
     )
-    result = _parse_cloud_enum_output(text)
-    assert len(result["s3"]) == 1
-    assert len(result["azure"]) == 1
-    assert len(result["gcs"]) == 1
+    result = _parse_nuclei_cloud_output(text)
+    assert len(result) == 2
+    assert "https://exampleco.s3.amazonaws.com" in result
+    assert "https://exampleco.blob.core.windows.net" in result
+
+
+def test_parse_nuclei_cloud_skips_malformed_json():
+    text = (
+        '{"matched-at": "https://exampleco.s3.amazonaws.com"}\n'
+        'not valid json\n'
+        '{"matched-at": "https://exampleco.blob.core.windows.net"}\n'
+    )
+    result = _parse_nuclei_cloud_output(text)
+    assert len(result) == 2
+    assert "https://exampleco.s3.amazonaws.com" in result
+    assert "https://exampleco.blob.core.windows.net" in result
+
+
+def test_parse_nuclei_cloud_skips_missing_matched_at():
+    text = (
+        '{"matched-at": "https://exampleco.s3.amazonaws.com"}\n'
+        '{"template": "cloud/aws"}\n'
+    )
+    result = _parse_nuclei_cloud_output(text)
+    assert len(result) == 1
+    assert result[0] == "https://exampleco.s3.amazonaws.com"
 
 
 # ── _parse_azcopy_output ──────────────────────────────────────────────────────
