@@ -341,3 +341,104 @@ def test_matches_csp_source_path_prefix_segment_boundary_no_match():
 def test_matches_csp_source_fallback_url_when_no_src_attr():
     # No src= attribute in code — falls back to https://{domain}
     assert _matches_csp_source("example.com", "", _src("example.com"))
+
+
+from workers.config_mgmt.tools.csp_tester import _match_csp_bypasses
+
+
+def test_match_csp_bypasses_empty_csp_returns_empty(monkeypatch):
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB", [("ajax.googleapis.com", "")])
+    assert _match_csp_bypasses("", "https://target.com/") == []
+
+
+def test_match_csp_bypasses_empty_db_returns_empty(monkeypatch):
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB", [])
+    results = _match_csp_bypasses(
+        "script-src 'self' ajax.googleapis.com",
+        "https://target.com/",
+    )
+    assert results == []
+
+
+def test_match_csp_bypasses_finds_exact_domain(monkeypatch):
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB", [
+        ("ajax.googleapis.com", '<script src="https://ajax.googleapis.com/libs/jquery/2.1.4/jquery.min.js"></script>'),
+        ("cdn.example.com", '<script src="https://cdn.example.com/x.js"></script>'),
+    ])
+    results = _match_csp_bypasses(
+        "script-src 'self' ajax.googleapis.com",
+        "https://target.com/",
+    )
+    assert len(results) == 1
+    vuln = results[0]["vulnerability"]
+    assert vuln["severity"] == "high"
+    assert "ajax.googleapis.com" in vuln["name"]
+    assert vuln["section_id"] == "WSTG-CONF-12"
+    assert vuln["location"] == "https://target.com/"
+
+
+def test_match_csp_bypasses_no_match_for_unknown_domain(monkeypatch):
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB", [
+        ("notinthepolicy.com", '<script src="https://notinthepolicy.com/x.js"></script>'),
+    ])
+    results = _match_csp_bypasses(
+        "script-src 'self' ajax.googleapis.com",
+        "https://target.com/",
+    )
+    assert results == []
+
+
+def test_match_csp_bypasses_keywords_filtered_out(monkeypatch):
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB", [
+        ("self", ""),
+        ("unsafe-inline", ""),
+    ])
+    results = _match_csp_bypasses(
+        "script-src 'self' 'unsafe-inline'",
+        "https://target.com/",
+    )
+    assert results == []
+
+
+def test_match_csp_bypasses_nonce_filtered_out(monkeypatch):
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB", [("nonce-abc123", "")])
+    results = _match_csp_bypasses(
+        "script-src 'nonce-abc123'",
+        "https://target.com/",
+    )
+    assert results == []
+
+
+def test_match_csp_bypasses_wildcard_source_matches_subdomain(monkeypatch):
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB", [
+        ("ajax.googleapis.com", '<script src="https://ajax.googleapis.com/x.js"></script>'),
+    ])
+    results = _match_csp_bypasses(
+        "script-src 'self' *.googleapis.com",
+        "https://target.com/",
+    )
+    assert len(results) == 1
+    assert "ajax.googleapis.com" in results[0]["vulnerability"]["name"]
+
+
+def test_match_csp_bypasses_deduplicates_same_gadget(monkeypatch):
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB", [
+        ("ajax.googleapis.com", '<script src="https://ajax.googleapis.com/x.js"></script>'),
+    ])
+    # Two sources in the policy that both match the same gadget
+    results = _match_csp_bypasses(
+        "script-src ajax.googleapis.com *.googleapis.com",
+        "https://target.com/",
+    )
+    assert len(results) == 1
+
+
+def test_match_csp_bypasses_falls_back_to_default_src(monkeypatch):
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB", [
+        ("ajax.googleapis.com", '<script src="https://ajax.googleapis.com/x.js"></script>'),
+    ])
+    results = _match_csp_bypasses(
+        "default-src 'self' ajax.googleapis.com",
+        "https://target.com/",
+    )
+    assert len(results) == 1

@@ -126,6 +126,47 @@ def _matches_csp_source(gadget_domain: str, gadget_code: str, src: dict) -> bool
 
     return True
 
+
+def _match_csp_bypasses(csp_header: str, url: str) -> list[dict]:
+    if not _BYPASS_DB or not csp_header:
+        return []
+
+    policy = _parse_csp_header(csp_header)
+    tokens = policy.get("script-src") or policy.get("default-src") or []
+    source_tokens = [
+        t for t in tokens
+        if t not in _CSP_KEYWORDS and not _NONCE_HASH_RE.match(t)
+    ]
+    if not source_tokens:
+        return []
+
+    parsed_sources = [s for t in source_tokens if (s := _parse_csp_source(t)) is not None]
+    if not parsed_sources:
+        return []
+
+    results: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for domain, code in _BYPASS_DB:
+        for src in parsed_sources:
+            if _matches_csp_source(domain, code, src):
+                key = (domain, code)
+                if key not in seen:
+                    seen.add(key)
+                    results.append({"vulnerability": {
+                        "name": f"CSP bypass gadget: {domain} on {url}",
+                        "severity": "high",
+                        "description": (
+                            f"renniepak/CSPBypass: domain '{domain}' in script-src "
+                            f"has a known bypass gadget on {url}. Payload: {code}"
+                        ),
+                        "location": url,
+                        "section_id": _SECTION_ID,
+                    }})
+                break
+
+    return results
+
+
 _SECTION_ID = "WSTG-CONF-12"
 _DB_ASSET_TYPES = ["domain", "subdomain", "url", "endpoint"]
 
@@ -375,45 +416,6 @@ async def _call_google_csp_evaluator(policy_str: str, url: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# cspbypass helper
-# ---------------------------------------------------------------------------
-
-async def _run_csp_bypass(url: str) -> list[dict]:
-    """Invoke cspbypass CLI against url; map each bypass line to a high vuln."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "cspbypass", url,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            stdout_bytes, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.communicate()
-            logger.warning(f"cspbypass timed out for {url}")
-            return []
-        stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
-    except FileNotFoundError:
-        logger.error("cspbypass binary not found — skipping Layer 3")
-        return []
-
-    results: list[dict] = []
-    for line in stdout.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        results.append({"vulnerability": {
-            "name": f"CSP bypass technique: {line[:80]}",
-            "severity": "high",
-            "description": f"cspbypass detected a bypass technique on {url}: {line}",
-            "location": url,
-            "section_id": _SECTION_ID,
-        }})
-    return results
-
-
-# ---------------------------------------------------------------------------
 # Per-URL probe coroutine
 # ---------------------------------------------------------------------------
 
@@ -441,7 +443,7 @@ async def _probe_url(
         # Layers 2 + 3 only when a policy exists to evaluate / bypass
         if csp_header:
             results.extend(await _call_google_csp_evaluator(csp_header, url))
-            results.extend(await _run_csp_bypass(url))
+            results.extend(_match_csp_bypasses(csp_header, url))
 
         # Meta tag scan — always, regardless of HTTP header
         results.extend(_scan_meta_tag(host, url, html))
