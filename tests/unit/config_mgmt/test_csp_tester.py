@@ -188,3 +188,67 @@ def test_load_bypass_db_lowercases_domain(tmp_path, monkeypatch):
     monkeypatch.setattr(csp_mod, "_BYPASS_DB_PATH", str(tsv))
     result = _load_bypass_db()
     assert result[0][0] == "ajax.googleapis.com"
+
+
+from workers.config_mgmt.tools.csp_tester import _parse_csp_source
+
+
+def test_parse_csp_source_bare_host():
+    result = _parse_csp_source("ajax.googleapis.com")
+    assert result == {
+        "scheme": None,
+        "host": "ajax.googleapis.com",
+        "wildcard_subdomain": False,
+        "path_prefix": None,
+    }
+
+
+def test_parse_csp_source_wildcard_subdomain():
+    result = _parse_csp_source("*.googleapis.com")
+    assert result == {
+        "scheme": None,
+        "host": "googleapis.com",
+        "wildcard_subdomain": True,
+        "path_prefix": None,
+    }
+
+
+def test_parse_csp_source_scheme_and_host():
+    result = _parse_csp_source("https://cdn.example.com")
+    assert result == {
+        "scheme": "https",
+        "host": "cdn.example.com",
+        "wildcard_subdomain": False,
+        "path_prefix": None,
+    }
+
+
+def test_parse_csp_source_scheme_host_and_path():
+    result = _parse_csp_source("https://cdn.example.com/scripts/")
+    assert result == {
+        "scheme": "https",
+        "host": "cdn.example.com",
+        "wildcard_subdomain": False,
+        "path_prefix": "/scripts/",
+    }
+
+
+def test_parse_csp_source_bare_wildcard():
+    result = _parse_csp_source("*")
+    assert result == {
+        "scheme": None,
+        "host": "*",
+        "wildcard_subdomain": False,
+        "path_prefix": None,
+    }
+
+
+def test_parse_csp_source_bare_scheme_returns_none():
+    assert _parse_csp_source("https:") is None
+    assert _parse_csp_source("data:") is None
+    assert _parse_csp_source("blob:") is None
+
+
+def test_parse_csp_source_strips_port():
+    result = _parse_csp_source("cdn.example.com:8443")
+    assert result["host"] == "cdn.example.com"

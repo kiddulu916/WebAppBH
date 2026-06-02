@@ -44,6 +44,52 @@ def _load_bypass_db() -> list[tuple[str, str]]:
 
 _BYPASS_DB: list[tuple[str, str]] = _load_bypass_db()
 
+_BARE_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+\-.]*:$")
+
+_CSP_KEYWORDS = frozenset({
+    "'self'", "'unsafe-inline'", "'unsafe-eval'", "'none'",
+    "'strict-dynamic'", "'wasm-unsafe-eval'", "'report-sample'",
+})
+
+_NONCE_HASH_RE = re.compile(r"^'(?:nonce-|sha(?:256|384|512)-)", re.IGNORECASE)
+
+
+def _parse_csp_source(token: str) -> dict | None:
+    if _BARE_SCHEME_RE.match(token):
+        return None
+
+    scheme = None
+    rest = token
+    if "://" in token:
+        scheme, rest = token.split("://", 1)
+
+    path_prefix = None
+    if "/" in rest:
+        idx = rest.index("/")
+        host_port = rest[:idx]
+        path_prefix = rest[idx:]
+    else:
+        host_port = rest
+
+    if host_port.count(":") == 1:
+        host_port = host_port.rsplit(":", 1)[0]
+
+    wildcard_subdomain = False
+    if host_port.startswith("*."):
+        wildcard_subdomain = True
+        host_port = host_port[2:]
+
+    host = host_port.strip()
+    if not host:
+        return None
+
+    return {
+        "scheme": scheme,
+        "host": host,
+        "wildcard_subdomain": wildcard_subdomain,
+        "path_prefix": path_prefix,
+    }
+
 _SECTION_ID = "WSTG-CONF-12"
 _DB_ASSET_TYPES = ["domain", "subdomain", "url", "endpoint"]
 
