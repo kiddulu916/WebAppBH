@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from datetime import datetime
 from urllib.parse import urlparse
@@ -16,6 +17,32 @@ from workers.config_mgmt.base_tool import ConfigMgmtTool
 from workers.config_mgmt.concurrency import get_semaphore
 
 logger = setup_logger("config-mgmt-conf12")
+
+_BYPASS_DB_PATH: str = os.environ.get("CSPBYPASS_DATA_PATH", "/cspbypass/data.tsv")
+
+
+def _load_bypass_db() -> list[tuple[str, str]]:
+    try:
+        db: list[tuple[str, str]] = []
+        with open(_BYPASS_DB_PATH, encoding="utf-8") as f:
+            for line in f:
+                line = line.rstrip("\n")
+                if "\t" in line:
+                    domain, code = line.split("\t", 1)
+                else:
+                    domain, code = line.strip(), ""
+                if domain.strip():
+                    db.append((domain.strip().lower(), code.strip()))
+        return db
+    except FileNotFoundError:
+        logger.warning(f"CSPBypass data file not found at {_BYPASS_DB_PATH} — Layer 3 disabled")
+        return []
+    except Exception as exc:
+        logger.warning(f"Failed to load CSPBypass data: {exc} — Layer 3 disabled")
+        return []
+
+
+_BYPASS_DB: list[tuple[str, str]] = _load_bypass_db()
 
 _SECTION_ID = "WSTG-CONF-12"
 _DB_ASSET_TYPES = ["domain", "subdomain", "url", "endpoint"]

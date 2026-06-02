@@ -148,3 +148,43 @@ def test_scan_meta_tag_single_quoted_content():
     assert len(results) > 0
     vulns = [r["vulnerability"] for r in results if "vulnerability" in r]
     assert any("meta tag" in v["name"].lower() for v in vulns)
+
+
+import workers.config_mgmt.tools.csp_tester as csp_mod
+from workers.config_mgmt.tools.csp_tester import _load_bypass_db
+
+
+def test_load_bypass_db_reads_two_column_tsv(tmp_path, monkeypatch):
+    tsv = tmp_path / "data.tsv"
+    tsv.write_text(
+        'ajax.googleapis.com\t<script src="https://ajax.googleapis.com/libs/jquery/2.1.4/jquery.min.js"></script>\n'
+        'cdn.example.com\t<script src="https://cdn.example.com/x.js"></script>\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB_PATH", str(tsv))
+    result = _load_bypass_db()
+    assert len(result) == 2
+    assert result[0] == ("ajax.googleapis.com", '<script src="https://ajax.googleapis.com/libs/jquery/2.1.4/jquery.min.js"></script>')
+    assert result[1] == ("cdn.example.com", '<script src="https://cdn.example.com/x.js"></script>')
+
+
+def test_load_bypass_db_domain_only_rows(tmp_path, monkeypatch):
+    tsv = tmp_path / "data.tsv"
+    tsv.write_text("example.com\nother.com\n", encoding="utf-8")
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB_PATH", str(tsv))
+    result = _load_bypass_db()
+    assert result == [("example.com", ""), ("other.com", "")]
+
+
+def test_load_bypass_db_missing_file_returns_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB_PATH", str(tmp_path / "nonexistent.tsv"))
+    result = _load_bypass_db()
+    assert result == []
+
+
+def test_load_bypass_db_lowercases_domain(tmp_path, monkeypatch):
+    tsv = tmp_path / "data.tsv"
+    tsv.write_text("AJAX.GoogleAPIs.COM\t<script src=\"https://AJAX.GoogleAPIs.COM/x.js\"></script>\n", encoding="utf-8")
+    monkeypatch.setattr(csp_mod, "_BYPASS_DB_PATH", str(tsv))
+    result = _load_bypass_db()
+    assert result[0][0] == "ajax.googleapis.com"
