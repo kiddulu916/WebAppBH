@@ -252,3 +252,92 @@ def test_parse_csp_source_bare_scheme_returns_none():
 def test_parse_csp_source_strips_port():
     result = _parse_csp_source("cdn.example.com:8443")
     assert result["host"] == "cdn.example.com"
+
+
+from workers.config_mgmt.tools.csp_tester import _matches_csp_source
+
+
+def _src(host, *, scheme=None, wildcard_subdomain=False, path_prefix=None):
+    """Helper to build a parsed CSP source dict."""
+    return {
+        "scheme": scheme,
+        "host": host,
+        "wildcard_subdomain": wildcard_subdomain,
+        "path_prefix": path_prefix,
+    }
+
+
+def test_matches_csp_source_exact_host_match():
+    gadget_code = '<script src="https://ajax.googleapis.com/libs/jquery/2.1.4/jquery.min.js"></script>'
+    assert _matches_csp_source("ajax.googleapis.com", gadget_code, _src("ajax.googleapis.com"))
+
+
+def test_matches_csp_source_exact_host_no_match():
+    gadget_code = '<script src="https://cdn.example.com/x.js"></script>'
+    assert not _matches_csp_source("cdn.example.com", gadget_code, _src("ajax.googleapis.com"))
+
+
+def test_matches_csp_source_wildcard_subdomain_matches():
+    gadget_code = '<script src="https://ajax.googleapis.com/libs/jquery/2.1.4/jquery.min.js"></script>'
+    assert _matches_csp_source(
+        "ajax.googleapis.com", gadget_code,
+        _src("googleapis.com", wildcard_subdomain=True),
+    )
+
+
+def test_matches_csp_source_wildcard_subdomain_does_not_match_bare_domain():
+    gadget_code = '<script src="https://googleapis.com/x.js"></script>'
+    assert not _matches_csp_source(
+        "googleapis.com", gadget_code,
+        _src("googleapis.com", wildcard_subdomain=True),
+    )
+
+
+def test_matches_csp_source_global_wildcard_matches_anything():
+    gadget_code = '<script src="https://anything.example.com/x.js"></script>'
+    assert _matches_csp_source("anything.example.com", gadget_code, _src("*"))
+
+
+def test_matches_csp_source_scheme_enforced_on_mismatch():
+    gadget_code = '<script src="http://ajax.googleapis.com/x.js"></script>'
+    assert not _matches_csp_source(
+        "ajax.googleapis.com", gadget_code,
+        _src("ajax.googleapis.com", scheme="https"),
+    )
+
+
+def test_matches_csp_source_scheme_not_enforced_when_absent():
+    gadget_code = '<script src="http://ajax.googleapis.com/x.js"></script>'
+    assert _matches_csp_source(
+        "ajax.googleapis.com", gadget_code,
+        _src("ajax.googleapis.com", scheme=None),
+    )
+
+
+def test_matches_csp_source_path_prefix_exact_match():
+    gadget_code = '<script src="https://cdn.example.com/gtag/js"></script>'
+    assert _matches_csp_source(
+        "cdn.example.com", gadget_code,
+        _src("cdn.example.com", path_prefix="/gtag/js"),
+    )
+
+
+def test_matches_csp_source_path_prefix_subpath_match():
+    gadget_code = '<script src="https://cdn.example.com/gtag/js/file.js"></script>'
+    assert _matches_csp_source(
+        "cdn.example.com", gadget_code,
+        _src("cdn.example.com", path_prefix="/gtag/js"),
+    )
+
+
+def test_matches_csp_source_path_prefix_segment_boundary_no_match():
+    gadget_code = '<script src="https://cdn.example.com/gtag/jsloader"></script>'
+    assert not _matches_csp_source(
+        "cdn.example.com", gadget_code,
+        _src("cdn.example.com", path_prefix="/gtag/js"),
+    )
+
+
+def test_matches_csp_source_fallback_url_when_no_src_attr():
+    # No src= attribute in code — falls back to https://{domain}
+    assert _matches_csp_source("example.com", "", _src("example.com"))

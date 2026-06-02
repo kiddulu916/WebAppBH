@@ -90,6 +90,42 @@ def _parse_csp_source(token: str) -> dict | None:
         "path_prefix": path_prefix,
     }
 
+
+_URL_IN_CODE_RE = re.compile(r'(?:src|href)=["\']?([^"\'> ]+)', re.IGNORECASE)
+
+
+def _matches_csp_source(gadget_domain: str, gadget_code: str, src: dict) -> bool:
+    url_match = _URL_IN_CODE_RE.search(gadget_code)
+    gadget_url_str = url_match.group(1) if url_match else f"https://{gadget_domain}"
+
+    try:
+        parsed = urlparse(gadget_url_str)
+        gadget_scheme = parsed.scheme or "https"
+        gadget_host = (parsed.netloc or gadget_domain).split(":")[0].lower()
+        gadget_path = parsed.path or "/"
+    except Exception:
+        return False
+
+    if src["scheme"] and gadget_scheme != src["scheme"]:
+        return False
+
+    csp_host = src["host"]
+    if csp_host == "*":
+        pass
+    elif src["wildcard_subdomain"]:
+        if not gadget_host.endswith("." + csp_host):
+            return False
+    else:
+        if gadget_host != csp_host:
+            return False
+
+    if src["path_prefix"]:
+        prefix = src["path_prefix"].rstrip("/")
+        if gadget_path != prefix and not gadget_path.startswith(prefix + "/"):
+            return False
+
+    return True
+
 _SECTION_ID = "WSTG-CONF-12"
 _DB_ASSET_TYPES = ["domain", "subdomain", "url", "endpoint"]
 
