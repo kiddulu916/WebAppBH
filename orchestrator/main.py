@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import hmac
 import io
 import json
 import os
@@ -56,7 +57,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy import func, inspect, or_, select, text, update
@@ -439,8 +440,7 @@ async def api_key_middleware(request: Request, call_next):
         # Key not configured — allow all (development mode)
         return await call_next(request)
     incoming = request.headers.get("X-API-KEY", "")
-    if incoming != _FRAMEWORK_API_KEY:
-        from fastapi.responses import JSONResponse
+    if not hmac.compare_digest(incoming, _FRAMEWORK_API_KEY):
         return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
     return await call_next(request)
 
