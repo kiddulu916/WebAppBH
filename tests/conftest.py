@@ -21,13 +21,37 @@ import pytest
 
 _REPO_ROOT = Path(__file__).parent.parent
 _BASE_URL = "http://localhost:8001"
-_HEALTH_URL = f"{_BASE_URL}/api/v1/health"
+_HEALTH_URL = f"{_BASE_URL}/health"
 LOG_IGNORE_PATTERNS = [
     "redis.exceptions.ConnectionError",
     "asyncpg.exceptions",
     "Connection refused",
     "Retrying",
 ]
+
+
+def _load_env_file() -> None:
+    """Load shared/config/.env into os.environ so lib_webbh.get_session() works locally."""
+    env_file = _REPO_ROOT / "shared" / "config" / ".env"
+    if not env_file.exists():
+        return
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if key and key not in os.environ:
+            os.environ[key] = value
+    # Tests run on the host; DB is exposed on localhost, not the Docker service name
+    if os.environ.get("DB_HOST") == "postgres":
+        os.environ["DB_HOST"] = "localhost"
+    if os.environ.get("REDIS_HOST") == "redis":
+        os.environ["REDIS_HOST"] = "localhost"
+
+
+_load_env_file()
 
 # ---------------------------------------------------------------------------
 # pytest hooks
@@ -300,12 +324,33 @@ async def client(stack):
 _DEFAULT_TARGET = "testphp.vulnweb.com"
 
 
+_WORKER_QUEUE_TIERS = ("normal", "high", "low")
+
+
+def _purge_worker_queue(worker: str) -> None:
+    """Trim all tiers of a worker's Redis queue to 0 via docker exec.
+
+    Stale messages from previous test runs cause the worker to run pipelines
+    for old targets, adding minutes of latency before the test target is reached.
+    """
+    for tier in _WORKER_QUEUE_TIERS:
+        queue = f"{worker}_queue:{tier}"
+        subprocess.run(
+            ["docker", "exec", "webbh-redis", "redis-cli", "XTRIM", queue, "MAXLEN", "0"],
+            capture_output=True,
+            timeout=10,
+        )
+
+
 async def create_target(
     client: httpx.AsyncClient,
     playbook: str,
     company: str,
     domain: str = _DEFAULT_TARGET,
+    worker: str | None = None,
 ) -> int:
+    if worker:
+        _purge_worker_queue(worker)
     res = await client.post("/api/v1/targets", json={
         "company_name": company,
         "base_domain": domain,
@@ -317,7 +362,18 @@ async def create_target(
             f"Response: {res.text}"
         )
     assert res.status_code == 201, f"create_target failed: {res.status_code} {res.text}"
-    return res.json()["target_id"]
+    target_id = res.json()["target_id"]
+    _write_stub_credentials(target_id)
+    return target_id
+
+
+def _write_stub_credentials(target_id: int) -> None:
+    """Write a stub credentials.json so the event engine dispatches credential-gated workers."""
+    config_dir = _REPO_ROOT / "shared" / "config" / str(target_id)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    creds_path = config_dir / "credentials.json"
+    if not creds_path.exists():
+        creds_path.write_text(json.dumps({"tester": None, "testing_user": None}))
 
 
 async def cleanup_target(client: httpx.AsyncClient, target_id: int) -> None:
@@ -389,3 +445,111 @@ async def assert_job_completed(
         f"got '{job['current_phase']}'"
     )
     return job
+
+
+async def assert_chain_findings(
+    client: httpx.AsyncClient,
+    target_id: int,
+    min_count: int = 1,
+) -> list:
+    """Assert >= min_count vulnerabilities with worker_type='chain_worker' exist."""
+    res = await client.get(
+        "/api/v1/vulnerabilities",
+        params={"target_id": target_id, "worker_type": "chain_worker"},
+    )
+    assert res.status_code == 200, f"GET /api/v1/vulnerabilities returned {res.status_code}"
+    data = res.json()
+    assert data["total"] >= min_count, (
+        f"Expected >={min_count} chain findings for target {target_id}, got {data['total']}"
+    )
+    return data["vulnerabilities"]
+
+
+async def assert_reports(
+    client: httpx.AsyncClient,
+    target_id: int,
+    min_count: int = 1,
+) -> list:
+    """Assert >= min_count report files are listed for target."""
+    res = await client.get(f"/api/v1/targets/{target_id}/reports")
+    assert res.status_code == 200, f"GET /api/v1/targets/{target_id}/reports returned {res.status_code}"
+    data = res.json()
+    assert len(data["reports"]) >= min_count, (
+        f"Expected >={min_count} report files for target {target_id}, got {len(data['reports'])}"
+    )
+    return data["reports"]
+
+
+async def wait_for_worker_status(
+    client: httpx.AsyncClient,
+    target_id: int,
+    worker: str,
+    expected_statuses: set[str],
+    poll_interval: int = 5,
+    timeout: int = 300,
+) -> str:
+    """Poll /api/v1/status until worker reaches one of expected_statuses."""
+    import asyncio as _asyncio
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        res = await client.get("/api/v1/status", params={"target_id": target_id})
+        jobs = res.json().get("jobs", [])
+        job = next((j for j in jobs if j["container_name"] == worker), None)
+        if job and job["status"] in expected_statuses:
+            return job["status"]
+        await _asyncio.sleep(poll_interval)
+    raise TimeoutError(
+        f"Worker '{worker}' did not reach {expected_statuses} within {timeout}s for target {target_id}"
+    )
+
+
+async def seed_vulnerability(target_id: int, asset_id: int | None = None) -> dict:
+    """Insert a Vulnerability row directly via lib_webbh for use in orchestrator tests.
+
+    Does NOT use the /api/v1/test/seed endpoint -- that seeds a full fixture.
+    """
+    from lib_webbh import get_session, Vulnerability, Asset
+    from sqlalchemy import select as _select
+
+    async with get_session() as session:
+        if asset_id is None:
+            result = await session.execute(
+                _select(Asset).where(Asset.target_id == target_id).limit(1)
+            )
+            asset = result.scalar_one_or_none()
+            if asset:
+                asset_id = asset.id
+
+        vuln = Vulnerability(
+            target_id=target_id,
+            asset_id=asset_id,
+            severity="medium",
+            title="Seeded Test Vulnerability",
+            description="Inserted directly for orchestrator API testing",
+            source_tool="test_seed",
+            worker_type="test",
+            vuln_type="informational",
+            confirmed=True,
+        )
+        session.add(vuln)
+        await session.commit()
+        await session.refresh(vuln)
+        return {"id": vuln.id, "title": vuln.title, "severity": vuln.severity, "target_id": target_id}
+
+
+async def seed_asset(target_id: int) -> dict:
+    """Insert an Asset row directly via lib_webbh."""
+    from lib_webbh import get_session, Asset
+
+    async with get_session() as session:
+        asset = Asset(
+            target_id=target_id,
+            asset_type="url",
+            asset_value=f"http://testphp.vulnweb.com/seeded-{target_id}",
+            source_tool="test_seed",
+            scope_classification="in-scope",
+        )
+        session.add(asset)
+        await session.commit()
+        await session.refresh(asset)
+        return {"id": asset.id, "asset_value": asset.asset_value, "target_id": target_id}
