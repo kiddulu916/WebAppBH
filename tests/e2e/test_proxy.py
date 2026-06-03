@@ -9,15 +9,34 @@ CONTAINER = "webbh-proxy"
 _RULE_API = "http://localhost:8081"
 
 
-def _exec_curl(path: str, method: str = "GET", data: str | None = None) -> dict:
-    """Run curl inside the proxy container and return parsed JSON."""
-    cmd = ["docker", "exec", CONTAINER, "curl", "-s", "-X", method]
-    if data:
-        cmd += ["-H", "Content-Type: application/json", "-d", data]
-    cmd.append(f"{_RULE_API}{path}")
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-    assert result.returncode == 0, f"curl failed: {result.stderr}"
-    return json.loads(result.stdout)
+def _exec_http(path: str, method: str = "GET", data: str | None = None) -> tuple[int, object]:
+    """HTTP request inside proxy container via python3 stdlib. Returns (status_code, parsed_body)."""
+    script = "\n".join([
+        "import urllib.request, urllib.error, json, sys",
+        f"url = 'http://localhost:8081{path}'",
+        f"method = '{method}'",
+        f"body = {repr(data.encode()) if data else 'None'}",
+        "headers = {'Content-Type': 'application/json'} if body else {}",
+        "req = urllib.request.Request(url, data=body, headers=headers, method=method)",
+        "try:",
+        "    with urllib.request.urlopen(req) as r:",
+        "        sys.stdout.write(str(r.status) + '\\n' + r.read().decode())",
+        "except urllib.error.HTTPError as e:",
+        "    sys.stdout.write(str(e.code) + '\\n' + (e.read().decode() or '{}'))",
+    ])
+    result = subprocess.run(
+        ["docker", "exec", CONTAINER, "python3", "-c", script],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert result.returncode == 0, f"python3 exec failed: {result.stderr}"
+    out_lines = result.stdout.strip().split("\n", 1)
+    status = int(out_lines[0])
+    body_str = out_lines[1].strip() if len(out_lines) > 1 else "{}"
+    try:
+        body = json.loads(body_str)
+    except json.JSONDecodeError:
+        body = {}
+    return status, body
 
 
 def test_proxy_container_running():
@@ -50,8 +69,9 @@ def test_proxy_logs_clean():
 
 def test_proxy_rule_manager_api_responds():
     """Rule manager REST API (port 8081 internal) returns a list on GET /rules."""
-    data = _exec_curl("/rules")
-    assert isinstance(data, list), f"Expected list of rules, got: {data}"
+    status, body = _exec_http("/rules")
+    assert status == 200, f"Expected 200, got {status}"
+    assert isinstance(body, list), f"Expected list of rules, got: {body}"
 
 
 def test_proxy_rule_manager_add_and_delete_rule():
@@ -65,18 +85,20 @@ def test_proxy_rule_manager_add_and_delete_rule():
         "match": {"url_pattern": "*.example.com*"},
         "action": {"type": "inject_header", "name": "X-Test-Injected", "value": "1"},
     })
-    created = _exec_curl("/rules", method="POST", data=rule_payload)
+    status, created = _exec_http("/rules", method="POST", data=rule_payload)
+    assert status == 201, f"Expected 201, got {status}: {created}"
     assert "id" in created, f"Expected 'id' in created rule response: {created}"
     rule_id = created["id"]
 
-    rules = _exec_curl("/rules")
+    _, rules = _exec_http("/rules")
     ids = [r["id"] for r in rules]
     assert rule_id in ids, f"Newly created rule {rule_id} not found in rule list: {ids}"
 
-    deleted = _exec_curl(f"/rules/{rule_id}", method="DELETE")
+    status, deleted = _exec_http(f"/rules/{rule_id}", method="DELETE")
+    assert status == 200, f"Expected 200 on delete, got {status}"
     assert "deleted" in deleted, f"Expected 'deleted' in delete response: {deleted}"
 
-    rules_after = _exec_curl("/rules")
+    _, rules_after = _exec_http("/rules")
     ids_after = [r["id"] for r in rules_after]
     assert rule_id not in ids_after, (
         f"Rule {rule_id} still present after deletion: {ids_after}"
@@ -84,15 +106,6 @@ def test_proxy_rule_manager_add_and_delete_rule():
 
 
 def test_proxy_rule_manager_delete_nonexistent_returns_404():
-    """Deleting a rule that does not exist returns a 404 error body."""
-    cmd = [
-        "docker", "exec", CONTAINER,
-        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-        "-X", "DELETE",
-        f"{_RULE_API}/rules/nonexistent-rule-id",
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-    assert result.returncode == 0, f"curl failed: {result.stderr}"
-    assert result.stdout.strip() == "404", (
-        f"Expected 404 for nonexistent rule, got: {result.stdout.strip()}"
-    )
+    """Deleting a rule that does not exist returns 404."""
+    status, _ = _exec_http("/rules/nonexistent-rule-id", method="DELETE")
+    assert status == 404, f"Expected 404 for nonexistent rule, got {status}"

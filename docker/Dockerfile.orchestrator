@@ -46,6 +46,10 @@ COPY --from=builder /install /usr/local/lib/python3.10/site-packages/
 COPY orchestrator /app/orchestrator
 COPY shared/setup_env.py /app/shared/setup_env.py
 
+# Sandbox worker modules (imported by orchestrator sandbox endpoints)
+COPY workers/__init__.py /app/workers/__init__.py
+COPY workers/sandbox_worker /app/workers/sandbox_worker
+
 # Shared volume dirs
 RUN mkdir -p /app/shared/raw /app/shared/config /app/shared/logs
 
