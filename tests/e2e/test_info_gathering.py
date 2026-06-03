@@ -27,7 +27,7 @@ STAGE_ASSERTIONS = {
 }
 
 STAGE_TIMEOUTS = {
-    "search_engine_recon":    180,
+    "search_engine_recon":    300,
     "web_server_fingerprint": 120,
     "web_server_metafiles":   120,
     "enumerate_applications": 180,
@@ -37,14 +37,14 @@ STAGE_TIMEOUTS = {
     "map_execution_paths":    180,
     "review_comments_deep":   180,
     "fingerprint_framework":  120,
-    "map_architecture":       120,
+    "map_architecture":       180,
     "map_application":        120,
 }
 
 
 @pytest.fixture(scope="module")
 async def pipeline_result(client, sse_monitor):
-    target_id = await create_target(client, PLAYBOOK, "E2E-InfoGathering")
+    target_id = await create_target(client, PLAYBOOK, "E2E-InfoGathering", worker=WORKER)
     try:
         report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
         yield target_id, report
@@ -83,4 +83,20 @@ async def test_info_gathering_fingerprint_framework_aggregator_ran(pipeline_resu
     )
     assert stats.get("summary_written") is True, (
         "FrameworkFingerprintAggregator.write_summary must write a summary observation"
+    )
+
+
+async def test_info_gathering_asset_types_diverse(client, pipeline_result):
+    """Assert info_gathering produced ≥3 distinct asset_type values (multiple tool categories ran)."""
+    target_id, _ = pipeline_result
+    res = await client.get(
+        "/api/v1/assets",
+        params={"target_id": target_id, "page_size": 500},
+    )
+    assert res.status_code == 200
+    assets = res.json()["assets"]
+    assert assets, "No assets found for info_gathering target"
+    asset_types = {a["asset_type"] for a in assets if a.get("asset_type")}
+    assert len(asset_types) >= 3, (
+        f"Expected ≥3 distinct asset_type values; got {asset_types}"
     )

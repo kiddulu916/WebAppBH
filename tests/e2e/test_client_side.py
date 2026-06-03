@@ -1,7 +1,7 @@
 """E2E tests for client_side worker (WSTG-CLNT-01 through CLNT-13)."""
 import pytest
 from conftest import (
-    assert_job_completed, cleanup_target, create_target,
+    assert_job_completed, assert_vulnerabilities, cleanup_target, create_target,
 )
 
 pytestmark = pytest.mark.e2e
@@ -23,7 +23,7 @@ STAGE_ASSERTIONS = {
     "client_side_auth":                  None,
     "xss_client_side":                   None,
     "css_injection":                     None,
-    "malicious_upload_client":           None,
+    "malicious_upload_client":           lambda c, tid: assert_vulnerabilities(c, tid),
 }
 
 STAGE_TIMEOUTS = {
@@ -45,7 +45,7 @@ STAGE_TIMEOUTS = {
 
 @pytest.fixture(scope="module")
 async def pipeline_result(client, sse_monitor):
-    target_id = await create_target(client, PLAYBOOK, "E2E-ClientSide")
+    target_id = await create_target(client, PLAYBOOK, "E2E-ClientSide", worker=WORKER)
     try:
         report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
         yield target_id, report
@@ -65,3 +65,19 @@ async def test_client_side_pipeline_stages(pipeline_result):
 async def test_client_side_job_state(client, pipeline_result):
     target_id, _ = pipeline_result
     await assert_job_completed(client, target_id, WORKER, LAST_STAGE)
+
+
+async def test_client_side_vulns_have_source_tool(client, pipeline_result):
+    """Assert every client_side vulnerability records which tool produced it."""
+    target_id, _ = pipeline_result
+    res = await client.get(
+        "/api/v1/vulnerabilities",
+        params={"target_id": target_id, "worker_type": "client_side"},
+    )
+    assert res.status_code == 200
+    vulns = res.json()["vulnerabilities"]
+    assert vulns, "No client_side vulnerabilities found"
+    for v in vulns:
+        assert v["source_tool"] is not None and v["source_tool"].strip() != "", (
+            f"Client-side vulnerability {v['id']} has null source_tool"
+        )
