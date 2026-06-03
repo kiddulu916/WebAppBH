@@ -7,14 +7,14 @@ import time
 
 import pytest
 from conftest import (
-    assert_assets, assert_job_completed,
+    assert_assets, assert_job_completed, assert_reports,
     cleanup_target, create_target,
 )
 
 pytestmark = pytest.mark.e2e
 
-WORKER = "reporting"            # playbooks.py key
-CONTAINER = "reporting_worker"  # docker container name (used for log fetch)
+WORKER = "reporting_worker"
+CONTAINER = "reporting_worker"
 PLAYBOOK = "wide_recon"
 LAST_STAGE = "export"
 
@@ -32,26 +32,27 @@ STAGE_TIMEOUTS = {
     "export":         120,
 }
 
-_PREREQ_TIMEOUT = 900
+_PREREQ_TIMEOUT = 4200
 
 
-async def _wait_for_info_gathering(client, target_id: int, timeout: int = _PREREQ_TIMEOUT):
+async def _wait_for_reasoning_worker(client, target_id: int, timeout: int = _PREREQ_TIMEOUT):
+    """Poll until reasoning_worker completes — reporting_worker fires only after that."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         res = await client.get("/api/v1/status", params={"target_id": target_id})
         jobs = res.json().get("jobs", [])
-        ig = next((j for j in jobs if j["container_name"] == "info_gathering"), None)
-        if ig and ig["status"] == "COMPLETED":
+        rw = next((j for j in jobs if j["container_name"] == "reasoning_worker"), None)
+        if rw and rw["status"] in ("COMPLETED", "SKIPPED"):
             return
-        await asyncio.sleep(15)
-    raise TimeoutError(f"info_gathering did not complete within {timeout}s")
+        await asyncio.sleep(20)
+    raise TimeoutError(f"reasoning_worker did not complete within {timeout}s")
 
 
 @pytest.fixture(scope="module")
 async def pipeline_result(client, sse_monitor):
-    target_id = await create_target(client, PLAYBOOK, "E2E-ReportingWorker")
+    target_id = await create_target(client, PLAYBOOK, "E2E-ReportingWorker", worker=WORKER)
     try:
-        await _wait_for_info_gathering(client, target_id)
+        await _wait_for_reasoning_worker(client, target_id)
         report = await sse_monitor.run(target_id, CONTAINER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
         yield target_id, report
     finally:
@@ -70,3 +71,15 @@ async def test_reporting_worker_pipeline_stages(pipeline_result):
 async def test_reporting_worker_job_state(client, pipeline_result):
     target_id, _ = pipeline_result
     await assert_job_completed(client, target_id, CONTAINER, LAST_STAGE)
+
+
+async def test_reporting_worker_report_downloadable(client, pipeline_result):
+    """Assert all listed report files can be downloaded (HEAD returns 200)."""
+    target_id, _ = pipeline_result
+    reports = await assert_reports(client, target_id, min_count=1)
+    for report in reports:
+        filename = report["filename"]
+        res = await client.head(f"/api/v1/targets/{target_id}/reports/{filename}")
+        assert res.status_code == 200, (
+            f"HEAD /api/v1/targets/{target_id}/reports/{filename} returned {res.status_code}"
+        )
