@@ -269,7 +269,7 @@ services:
       resources:
         limits:
           cpus: "2.0"
-          memory: 2G
+          memory: 8G
     networks:
       - webbh-net
 
@@ -302,7 +302,7 @@ services:
       resources:
         limits:
           cpus: "2.0"
-          memory: 2G
+          memory: 8G
     networks:
       - webbh-net
 
@@ -345,7 +345,7 @@ services:
       resources:
         limits:
           cpus: "2.0"
-          memory: 4G
+          memory: 8G
     networks:
       - webbh-net
 
@@ -416,7 +416,7 @@ services:
       resources:
         limits:
           cpus: "2.0"
-          memory: 4G
+          memory: 8G
     networks:
       - webbh-net
 
@@ -449,7 +449,7 @@ services:
       resources:
         limits:
           cpus: "1.5"
-          memory: 1G
+          memory: 8G
     networks:
       - webbh-net
 
@@ -481,7 +481,7 @@ services:
       resources:
         limits:
           cpus: "2.0"
-          memory: 2G
+          memory: 8G
     networks:
       - webbh-net
 
@@ -513,7 +513,7 @@ services:
       resources:
         limits:
           cpus: "2.0"
-          memory: 2G
+          memory: 8G
     networks:
       - webbh-net
 
@@ -547,7 +547,7 @@ services:
       resources:
         limits:
           cpus: "1.5"
-          memory: 1G
+          memory: 8G
     networks:
       - webbh-net
 
@@ -581,7 +581,7 @@ services:
       resources:
         limits:
           cpus: "1.5"
-          memory: 1G
+          memory: 8G
     networks:
       - webbh-net
 
@@ -616,7 +616,7 @@ services:
       resources:
         limits:
           cpus: "2.0"
-          memory: 3G
+          memory: 8G
     networks:
       - webbh-net
 
@@ -636,7 +636,7 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 512M
+          memory: 8G
     networks:
       - webbh-net
 
@@ -658,7 +658,7 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 256M
+          memory: 8G
     networks:
       - webbh-net
 
@@ -695,7 +695,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 1G
+          memory: 8G
     networks:
       - webbh-net
 
@@ -730,7 +730,7 @@ services:
       resources:
         limits:
           cpus: "1.5"
-          memory: 1G
+          memory: 8G
     networks:
       - webbh-net
 

@@ -1,6 +1,6 @@
 {
-  "target_id": 117,
-  "company_name": "E2E-ReasoningWorker",
+  "target_id": 118,
+  "company_name": "E2E-ChainWorker",
   "base_domain": "testphp.vulnweb.com",
   "target_profile": {}
 }
