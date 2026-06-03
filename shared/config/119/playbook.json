@@ -1,6 +1,6 @@
 {
-  "name": "wide_recon",
-  "description": "Full pipeline with all 15 workers enabled. Best for large targets with many subdomains.",
+  "name": "e2e_info_gathering",
+  "description": "E2E test playbook: runs only info_gathering",
   "workers": [
     {
       "name": "info_gathering",
@@ -93,12 +93,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "config_mgmt",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "network_config",
@@ -222,12 +222,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "identity_mgmt",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "role_definitions",
@@ -260,12 +260,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "authentication",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "default_credentials",
@@ -333,12 +333,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "authorization",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "directory_traversal",
@@ -371,12 +371,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "session_mgmt",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "session_scheme",
@@ -444,12 +444,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "input_validation",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "reflected_xss",
@@ -587,12 +587,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "error_handling",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "error_codes",
@@ -611,12 +611,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "cryptography",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "tls_testing",
@@ -649,12 +649,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "business_logic",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "data_validation",
@@ -722,12 +722,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "client_side",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "dom_xss",
@@ -823,12 +823,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "mobile_worker",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "acquire_decompile",
@@ -868,12 +868,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "reasoning_worker",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "finding_correlation",
@@ -899,12 +899,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "chain_worker",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "data_collection",
@@ -944,12 +944,12 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     },
     {
       "name": "reporting_worker",
-      "enabled": true,
+      "enabled": false,
       "stages": [
         {
           "name": "data_gathering",
@@ -982,7 +982,7 @@
       ],
       "concurrency": {
         "heavy": 2,
-        "light": 8
+        "light": 4
       }
     }
   ],
