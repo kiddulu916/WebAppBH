@@ -433,6 +433,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# API key auth middleware — must come AFTER CORSMiddleware but BEFORE routing
+_FRAMEWORK_API_KEY = os.environ.get("WEB_APP_BH_API_KEY", "")
+_UNPROTECTED_PATHS = {"/health", "/metrics"}
+
+
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    if request.method == "OPTIONS" or request.url.path in _UNPROTECTED_PATHS:
+        return await call_next(request)
+    if not _FRAMEWORK_API_KEY:
+        # Key not configured — allow all (development mode)
+        return await call_next(request)
+    incoming = request.headers.get("X-API-KEY", "")
+    if incoming != _FRAMEWORK_API_KEY:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    return await call_next(request)
+
 
 @app.get("/metrics", include_in_schema=False)
 async def prometheus_metrics():
