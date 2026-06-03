@@ -50,7 +50,8 @@ class AdminInterfaceFinder(ConfigMgmtTool):
 
     def build_command(self, target, headers=None) -> list[str]:
         host = self._extract_host(target)
-        return ["nmap", "-p-", "-sV", "--open", "-oG", "-", host]
+        ports = ",".join(str(p) for p in sorted(ADMIN_PORTS | {80, 443, 8000, 8001, 8008, 8009, 8443, 9090}))
+        return ["nmap", f"-p{ports}", "-sV", "--open", "--host-timeout", "60s", "-oG", "-", host]
 
     def _parse_nmap_output(self, stdout: str) -> list:
         results = []

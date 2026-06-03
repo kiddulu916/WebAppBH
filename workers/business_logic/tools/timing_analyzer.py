@@ -14,7 +14,7 @@ class TimingAnalyzer(BusinessLogicTool):
         """Execute timing analysis against target."""
         scope_manager = kwargs.get("scope_manager")
         if not scope_manager:
-            return
+            return {"found": 0, "vulnerable": 0}
 
         # Get URLs for timing analysis
         urls = await self._get_urls_for_timing_analysis(target_id, scope_manager)
@@ -22,6 +22,7 @@ class TimingAnalyzer(BusinessLogicTool):
         async with aiohttp.ClientSession() as session:
             for asset_id, url in urls:
                 await self._analyze_timing(session, target_id, asset_id, url)
+        return {"found": len(urls), "vulnerable": 0}
 
     async def _get_urls_for_timing_analysis(self, target_id: int, scope_manager):
         """Get URLs that might be susceptible to timing attacks."""

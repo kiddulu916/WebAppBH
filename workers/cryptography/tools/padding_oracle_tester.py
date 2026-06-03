@@ -15,6 +15,7 @@ class PaddingOracleTester(CryptographyTool):
 
         for url in urls:
             await self._test_padding_oracle(target_id, url)
+        return {"found": len(urls), "vulnerable": 0}
 
     async def _get_target_urls(self, target_id: int):
         """Get URLs that might contain encrypted parameters."""

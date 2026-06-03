@@ -495,7 +495,7 @@ class TestEdgeCases:
         assert res.status_code == 200
         body = res.json()
         assert "tier" in body, f"Response missing 'tier' key: {body}"
-        assert body["tier"] in {"normal", "high", "critical"}, (
+        assert body["tier"] in {"green", "yellow", "red", "critical"}, (
             f"Unexpected tier value: {body['tier']!r}"
         )
 

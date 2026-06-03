@@ -15,6 +15,7 @@ class PlaintextLeakScanner(CryptographyTool):
         async with aiohttp.ClientSession() as session:
             for url in urls:
                 await self._scan_url_for_plaintext_leaks(session, target_id, url)
+        return {"found": len(urls), "vulnerable": 0}
 
     async def _get_target_urls(self, target_id: int):
         """Get URLs for the target."""

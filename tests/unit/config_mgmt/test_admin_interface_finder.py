@@ -97,12 +97,14 @@ def test_parse_output_invalid_json_returns_empty_list():
     assert tool.parse_output("garbage") == []
 
 
-def test_build_command_returns_nmap_with_full_port_range():
+def test_build_command_returns_nmap_with_specific_ports():
     tool = AdminInterfaceFinder()
     target = type("T", (), {"target_value": "example.com"})()
     cmd = tool.build_command(target)
     assert cmd[0] == "nmap"
-    assert "-p-" in cmd
+    assert any(a.startswith("-p") for a in cmd)
+    assert "-p-" not in cmd
+    assert "--host-timeout" in cmd
     assert "-sV" in cmd
     assert "--open" in cmd
     assert "-oG" in cmd

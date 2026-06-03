@@ -39,7 +39,7 @@ class Wappalyzer(InfoGatheringTool):
                 None, wappalyzer.analyze, webpage
             )
         except Exception as exc:
-            logger.error("wappalyzer failed", host=host, error=str(exc))
+            logger.error("wappalyzer failed", extra={"host": host, "error": str(exc)})
             return ProbeResult(probe="wappalyzer", obs_id=None, signals={}, error=str(exc))
 
         tech_names = list(techs) if isinstance(techs, (set, list)) else list(techs.keys())

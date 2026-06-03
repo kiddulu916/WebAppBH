@@ -13,7 +13,9 @@ class TlsAuditor(CryptographyTool):
         domains = await self._get_target_domains(target_id)
 
         for domain in domains:
+            await self.save_asset(target_id, "domain", domain)
             await self._audit_domain_tls(target_id, domain)
+        return {"found": len(domains), "vulnerable": 0}
 
     async def _get_target_domains(self, target_id: int):
         """Get all domains for the target."""

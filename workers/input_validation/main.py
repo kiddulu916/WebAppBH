@@ -1,18 +1,12 @@
-"""Input Validation worker entry point.
-
-Listens on ``input_validation_queue`` (priority-tiered) and runs the 15-stage
-input validation pipeline for each incoming target.
-"""
+"""Input Validation worker entry point."""
 
 from __future__ import annotations
 
 import asyncio
-import json
-import os
-from datetime import datetime
-from pathlib import Path
+import socket
+from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, update
 
 from lib_webbh import (
     JobState,
@@ -26,125 +20,77 @@ from lib_webbh.scope import ScopeManager
 
 from workers.input_validation.pipeline import Pipeline
 
-logger = setup_logger("input-validation")
+logger = setup_logger("input_validation")
 
-HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "30"))
-
-
-def get_container_name() -> str:
-    return os.environ.get("HOSTNAME", "input-validation-unknown")
-
-
-async def handle_message(msg_id: str, data: dict) -> None:
-    """Process a single input_validation_queue message."""
-    target_id = data.get("target_id")
-
-    if not target_id:
-        logger.error("Message missing target_id", extra={"msg_id": msg_id})
-        return
-
-    log = logger.bind(target_id=target_id)
-    log.info("Received input validation request", extra={"msg_id": msg_id})
-
-    # Load target
-    async with get_session() as session:
-        stmt = select(Target).where(Target.id == target_id)
-        result = await session.execute(stmt)
-        target = result.scalar_one_or_none()
-
-    if target is None:
-        log.error(f"Target {target_id} not found in database")
-        return
-
-    container_name = get_container_name()
-    profile = target.target_profile or {}
-    headers = profile.get("custom_headers", {})
-    scope_manager = ScopeManager(profile)
-
-    # Ensure job_state row
-    async with get_session() as session:
-        stmt = select(JobState).where(
-            JobState.target_id == target_id,
-            JobState.container_name == container_name,
-        )
-        result = await session.execute(stmt)
-        job = result.scalar_one_or_none()
-
-        if job is None:
-            job = JobState(
-                target_id=target_id,
-                container_name=container_name,
-                current_phase="init",
-                status="RUNNING",
-                last_seen=datetime.utcnow(),
-            )
-            session.add(job)
-        else:
-            job.status = "RUNNING"
-            job.last_seen = datetime.utcnow()
-        await session.commit()
-
-    # Run pipeline with heartbeat
-    pipeline = Pipeline(target_id=target_id, container_name=container_name)
-    heartbeat_task = asyncio.create_task(
-        _heartbeat_loop(target_id, container_name)
-    )
-
-    try:
-        await pipeline.run(target, scope_manager, headers=headers)
-    except Exception:
-        log.exception("Pipeline failed")
-        async with get_session() as session:
-            stmt = select(JobState).where(
-                JobState.target_id == target_id,
-                JobState.container_name == container_name,
-            )
-            result = await session.execute(stmt)
-            job = result.scalar_one_or_none()
-            if job:
-                job.status = "FAILED"
-                job.last_seen = datetime.utcnow()
-                await session.commit()
-    finally:
-        heartbeat_task.cancel()
-        try:
-            await heartbeat_task
-        except asyncio.CancelledError:
-            pass
-
-
-async def _heartbeat_loop(target_id: int, container_name: str) -> None:
-    """Update job_state.last_seen every HEARTBEAT_INTERVAL seconds."""
-    while True:
-        await asyncio.sleep(HEARTBEAT_INTERVAL)
-        try:
-            async with get_session() as session:
-                stmt = select(JobState).where(
-                    JobState.target_id == target_id,
-                    JobState.container_name == container_name,
-                )
-                result = await session.execute(stmt)
-                job = result.scalar_one_or_none()
-                if job:
-                    job.last_seen = datetime.utcnow()
-                    await session.commit()
-        except Exception:
-            pass
+WORKER_TYPE = "input_validation"
 
 
 async def main() -> None:
-    """Entry point: listen on input_validation_queue forever."""
-    consumer_group = "input_validation_group"
-    consumer_name = get_container_name()
-    logger.info("Input Validation starting", extra={"container": consumer_name})
+    consumer_group = f"{WORKER_TYPE}_group"
+    consumer_name = f"{WORKER_TYPE}_{socket.gethostname()}"
+    logger.info("Input validation worker starting")
 
     async for message in listen_priority_queues(
-        "input_validation_queue", consumer_group, consumer_name
+        f"{WORKER_TYPE}_queue", consumer_group, consumer_name
     ):
+        target_id = message["payload"]["target_id"]
+        logger.info("Job received", extra={"target_id": target_id})
+
         try:
-            await handle_message(message["msg_id"], message["payload"])
+            async with get_session() as session:
+                await session.execute(
+                    delete(JobState).where(
+                        JobState.target_id == target_id,
+                        JobState.container_name == WORKER_TYPE,
+                    )
+                )
+                session.add(JobState(
+                    target_id=target_id,
+                    container_name=WORKER_TYPE,
+                    status="RUNNING",
+                    started_at=datetime.now(timezone.utc),
+                ))
+                await session.commit()
+
+            async with get_session() as session:
+                target = await session.get(Target, target_id)
+            if target is None:
+                logger.error("Target not found", extra={"target_id": target_id})
+                r = get_redis()
+                await r.xack(message["stream"], consumer_group, message["msg_id"])
+                continue
+
+            profile = target.target_profile or {
+                "in_scope_domains": [f"*.{target.base_domain}", target.base_domain]
+            }
+            scope_manager = ScopeManager(profile)
+            headers = profile.get("custom_headers", {})
+
+            pipeline = Pipeline(target_id=target_id, container_name=WORKER_TYPE)
+            await pipeline.run(target, scope_manager, headers=headers)
+
+            async with get_session() as session:
+                await session.execute(
+                    update(JobState)
+                    .where(JobState.target_id == target_id)
+                    .where(JobState.container_name == WORKER_TYPE)
+                    .values(status="COMPLETED", completed_at=datetime.now(timezone.utc))
+                )
+                await session.commit()
+
         except Exception as e:
-            logger.error("Message handling failed", extra={"error": str(e)})
+            logger.error("Job failed", extra={"target_id": target_id, "error": str(e)})
+            try:
+                async with get_session() as session:
+                    await session.execute(
+                        update(JobState)
+                        .where(JobState.target_id == target_id)
+                        .where(JobState.container_name == WORKER_TYPE)
+                        .values(status="FAILED", error=str(e)[:500])
+                    )
+                    await session.commit()
+            except Exception:
+                pass
 
         r = get_redis()
         await r.xack(message["stream"], consumer_group, message["msg_id"])

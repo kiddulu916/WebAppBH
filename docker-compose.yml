@@ -67,6 +67,7 @@ services:
       REDIS_PORT: "6379"
       CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
       ENABLE_TEST_SEED: ${ENABLE_TEST_SEED:-true}
+      WEB_APP_BH_API_KEY: ${WEB_APP_BH_API_KEY:-}
       SHODAN_API_KEY: ${SHODAN_API_KEY:-}
       SECURITYTRAILS_API_KEY: ${SECURITYTRAILS_API_KEY:-}
       CENSYS_API_ID: ${CENSYS_API_ID:-}

@@ -1,9 +1,11 @@
 # workers/info_gathering/main.py
 import asyncio
+import json
 import socket
 from datetime import datetime, timezone
+from pathlib import Path
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from lib_webbh import get_session, push_task, setup_logger
 from lib_webbh.database import Asset, AssetSnapshot, Campaign, Target, JobState
@@ -12,8 +14,7 @@ from lib_webbh.messaging import listen_priority_queues, get_redis
 from lib_webbh.rate_limiter import RateLimiter, parse_rate_rule
 from lib_webbh.scope import ScopeManager
 
-from .pipeline import STAGES
-from .concurrency import get_semaphores, TOOL_WEIGHTS
+from .pipeline import Pipeline
 
 logger = setup_logger("info_gathering")
 
@@ -21,69 +22,17 @@ WORKER_TYPE = "info_gathering"
 MAX_EXPANSION_ROUNDS = 5
 MAX_ASSETS_PER_ROUND = 500
 
+SHARED_CONFIG = Path("/app/shared/config")
 
-async def run_pipeline(target_id: int):
-    """Run all stages sequentially, tools within each stage concurrently."""
-    heavy_sem, light_sem = get_semaphores()
 
-    # Get target for scope checking
-    async with get_session() as session:
-        target = await session.get(Target, target_id)
-        if not target:
-            logger.error("Target not found", extra={"target_id": target_id})
-            return
-
-        profile = target.target_profile or {"in_scope_domains": [f"*.{target.base_domain}"]}
-        scope_manager = ScopeManager(profile)
-
-        # Load campaign rate limits if campaign is set
-        rate_limiter = None
-        if target.campaign_id:
-            campaign = await session.get(Campaign, target.campaign_id)
-            if campaign and campaign.rate_limits:
-                try:
-                    rules = [parse_rate_rule(r) for r in campaign.rate_limits]
-                    redis_client = get_redis()
-                    rate_limiter = RateLimiter(redis_client, campaign.id, rules)
-                except (ValueError, KeyError) as e:
-                    logger.warning(f"Failed to parse rate limits: {e}")
-
-    for _, stage in enumerate(STAGES):
-        logger.info("Stage started", extra={"stage": stage.name, "section_id": stage.section_id})
-
-        # Update job state
-        async with get_session() as session:
-            await session.execute(
-                update(JobState)
-                .where(JobState.target_id == target_id)
-                .where(JobState.container_name == WORKER_TYPE)
-                .values(
-                    current_phase=stage.name,
-                    current_section_id=stage.section_id,
-                    last_tool_executed=None,
-                )
-            )
-            await session.commit()
-
-        # Run tools concurrently within the stage
-        async def run_tool(tool_cls):
-            weight = TOOL_WEIGHTS.get(tool_cls.__name__, "LIGHT")
-            sem = heavy_sem if weight == "HEAVY" else light_sem
-            async with sem:
-                try:
-                    tool = tool_cls()
-                    await tool.execute(
-                        target_id, target=target,
-                        scope_manager=scope_manager,
-                        rate_limiter=rate_limiter,
-                    )
-                except Exception as tool_err:
-                    logger.warning(f"Tool {tool_cls.__name__} failed", extra={"error": str(tool_err)})
-
-        if stage.tools:
-            await asyncio.gather(*(run_tool(t) for t in stage.tools))
-
-        logger.info("Stage complete", extra={"stage": stage.name})
+def _load_playbook(target_id: int) -> dict | None:
+    path = SHARED_CONFIG / str(target_id) / "playbook.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return None
 
 
 async def _get_expansion_targets(target_id: int, scanned_values: set[str]) -> list[Asset]:
@@ -101,16 +50,9 @@ async def _get_expansion_targets(target_id: int, scanned_values: set[str]) -> li
 
 
 async def _run_expansion(target_id: int) -> None:
-    """Iteratively expand scope by scanning newly discovered in-scope/associated assets.
-
-    After each round, queries for new scannable assets. Stops when:
-    - No new assets found (convergence)
-    - MAX_EXPANSION_ROUNDS reached
-    - MAX_ASSETS_PER_ROUND exceeded in a single round
-    """
+    """Iteratively expand scope by scanning newly discovered in-scope/associated assets."""
     scanned: set[str] = set()
 
-    # Seed with originally-targeted domain
     async with get_session() as session:
         target = await session.get(Target, target_id)
         if target and target.base_domain:
@@ -120,8 +62,7 @@ async def _run_expansion(target_id: int) -> None:
         new_assets = await _get_expansion_targets(target_id, scanned)
 
         if not new_assets:
-            logger.info("Expansion converged — no new assets to scan",
-                        extra={"target_id": target_id, "round": round_num})
+            logger.info("Expansion converged", extra={"target_id": target_id, "round": round_num})
             await push_task(f"events:{target_id}", {
                 "event": "CAMPAIGN_COMPLETE",
                 "target_id": target_id,
@@ -131,8 +72,7 @@ async def _run_expansion(target_id: int) -> None:
             return
 
         if len(new_assets) > MAX_ASSETS_PER_ROUND:
-            logger.warning("Expansion paused — too many new assets",
-                           extra={"target_id": target_id, "count": len(new_assets)})
+            logger.warning("Expansion paused", extra={"target_id": target_id, "count": len(new_assets)})
             await push_task(f"events:{target_id}", {
                 "event": "EXPANSION_PAUSED",
                 "target_id": target_id,
@@ -142,7 +82,6 @@ async def _run_expansion(target_id: int) -> None:
             })
             return
 
-        # Queue each new asset for scanning
         for asset in new_assets:
             scanned.add(asset.asset_value)
             await push_task(f"{WORKER_TYPE}_queue", {
@@ -151,8 +90,7 @@ async def _run_expansion(target_id: int) -> None:
                 "expansion_round": round_num,
             })
 
-        logger.info(f"Expansion round {round_num} queued {len(new_assets)} assets",
-                    extra={"target_id": target_id, "round": round_num, "count": len(new_assets)})
+        logger.info(f"Expansion round {round_num} queued", extra={"target_id": target_id, "count": len(new_assets)})
         await push_task(f"events:{target_id}", {
             "event": "ROUND_COMPLETE",
             "target_id": target_id,
@@ -160,8 +98,7 @@ async def _run_expansion(target_id: int) -> None:
             "new_assets": len(new_assets),
         })
 
-    logger.info("Expansion stopped — max rounds reached",
-                extra={"target_id": target_id, "max_rounds": MAX_EXPANSION_ROUNDS})
+    logger.info("Expansion stopped — max rounds reached", extra={"target_id": target_id})
     await push_task(f"events:{target_id}", {
         "event": "CAMPAIGN_COMPLETE",
         "target_id": target_id,
@@ -171,7 +108,6 @@ async def _run_expansion(target_id: int) -> None:
 
 
 async def _compute_and_emit_diff(target_id: int, scan_number: int) -> None:
-    """Compare current assets against the pre-rescan snapshot and emit diff event."""
     async with get_session() as session:
         snapshot = (await session.execute(
             select(AssetSnapshot).where(
@@ -181,36 +117,23 @@ async def _compute_and_emit_diff(target_id: int, scan_number: int) -> None:
         )).scalar_one_or_none()
 
         if snapshot is None:
-            logger.warning("No snapshot found for diff", extra={"target_id": target_id, "scan_number": scan_number})
+            logger.warning("No snapshot found for diff", extra={"target_id": target_id})
             return
 
         previous_hashes = snapshot.asset_hashes or {}
-
         assets = (await session.execute(
             select(Asset).where(Asset.target_id == target_id)
         )).scalars().all()
         current_hashes = {a.asset_value: f"{a.asset_type}:{a.source_tool}" for a in assets}
 
     diff = compute_diff(previous_hashes, current_hashes)
-
-    if diff.has_changes:
-        logger.info("Rescan diff detected", extra={"target_id": target_id,
-                    "added": len(diff.added), "removed": len(diff.removed)})
-        await push_task(f"events:{target_id}", {
-            "event": "RECON_DIFF",
-            "scan_number": scan_number,
-            "added": diff.added,
-            "removed": diff.removed,
-            "unchanged_count": len(diff.unchanged),
-        })
-    else:
-        await push_task(f"events:{target_id}", {
-            "event": "RECON_DIFF",
-            "scan_number": scan_number,
-            "added": [],
-            "removed": [],
-            "unchanged_count": len(diff.unchanged),
-        })
+    await push_task(f"events:{target_id}", {
+        "event": "RECON_DIFF",
+        "scan_number": scan_number,
+        "added": diff.added,
+        "removed": diff.removed,
+        "unchanged_count": len(diff.unchanged),
+    })
 
 
 async def main():
@@ -227,31 +150,57 @@ async def main():
         logger.info("Job received", extra={"target_id": target_id})
 
         try:
-            # Create/update job state
+            # DELETE + INSERT to avoid MultipleResultsFound in CheckpointMixin
             async with get_session() as session:
-                job = JobState(
+                await session.execute(
+                    delete(JobState).where(
+                        JobState.target_id == target_id,
+                        JobState.container_name == WORKER_TYPE,
+                    )
+                )
+                session.add(JobState(
                     target_id=target_id,
                     container_name=WORKER_TYPE,
                     status="RUNNING",
                     started_at=datetime.now(timezone.utc),
-                )
-                session.add(job)
+                ))
                 await session.commit()
 
-            await run_pipeline(target_id)
+            async with get_session() as session:
+                target = await session.get(Target, target_id)
+            if target is None:
+                logger.error("Target not found", extra={"target_id": target_id})
+                r = get_redis()
+                await r.xack(message["stream"], consumer_group, message["msg_id"])
+                continue
 
-            # Compute rescan diff if this was a rescan with a snapshot
+            profile = target.target_profile or {"in_scope_domains": [f"*.{target.base_domain}"]}
+            scope_manager = ScopeManager(profile)
+
+            # Load campaign rate limits if set
+            rate_limiter = None
+            if target.campaign_id:
+                async with get_session() as session:
+                    campaign = await session.get(Campaign, target.campaign_id)
+                    if campaign and campaign.rate_limits:
+                        try:
+                            rules = [parse_rate_rule(r) for r in campaign.rate_limits]
+                            redis_client = get_redis()
+                            rate_limiter = RateLimiter(redis_client, campaign.id, rules)
+                        except (ValueError, KeyError) as e:
+                            logger.warning(f"Failed to parse rate limits: {e}")
+
+            playbook = _load_playbook(target_id)
+            pipeline = Pipeline(target_id=target_id, container_name=WORKER_TYPE)
+            await pipeline.run(target, scope_manager, playbook=playbook, rate_limiter=rate_limiter)
+
             if rescan and snapshot_scan_number is not None:
                 await _compute_and_emit_diff(target_id, snapshot_scan_number)
 
-            # Run expansion on initial pipeline run (not on expansion sub-jobs)
             if not expansion_round:
-                async with get_session() as session:
-                    target = await session.get(Target, target_id)
-                    if target and target.campaign_id:
-                        await _run_expansion(target_id)
+                if target.campaign_id:
+                    await _run_expansion(target_id)
 
-            # Mark complete
             async with get_session() as session:
                 await session.execute(
                     update(JobState)
@@ -263,16 +212,18 @@ async def main():
 
         except Exception as e:
             logger.error("Job failed", extra={"target_id": target_id, "error": str(e)})
-            async with get_session() as session:
-                await session.execute(
-                    update(JobState)
-                    .where(JobState.target_id == target_id)
-                    .where(JobState.container_name == WORKER_TYPE)
-                    .values(status="FAILED", error=str(e))
-                )
-                await session.commit()
+            try:
+                async with get_session() as session:
+                    await session.execute(
+                        update(JobState)
+                        .where(JobState.target_id == target_id)
+                        .where(JobState.container_name == WORKER_TYPE)
+                        .values(status="FAILED", error=str(e)[:500])
+                    )
+                    await session.commit()
+            except Exception:
+                pass
 
-        # ACK the message
         r = get_redis()
         await r.xack(message["stream"], consumer_group, message["msg_id"])
 

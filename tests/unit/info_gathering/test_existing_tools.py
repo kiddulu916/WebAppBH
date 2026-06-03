@@ -12,9 +12,16 @@ from workers.info_gathering.fingerprint_aggregator import ProbeResult
 @pytest.mark.asyncio
 async def test_wstg_wappalyzer_returns_probe_result():
     tool = Wappalyzer()
-    stdout = json.dumps({"technologies": [{"name": "WordPress"}, {"name": "PHP"}]})
-    with patch.object(tool, "run_subprocess", new=AsyncMock(return_value=stdout)), \
-         patch.object(tool, "save_observation", new=AsyncMock(return_value=42)):
+    mock_techs = {"WordPress", "PHP"}
+    mock_webpage = MagicMock()
+    mock_wap_lib = MagicMock()
+    mock_wap_lib.analyze.return_value = mock_techs
+    mock_wap_class = MagicMock(return_value=mock_wap_lib)
+    mock_wap_class.latest = MagicMock(return_value=mock_wap_lib)
+    mock_webpage_class = MagicMock(new_from_url=MagicMock(return_value=mock_webpage))
+    with patch.dict("sys.modules", {"Wappalyzer": MagicMock(
+        Wappalyzer=mock_wap_class, WebPage=mock_webpage_class
+    )}), patch.object(tool, "save_observation", new=AsyncMock(return_value=42)):
         result = await tool.execute(target_id=1, host="example.com", asset_id=99)
     assert isinstance(result, ProbeResult)
     assert result.probe == "wappalyzer"

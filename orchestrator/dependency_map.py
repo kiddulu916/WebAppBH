@@ -22,7 +22,7 @@ DEPENDENCY_MAP = {
 
 CREDENTIAL_REQUIRED = {
     "identity_mgmt", "authentication", "authorization",
-    "session_mgmt", "input_validation", "business_logic",
+    "session_mgmt", "input_validation",
 }
 
 

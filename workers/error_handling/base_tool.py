@@ -2,6 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional
 from lib_webbh import get_session, Vulnerability
+from lib_webbh.database import Asset, Target
 
 
 class ErrorHandlingTool(ABC):
@@ -13,6 +14,41 @@ class ErrorHandlingTool(ABC):
     async def execute(self, target_id: int, **kwargs):
         """Run this tool against the target. Must be implemented by subclasses."""
         ...
+
+    async def save_asset(self, target_id: int, asset_type: str, asset_value: str) -> int:
+        from sqlalchemy import select
+        from sqlalchemy.exc import IntegrityError
+        async with get_session() as session:
+            existing = (await session.execute(
+                select(Asset).where(
+                    Asset.target_id == target_id,
+                    Asset.asset_type == asset_type,
+                    Asset.asset_value == asset_value,
+                )
+            )).scalar_one_or_none()
+            if existing:
+                return existing.id
+            asset = Asset(
+                target_id=target_id,
+                asset_type=asset_type,
+                asset_value=asset_value,
+                source_tool=self.worker_type,
+                scope_classification="in-scope",
+            )
+            session.add(asset)
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                existing = (await session.execute(
+                    select(Asset).where(
+                        Asset.target_id == target_id,
+                        Asset.asset_type == asset_type,
+                        Asset.asset_value == asset_value,
+                    )
+                )).scalar_one()
+                return existing.id
+            return asset.id
 
     async def save_vulnerability(self, target_id, **kwargs):
         """Helper: insert a Vulnerability record."""

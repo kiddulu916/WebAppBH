@@ -2,33 +2,31 @@
 from __future__ import annotations
 
 import asyncio
-import os
+import socket
 import subprocess
-from datetime import datetime
-from typing import Any
+from datetime import datetime, timezone
+
+from sqlalchemy import delete, update
 
 from lib_webbh import get_session, setup_logger
 from lib_webbh.database import JobState, Target
 from lib_webbh.logger import redact_sensitive
 from lib_webbh.messaging import listen_priority_queues, get_redis
 from lib_webbh.scope import ScopeManager
-from sqlalchemy import select
 
 from workers.chain_worker.pipeline import Pipeline
 
 # Import chains package so templates register via decorator
 import workers.chain_worker.chains  # noqa: F401
 
+import os
+
 logger = setup_logger("chain_worker")
 
-HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "30"))
+WORKER_TYPE = "chain_worker"
 ZAP_PORT = int(os.environ.get("ZAP_PORT", "8080"))
 MSFRPC_PASS = os.environ.get("MSFRPC_PASS", "msf_internal")
 MSFRPC_PORT = int(os.environ.get("MSFRPC_PORT", "55553"))
-
-
-def get_container_name() -> str:
-    return os.environ.get("HOSTNAME", "chain-worker-unknown")
 
 
 async def _start_zap() -> subprocess.Popen | None:
@@ -80,19 +78,18 @@ async def _start_msfrpcd() -> subprocess.Popen | None:
 
 
 def _terminate_subprocess(proc: subprocess.Popen | None, name: str, timeout: float = 10.0) -> None:
-    """Terminate a subprocess, escalating to SIGKILL if it does not exit in time."""
     if proc is None or proc.poll() is not None:
         return
     proc.terminate()
     try:
         proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        logger.warning("%s did not terminate within %.1fs; sending SIGKILL", name, timeout)
+        logger.warning(f"{name} did not terminate within {timeout:.1f}s; sending SIGKILL")
         proc.kill()
         try:
             proc.wait(timeout=5.0)
         except subprocess.TimeoutExpired:
-            logger.error("%s could not be killed", name)
+            logger.error(f"{name} could not be killed")
 
 
 async def _wait_for_msfrpcd(retries: int = 30, delay: float = 2.0) -> bool:
@@ -109,93 +106,11 @@ async def _wait_for_msfrpcd(retries: int = 30, delay: float = 2.0) -> bool:
     return False
 
 
-async def _heartbeat_loop(target_id: int, container_name: str) -> None:
-    while True:
-        try:
-            async with get_session() as session:
-                stmt = select(JobState).where(
-                    JobState.target_id == target_id,
-                    JobState.container_name == container_name,
-                )
-                row = (await session.execute(stmt)).scalar_one_or_none()
-                if row:
-                    row.last_seen = datetime.utcnow()
-                    await session.commit()
-        except Exception:
-            pass
-        await asyncio.sleep(HEARTBEAT_INTERVAL)
-
-
-async def handle_message(msg_id: str, data: dict[str, Any]) -> None:
-    target_id = data["target_id"]
-    container_name = get_container_name()
-    log = logger.bind(target_id=target_id, container=container_name)
-    log.info("Received chain task", extra={"trigger": data.get("trigger_phase")})
-
-    async with get_session() as session:
-        try:
-            target = (await session.execute(
-                select(Target).where(Target.id == target_id)
-            )).scalar_one_or_none()
-            if target is None:
-                log.error("Target not found")
-                return
-            stmt = select(JobState).where(
-                JobState.target_id == target_id,
-                JobState.container_name == container_name,
-            )
-            job = (await session.execute(stmt)).scalar_one_or_none()
-            if job is None:
-                job = JobState(
-                    target_id=target_id, container_name=container_name,
-                    status="RUNNING", current_phase="init",
-                    last_seen=datetime.utcnow(),
-                )
-                session.add(job)
-            else:
-                job.status = "RUNNING"
-                job.current_phase = "init"
-                job.last_seen = datetime.utcnow()
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-
-    scope_manager = ScopeManager(target.target_profile or {})
-    heartbeat = asyncio.create_task(_heartbeat_loop(target_id, container_name))
-
-    try:
-        pipeline = Pipeline()
-        await pipeline.run(
-            target=target, scope_manager=scope_manager,
-            target_id=target_id, container_name=container_name,
-        )
-    except Exception as exc:
-        log.error("Pipeline failed", extra={"error": str(exc)})
-        async with get_session() as session:
-            try:
-                stmt = select(JobState).where(
-                    JobState.target_id == target_id,
-                    JobState.container_name == container_name,
-                )
-                job = (await session.execute(stmt)).scalar_one_or_none()
-                if job:
-                    job.status = "FAILED"
-                    job.error = redact_sensitive(str(exc))
-                    await session.commit()
-            except Exception:
-                await session.rollback()
-                log.exception("Failed to record FAILED status in JobState")
-    finally:
-        heartbeat.cancel()
-        try:
-            await heartbeat
-        except asyncio.CancelledError:
-            pass
-
-
 async def main() -> None:
     logger.info("Chain worker starting")
+    consumer_group = f"{WORKER_TYPE}_group"
+    consumer_name = f"{WORKER_TYPE}_{socket.gethostname()}"
+
     zap_proc = await _start_zap()
     msf_proc = await _start_msfrpcd()
     try:
@@ -204,17 +119,72 @@ async def main() -> None:
         if msf_proc:
             await _wait_for_msfrpcd()
 
-        consumer_group = "chain_worker_group"
-        consumer_name = get_container_name()
         logger.info("Listening for tasks", extra={"consumer": consumer_name})
 
         async for message in listen_priority_queues(
-            "chain_worker_queue", consumer_group, consumer_name
+            f"{WORKER_TYPE}_queue", consumer_group, consumer_name
         ):
+            target_id = message["payload"]["target_id"]
+            logger.info("Job received", extra={"target_id": target_id})
+
             try:
-                await handle_message(message["msg_id"], message["payload"])
-            except Exception as e:
-                logger.error("Message handling failed", extra={"error": str(e)})
+                async with get_session() as session:
+                    await session.execute(
+                        delete(JobState).where(
+                            JobState.target_id == target_id,
+                            JobState.container_name == WORKER_TYPE,
+                        )
+                    )
+                    session.add(JobState(
+                        target_id=target_id,
+                        container_name=WORKER_TYPE,
+                        status="RUNNING",
+                        started_at=datetime.now(timezone.utc),
+                    ))
+                    await session.commit()
+
+                async with get_session() as session:
+                    target = await session.get(Target, target_id)
+                if target is None:
+                    logger.error("Target not found", extra={"target_id": target_id})
+                    r = get_redis()
+                    await r.xack(message["stream"], consumer_group, message["msg_id"])
+                    continue
+
+                scope_manager = ScopeManager(target.target_profile or {
+                    "in_scope_domains": [f"*.{target.base_domain}", target.base_domain]
+                })
+
+                pipeline = Pipeline()
+                await pipeline.run(
+                    target=target,
+                    scope_manager=scope_manager,
+                    target_id=target_id,
+                    container_name=WORKER_TYPE,
+                )
+
+                async with get_session() as session:
+                    await session.execute(
+                        update(JobState)
+                        .where(JobState.target_id == target_id)
+                        .where(JobState.container_name == WORKER_TYPE)
+                        .values(status="COMPLETED", completed_at=datetime.now(timezone.utc))
+                    )
+                    await session.commit()
+
+            except Exception as exc:
+                logger.error("Job failed", extra={"target_id": target_id, "error": str(exc)})
+                try:
+                    async with get_session() as session:
+                        await session.execute(
+                            update(JobState)
+                            .where(JobState.target_id == target_id)
+                            .where(JobState.container_name == WORKER_TYPE)
+                            .values(status="FAILED", error=redact_sensitive(str(exc))[:500])
+                        )
+                        await session.commit()
+                except Exception:
+                    pass
 
             r = get_redis()
             await r.xack(message["stream"], consumer_group, message["msg_id"])

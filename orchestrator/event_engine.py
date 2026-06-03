@@ -1,8 +1,10 @@
 # orchestrator/event_engine.py
 import asyncio
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 
 from lib_webbh.database import get_session, Target, JobState
 from lib_webbh.messaging import push_priority_task
@@ -26,7 +28,7 @@ class EventEngine:
             try:
                 await self._poll_cycle()
             except Exception as e:
-                logger.error("Event engine error", error=str(e))
+                logger.error("Event engine error", extra={"error": str(e)})
             await asyncio.sleep(self._poll_interval)
 
     async def _poll_cycle(self):
@@ -43,17 +45,37 @@ class EventEngine:
         for target in targets:
             await self._evaluate_target(target, tier)
 
+    def _get_disabled_workers(self, target_id: int) -> set[str]:
+        """Return the set of workers disabled in this target's playbook."""
+        playbook_path = Path(f"shared/config/{target_id}/playbook.json")
+        if not playbook_path.exists():
+            return set()
+        try:
+            data = json.loads(playbook_path.read_text())
+            return {
+                w["name"]
+                for w in data.get("workers", [])
+                if not w.get("enabled", True)
+            }
+        except Exception:
+            return set()
+
     async def _evaluate_target(self, target, resource_tier):
         has_creds = self._check_credentials(target.id)
         dep_map = resolve_effective_dependencies(has_credentials=has_creds)
         worker_states = await self._get_worker_states(target.id)
+        disabled = self._get_disabled_workers(target.id)
 
         for worker_name, dependencies in dep_map.items():
+            if worker_name in disabled:
+                continue
+
             if worker_states.get(worker_name) in ("RUNNING", "COMPLETED", "QUEUED"):
                 continue
 
+            # Treat disabled dependency workers as already completed
             all_deps_met = all(
-                worker_states.get(dep) == "COMPLETED"
+                dep in disabled or worker_states.get(dep) == "COMPLETED"
                 for dep in dependencies
             )
 
@@ -86,16 +108,21 @@ class EventEngine:
         )
 
         async with get_session() as session:
-            job = JobState(
+            await session.execute(
+                delete(JobState).where(
+                    JobState.target_id == target.id,
+                    JobState.container_name == worker_name,
+                )
+            )
+            session.add(JobState(
                 target_id=target.id,
                 container_name=worker_name,
                 status="QUEUED",
                 queued_at=datetime.now(timezone.utc),
-            )
-            session.add(job)
+            ))
             await session.commit()
 
-        logger.info("Worker dispatched", worker=worker_name, target_id=target.id)
+        logger.info("Worker dispatched", extra={"worker": worker_name, "target_id": target.id})
 
     async def _get_worker_states(self, target_id):
         async with get_session() as session:
@@ -111,5 +138,4 @@ class EventEngine:
             return states
 
     def _check_credentials(self, target_id):
-        from pathlib import Path
         return Path(f"shared/config/{target_id}/credentials.json").exists()

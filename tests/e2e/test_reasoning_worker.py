@@ -28,26 +28,27 @@ STAGE_TIMEOUTS = {
     "chain_hypothesis":    600,
 }
 
-_PREREQ_TIMEOUT = 900
+_PREREQ_TIMEOUT = 3600
 
 
-async def _wait_for_info_gathering(client, target_id: int, timeout: int = _PREREQ_TIMEOUT):
+async def _wait_for_chain_worker(client, target_id: int, timeout: int = _PREREQ_TIMEOUT):
+    """Poll until chain_worker completes — reasoning_worker fires only after that."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         res = await client.get("/api/v1/status", params={"target_id": target_id})
         jobs = res.json().get("jobs", [])
-        ig = next((j for j in jobs if j["container_name"] == "info_gathering"), None)
-        if ig and ig["status"] == "COMPLETED":
+        cw = next((j for j in jobs if j["container_name"] == "chain_worker"), None)
+        if cw and cw["status"] in ("COMPLETED", "SKIPPED"):
             return
-        await asyncio.sleep(15)
-    raise TimeoutError(f"info_gathering did not complete within {timeout}s")
+        await asyncio.sleep(20)
+    raise TimeoutError(f"chain_worker did not complete within {timeout}s")
 
 
 @pytest.fixture(scope="module")
 async def pipeline_result(client, sse_monitor):
-    target_id = await create_target(client, PLAYBOOK, "E2E-ReasoningWorker")
+    target_id = await create_target(client, PLAYBOOK, "E2E-ReasoningWorker", worker=WORKER)
     try:
-        await _wait_for_info_gathering(client, target_id)
+        await _wait_for_chain_worker(client, target_id)
         report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
         yield target_id, report
     finally:

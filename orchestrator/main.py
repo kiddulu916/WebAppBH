@@ -466,6 +466,18 @@ async def prometheus_metrics():
 # ---------------------------------------------------------------------------
 @app.post("/api/v1/targets", status_code=201)
 async def create_target(body: TargetCreate):
+    # Validate playbook before writing anything
+    async with get_session() as session:
+        custom_names = (await session.execute(
+            select(CustomPlaybook.name)
+        )).scalars().all()
+    if body.playbook not in BUILTIN_PLAYBOOKS and body.playbook not in custom_names:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown playbook '{body.playbook}'. "
+                   f"Valid built-ins: {sorted(BUILTIN_PLAYBOOKS.keys())}",
+        )
+
     # Single-target enforcement
     active_statuses = ["RUNNING", "QUEUED", "PAUSED"]
     async with get_session() as session:

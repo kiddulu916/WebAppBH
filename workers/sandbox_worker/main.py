@@ -136,7 +136,14 @@ async def main() -> None:
         except Exception as exc:
             logger.error("Message handling failed", extra={"error": str(exc)})
 
-    await listen_queue(QUEUE_NAME, CONSUMER_GROUP, CONSUMER_NAME, callback=process_message)
+    backoff = 2
+    while True:
+        try:
+            await listen_queue(QUEUE_NAME, CONSUMER_GROUP, CONSUMER_NAME, callback=process_message)
+        except Exception as exc:
+            logger.warning("Queue listener disconnected, reconnecting", extra={"error": str(exc)})
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 30)
 
 
 if __name__ == "__main__":

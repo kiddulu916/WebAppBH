@@ -1,0 +1,650 @@
+================================================= test session starts =================================================
+platform win32 -- Python 3.14.0, pytest-9.0.3, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+PyQt5 5.15.10 -- Qt runtime 5.15.2 -- Qt compiled 5.15.2
+rootdir: C:\Users\dat1k\Projects\WebAppBH\tests
+configfile: pytest.ini
+plugins: anyio-4.13.0, asyncio-1.3.0, cov-4.1.0, qt-4.2.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=module, asyncio_default_test_loop_scope=module
+collecting ... collected 6 items
+
+e2e/test_chain_worker.py::test_chain_worker_pipeline_stages ERROR                                                [ 16%]
+e2e/test_chain_worker.py::test_chain_worker_job_state ERROR                                                      [ 33%]
+e2e/test_reasoning_worker.py::test_reasoning_worker_pipeline_stages ERROR                                        [ 50%]
+e2e/test_reasoning_worker.py::test_reasoning_worker_job_state ERROR                                              [ 66%]
+e2e/test_reporting_worker.py::test_reporting_worker_pipeline_stages ERROR                                        [ 83%]
+e2e/test_reporting_worker.py::test_reporting_worker_job_state ERROR                                              [100%]
+
+======================================================= ERRORS ========================================================
+_________________________________ ERROR at setup of test_chain_worker_pipeline_stages _________________________________
+
+fut = <coroutine object Queue.get at 0x00000288140525E0>, timeout = 299.7765906000277
+
+    async def wait_for(fut, timeout):
+        """Wait for the single Future or coroutine to complete, with timeout.
+    
+        Coroutine will be wrapped in Task.
+    
+        Returns result of the Future or coroutine.  When a timeout occurs,
+        it cancels the task and raises TimeoutError.  To avoid the task
+        cancellation, wrap it in shield().
+    
+        If the wait is cancelled, the task is also cancelled.
+    
+        If the task suppresses the cancellation and returns a value instead,
+        that value is returned.
+    
+        This function is a coroutine.
+        """
+        # The special case for timeout <= 0 is for the following case:
+        #
+        # async def test_waitfor():
+        #     func_started = False
+        #
+        #     async def func():
+        #         nonlocal func_started
+        #         func_started = True
+        #
+        #     try:
+        #         await asyncio.wait_for(func(), 0)
+        #     except asyncio.TimeoutError:
+        #         assert not func_started
+        #     else:
+        #         assert False
+        #
+        # asyncio.run(test_waitfor())
+    
+    
+        if timeout is not None and timeout <= 0:
+            fut = ensure_future(fut)
+    
+            if fut.done():
+                return fut.result()
+    
+            await _cancel_and_wait(fut)
+            try:
+                return fut.result()
+            except exceptions.CancelledError as exc:
+                raise TimeoutError from exc
+    
+        async with timeouts.timeout(timeout):
+>           return await fut
+                   ^^^^^^^^^
+
+C:\Python314\Lib\asyncio\tasks.py:488: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Queue at 0x28812cd5550 maxsize=0 tasks=256>
+
+    async def get(self):
+        """Remove and return an item from the queue.
+    
+        If queue is empty, wait until an item is available.
+    
+        Raises QueueShutDown if the queue has been shut down and is empty, or
+        if the queue has been shut down immediately.
+        """
+        while self.empty():
+            if self._is_shutdown and self.empty():
+                raise QueueShutDown
+            getter = self._get_loop().create_future()
+            self._getters.append(getter)
+            try:
+>               await getter
+E               asyncio.exceptions.CancelledError
+
+C:\Python314\Lib\asyncio\queues.py:186: CancelledError
+
+The above exception was the direct cause of the following exception:
+
+self = <conftest.SSEMonitor object at 0x0000028812CD41A0>, target_id = 50, worker = 'chain_worker'
+stage_assertions = {'ai_chain_discovery': None, 'chain_evaluation': None, 'chain_execution': None, 'data_collection': None, ...}
+stage_timeouts = {'ai_chain_discovery': 600, 'chain_evaluation': 300, 'chain_execution': 900, 'data_collection': 300, ...}
+default_stage_timeout = 300
+
+    async def run(
+        self,
+        target_id: int,
+        worker: str,
+        stage_assertions: dict[str, Callable | None],
+        stage_timeouts: dict[str, int],
+        default_stage_timeout: int = 300,
+    ) -> PipelineReport:
+        """Run the SSE monitor for a pipeline.
+    
+        stage_assertions keys MUST be ordered to match the pipeline's stage
+        emission order. Out-of-order STAGE_COMPLETE events are silently
+        discarded and will cause the monitor to hang waiting for the already-seen stage.
+        """
+        report = PipelineReport()
+        event_queue: asyncio.Queue[dict] = asyncio.Queue()
+    
+        async def _reader():
+            async with httpx.AsyncClient(
+                base_url=_BASE_URL,
+                headers={"X-API-KEY": self._api_key},
+                timeout=httpx.Timeout(None),
+            ) as stream_client:
+                async with stream_client.stream(
+                    "GET", f"/api/v1/stream/{target_id}"
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            try:
+                                event = json.loads(line[6:])
+                                await event_queue.put(event)
+                            except json.JSONDecodeError:
+                                pass
+            await event_queue.put({"event": "_EOF"})
+    
+        async with httpx.AsyncClient(
+            base_url=_BASE_URL,
+            headers={"X-API-KEY": self._api_key, "Content-Type": "application/json"},
+            timeout=30.0,
+        ) as assertion_client:
+            reader_task = asyncio.create_task(_reader())
+            try:
+                for stage_name, assertion in stage_assertions.items():
+                    timeout_s = stage_timeouts.get(stage_name, default_stage_timeout)
+                    stage_start = time.monotonic()
+    
+                    while True:
+                        remaining = timeout_s - (time.monotonic() - stage_start)
+                        if remaining <= 0:
+                            raise StageTimeoutError(stage_name, time.monotonic() - stage_start)
+                        try:
+>                           event = await asyncio.wait_for(event_queue.get(), timeout=remaining)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+conftest.py:260: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python314\Lib\asyncio\tasks.py:487: in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Timeout [expired]>, exc_type = <class 'asyncio.exceptions.CancelledError'>, exc_val = CancelledError()
+exc_tb = <traceback object at 0x0000028814097D80>
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool | None:
+        assert self._state in (_State.ENTERED, _State.EXPIRING)
+    
+        if self._timeout_handler is not None:
+            self._timeout_handler.cancel()
+            self._timeout_handler = None
+    
+        if self._state is _State.EXPIRING:
+            self._state = _State.EXPIRED
+    
+            if self._task.uncancel() <= self._cancelling and exc_type is not None:
+                # Since there are no new cancel requests, we're
+                # handling this.
+                if issubclass(exc_type, exceptions.CancelledError):
+>                   raise TimeoutError from exc_val
+E                   TimeoutError
+
+C:\Python314\Lib\asyncio\timeouts.py:114: TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+client = <httpx.AsyncClient object at 0x0000028812BB1BE0>
+sse_monitor = <conftest.SSEMonitor object at 0x0000028812CD41A0>
+
+    @pytest.fixture(scope="module")
+    async def pipeline_result(client, sse_monitor):
+        target_id = await create_target(client, PLAYBOOK, "E2E-ChainWorker", worker=WORKER)
+        try:
+            await _wait_for_chain_prerequisites(client, target_id)
+>           report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+e2e\test_chain_worker.py:73: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <conftest.SSEMonitor object at 0x0000028812CD41A0>, target_id = 50, worker = 'chain_worker'
+stage_assertions = {'ai_chain_discovery': None, 'chain_evaluation': None, 'chain_execution': None, 'data_collection': None, ...}
+stage_timeouts = {'ai_chain_discovery': 600, 'chain_evaluation': 300, 'chain_execution': 900, 'data_collection': 300, ...}
+default_stage_timeout = 300
+
+    async def run(
+        self,
+        target_id: int,
+        worker: str,
+        stage_assertions: dict[str, Callable | None],
+        stage_timeouts: dict[str, int],
+        default_stage_timeout: int = 300,
+    ) -> PipelineReport:
+        """Run the SSE monitor for a pipeline.
+    
+        stage_assertions keys MUST be ordered to match the pipeline's stage
+        emission order. Out-of-order STAGE_COMPLETE events are silently
+        discarded and will cause the monitor to hang waiting for the already-seen stage.
+        """
+        report = PipelineReport()
+        event_queue: asyncio.Queue[dict] = asyncio.Queue()
+    
+        async def _reader():
+            async with httpx.AsyncClient(
+                base_url=_BASE_URL,
+                headers={"X-API-KEY": self._api_key},
+                timeout=httpx.Timeout(None),
+            ) as stream_client:
+                async with stream_client.stream(
+                    "GET", f"/api/v1/stream/{target_id}"
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            try:
+                                event = json.loads(line[6:])
+                                await event_queue.put(event)
+                            except json.JSONDecodeError:
+                                pass
+            await event_queue.put({"event": "_EOF"})
+    
+        async with httpx.AsyncClient(
+            base_url=_BASE_URL,
+            headers={"X-API-KEY": self._api_key, "Content-Type": "application/json"},
+            timeout=30.0,
+        ) as assertion_client:
+            reader_task = asyncio.create_task(_reader())
+            try:
+                for stage_name, assertion in stage_assertions.items():
+                    timeout_s = stage_timeouts.get(stage_name, default_stage_timeout)
+                    stage_start = time.monotonic()
+    
+                    while True:
+                        remaining = timeout_s - (time.monotonic() - stage_start)
+                        if remaining <= 0:
+                            raise StageTimeoutError(stage_name, time.monotonic() - stage_start)
+                        try:
+                            event = await asyncio.wait_for(event_queue.get(), timeout=remaining)
+                        except asyncio.TimeoutError:
+>                           raise StageTimeoutError(stage_name, time.monotonic() - stage_start)
+E                           conftest.StageTimeoutError: Stage 'data_collection' timed out after 300s
+
+conftest.py:262: StageTimeoutError
+____________________________________ ERROR at setup of test_chain_worker_job_state ____________________________________
+
+fut = <coroutine object Queue.get at 0x00000288140525E0>, timeout = 299.7765906000277
+
+    async def wait_for(fut, timeout):
+        """Wait for the single Future or coroutine to complete, with timeout.
+    
+        Coroutine will be wrapped in Task.
+    
+        Returns result of the Future or coroutine.  When a timeout occurs,
+        it cancels the task and raises TimeoutError.  To avoid the task
+        cancellation, wrap it in shield().
+    
+        If the wait is cancelled, the task is also cancelled.
+    
+        If the task suppresses the cancellation and returns a value instead,
+        that value is returned.
+    
+        This function is a coroutine.
+        """
+        # The special case for timeout <= 0 is for the following case:
+        #
+        # async def test_waitfor():
+        #     func_started = False
+        #
+        #     async def func():
+        #         nonlocal func_started
+        #         func_started = True
+        #
+        #     try:
+        #         await asyncio.wait_for(func(), 0)
+        #     except asyncio.TimeoutError:
+        #         assert not func_started
+        #     else:
+        #         assert False
+        #
+        # asyncio.run(test_waitfor())
+    
+    
+        if timeout is not None and timeout <= 0:
+            fut = ensure_future(fut)
+    
+            if fut.done():
+                return fut.result()
+    
+            await _cancel_and_wait(fut)
+            try:
+                return fut.result()
+            except exceptions.CancelledError as exc:
+                raise TimeoutError from exc
+    
+        async with timeouts.timeout(timeout):
+>           return await fut
+                   ^^^^^^^^^
+
+C:\Python314\Lib\asyncio\tasks.py:488: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Queue at 0x28812cd5550 maxsize=0 tasks=256>
+
+    async def get(self):
+        """Remove and return an item from the queue.
+    
+        If queue is empty, wait until an item is available.
+    
+        Raises QueueShutDown if the queue has been shut down and is empty, or
+        if the queue has been shut down immediately.
+        """
+        while self.empty():
+            if self._is_shutdown and self.empty():
+                raise QueueShutDown
+            getter = self._get_loop().create_future()
+            self._getters.append(getter)
+            try:
+>               await getter
+E               asyncio.exceptions.CancelledError
+
+C:\Python314\Lib\asyncio\queues.py:186: CancelledError
+
+The above exception was the direct cause of the following exception:
+
+self = <conftest.SSEMonitor object at 0x0000028812CD41A0>, target_id = 50, worker = 'chain_worker'
+stage_assertions = {'ai_chain_discovery': None, 'chain_evaluation': None, 'chain_execution': None, 'data_collection': None, ...}
+stage_timeouts = {'ai_chain_discovery': 600, 'chain_evaluation': 300, 'chain_execution': 900, 'data_collection': 300, ...}
+default_stage_timeout = 300
+
+    async def run(
+        self,
+        target_id: int,
+        worker: str,
+        stage_assertions: dict[str, Callable | None],
+        stage_timeouts: dict[str, int],
+        default_stage_timeout: int = 300,
+    ) -> PipelineReport:
+        """Run the SSE monitor for a pipeline.
+    
+        stage_assertions keys MUST be ordered to match the pipeline's stage
+        emission order. Out-of-order STAGE_COMPLETE events are silently
+        discarded and will cause the monitor to hang waiting for the already-seen stage.
+        """
+        report = PipelineReport()
+        event_queue: asyncio.Queue[dict] = asyncio.Queue()
+    
+        async def _reader():
+            async with httpx.AsyncClient(
+                base_url=_BASE_URL,
+                headers={"X-API-KEY": self._api_key},
+                timeout=httpx.Timeout(None),
+            ) as stream_client:
+                async with stream_client.stream(
+                    "GET", f"/api/v1/stream/{target_id}"
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            try:
+                                event = json.loads(line[6:])
+                                await event_queue.put(event)
+                            except json.JSONDecodeError:
+                                pass
+            await event_queue.put({"event": "_EOF"})
+    
+        async with httpx.AsyncClient(
+            base_url=_BASE_URL,
+            headers={"X-API-KEY": self._api_key, "Content-Type": "application/json"},
+            timeout=30.0,
+        ) as assertion_client:
+            reader_task = asyncio.create_task(_reader())
+            try:
+                for stage_name, assertion in stage_assertions.items():
+                    timeout_s = stage_timeouts.get(stage_name, default_stage_timeout)
+                    stage_start = time.monotonic()
+    
+                    while True:
+                        remaining = timeout_s - (time.monotonic() - stage_start)
+                        if remaining <= 0:
+                            raise StageTimeoutError(stage_name, time.monotonic() - stage_start)
+                        try:
+>                           event = await asyncio.wait_for(event_queue.get(), timeout=remaining)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+conftest.py:260: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python314\Lib\asyncio\tasks.py:487: in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Timeout [expired]>, exc_type = <class 'asyncio.exceptions.CancelledError'>, exc_val = CancelledError()
+exc_tb = <traceback object at 0x0000028814097D80>
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool | None:
+        assert self._state in (_State.ENTERED, _State.EXPIRING)
+    
+        if self._timeout_handler is not None:
+            self._timeout_handler.cancel()
+            self._timeout_handler = None
+    
+        if self._state is _State.EXPIRING:
+            self._state = _State.EXPIRED
+    
+            if self._task.uncancel() <= self._cancelling and exc_type is not None:
+                # Since there are no new cancel requests, we're
+                # handling this.
+                if issubclass(exc_type, exceptions.CancelledError):
+>                   raise TimeoutError from exc_val
+E                   TimeoutError
+
+C:\Python314\Lib\asyncio\timeouts.py:114: TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+client = <httpx.AsyncClient object at 0x0000028812BB1BE0>
+sse_monitor = <conftest.SSEMonitor object at 0x0000028812CD41A0>
+
+    @pytest.fixture(scope="module")
+    async def pipeline_result(client, sse_monitor):
+        target_id = await create_target(client, PLAYBOOK, "E2E-ChainWorker", worker=WORKER)
+        try:
+            await _wait_for_chain_prerequisites(client, target_id)
+>           report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+e2e\test_chain_worker.py:73: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <conftest.SSEMonitor object at 0x0000028812CD41A0>, target_id = 50, worker = 'chain_worker'
+stage_assertions = {'ai_chain_discovery': None, 'chain_evaluation': None, 'chain_execution': None, 'data_collection': None, ...}
+stage_timeouts = {'ai_chain_discovery': 600, 'chain_evaluation': 300, 'chain_execution': 900, 'data_collection': 300, ...}
+default_stage_timeout = 300
+
+    async def run(
+        self,
+        target_id: int,
+        worker: str,
+        stage_assertions: dict[str, Callable | None],
+        stage_timeouts: dict[str, int],
+        default_stage_timeout: int = 300,
+    ) -> PipelineReport:
+        """Run the SSE monitor for a pipeline.
+    
+        stage_assertions keys MUST be ordered to match the pipeline's stage
+        emission order. Out-of-order STAGE_COMPLETE events are silently
+        discarded and will cause the monitor to hang waiting for the already-seen stage.
+        """
+        report = PipelineReport()
+        event_queue: asyncio.Queue[dict] = asyncio.Queue()
+    
+        async def _reader():
+            async with httpx.AsyncClient(
+                base_url=_BASE_URL,
+                headers={"X-API-KEY": self._api_key},
+                timeout=httpx.Timeout(None),
+            ) as stream_client:
+                async with stream_client.stream(
+                    "GET", f"/api/v1/stream/{target_id}"
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            try:
+                                event = json.loads(line[6:])
+                                await event_queue.put(event)
+                            except json.JSONDecodeError:
+                                pass
+            await event_queue.put({"event": "_EOF"})
+    
+        async with httpx.AsyncClient(
+            base_url=_BASE_URL,
+            headers={"X-API-KEY": self._api_key, "Content-Type": "application/json"},
+            timeout=30.0,
+        ) as assertion_client:
+            reader_task = asyncio.create_task(_reader())
+            try:
+                for stage_name, assertion in stage_assertions.items():
+                    timeout_s = stage_timeouts.get(stage_name, default_stage_timeout)
+                    stage_start = time.monotonic()
+    
+                    while True:
+                        remaining = timeout_s - (time.monotonic() - stage_start)
+                        if remaining <= 0:
+                            raise StageTimeoutError(stage_name, time.monotonic() - stage_start)
+                        try:
+                            event = await asyncio.wait_for(event_queue.get(), timeout=remaining)
+                        except asyncio.TimeoutError:
+>                           raise StageTimeoutError(stage_name, time.monotonic() - stage_start)
+E                           conftest.StageTimeoutError: Stage 'data_collection' timed out after 300s
+
+conftest.py:262: StageTimeoutError
+_______________________________ ERROR at setup of test_reasoning_worker_pipeline_stages _______________________________
+
+client = <httpx.AsyncClient object at 0x0000028812CBFA80>
+sse_monitor = <conftest.SSEMonitor object at 0x00000288140D8A50>
+
+    @pytest.fixture(scope="module")
+    async def pipeline_result(client, sse_monitor):
+        target_id = await create_target(client, PLAYBOOK, "E2E-ReasoningWorker", worker=WORKER)
+        try:
+>           await _wait_for_chain_worker(client, target_id)
+
+e2e\test_reasoning_worker.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <httpx.AsyncClient object at 0x0000028812CBFA80>, target_id = 51, timeout = 3600
+
+    async def _wait_for_chain_worker(client, target_id: int, timeout: int = _PREREQ_TIMEOUT):
+        """Poll until chain_worker completes — reasoning_worker fires only after that."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            res = await client.get("/api/v1/status", params={"target_id": target_id})
+            jobs = res.json().get("jobs", [])
+            cw = next((j for j in jobs if j["container_name"] == "chain_worker"), None)
+            if cw and cw["status"] in ("COMPLETED", "SKIPPED"):
+                return
+            await asyncio.sleep(20)
+>       raise TimeoutError(f"chain_worker did not complete within {timeout}s")
+E       TimeoutError: chain_worker did not complete within 3600s
+
+e2e\test_reasoning_worker.py:44: TimeoutError
+__________________________________ ERROR at setup of test_reasoning_worker_job_state __________________________________
+
+client = <httpx.AsyncClient object at 0x0000028812CBFA80>
+sse_monitor = <conftest.SSEMonitor object at 0x00000288140D8A50>
+
+    @pytest.fixture(scope="module")
+    async def pipeline_result(client, sse_monitor):
+        target_id = await create_target(client, PLAYBOOK, "E2E-ReasoningWorker", worker=WORKER)
+        try:
+>           await _wait_for_chain_worker(client, target_id)
+
+e2e\test_reasoning_worker.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <httpx.AsyncClient object at 0x0000028812CBFA80>, target_id = 51, timeout = 3600
+
+    async def _wait_for_chain_worker(client, target_id: int, timeout: int = _PREREQ_TIMEOUT):
+        """Poll until chain_worker completes — reasoning_worker fires only after that."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            res = await client.get("/api/v1/status", params={"target_id": target_id})
+            jobs = res.json().get("jobs", [])
+            cw = next((j for j in jobs if j["container_name"] == "chain_worker"), None)
+            if cw and cw["status"] in ("COMPLETED", "SKIPPED"):
+                return
+            await asyncio.sleep(20)
+>       raise TimeoutError(f"chain_worker did not complete within {timeout}s")
+E       TimeoutError: chain_worker did not complete within 3600s
+
+e2e\test_reasoning_worker.py:44: TimeoutError
+_______________________________ ERROR at setup of test_reporting_worker_pipeline_stages _______________________________
+
+client = <httpx.AsyncClient object at 0x0000028812CBDF30>
+sse_monitor = <conftest.SSEMonitor object at 0x00000288140D91D0>
+
+    @pytest.fixture(scope="module")
+    async def pipeline_result(client, sse_monitor):
+        target_id = await create_target(client, PLAYBOOK, "E2E-ReportingWorker", worker=WORKER)
+        try:
+>           await _wait_for_reasoning_worker(client, target_id)
+
+e2e\test_reporting_worker.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <httpx.AsyncClient object at 0x0000028812CBDF30>, target_id = 52, timeout = 4200
+
+    async def _wait_for_reasoning_worker(client, target_id: int, timeout: int = _PREREQ_TIMEOUT):
+        """Poll until reasoning_worker completes — reporting_worker fires only after that."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            res = await client.get("/api/v1/status", params={"target_id": target_id})
+            jobs = res.json().get("jobs", [])
+            rw = next((j for j in jobs if j["container_name"] == "reasoning_worker"), None)
+            if rw and rw["status"] in ("COMPLETED", "SKIPPED"):
+                return
+            await asyncio.sleep(20)
+>       raise TimeoutError(f"reasoning_worker did not complete within {timeout}s")
+E       TimeoutError: reasoning_worker did not complete within 4200s
+
+e2e\test_reporting_worker.py:48: TimeoutError
+__________________________________ ERROR at setup of test_reporting_worker_job_state __________________________________
+
+client = <httpx.AsyncClient object at 0x0000028812CBDF30>
+sse_monitor = <conftest.SSEMonitor object at 0x00000288140D91D0>
+
+    @pytest.fixture(scope="module")
+    async def pipeline_result(client, sse_monitor):
+        target_id = await create_target(client, PLAYBOOK, "E2E-ReportingWorker", worker=WORKER)
+        try:
+>           await _wait_for_reasoning_worker(client, target_id)
+
+e2e\test_reporting_worker.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = <httpx.AsyncClient object at 0x0000028812CBDF30>, target_id = 52, timeout = 4200
+
+    async def _wait_for_reasoning_worker(client, target_id: int, timeout: int = _PREREQ_TIMEOUT):
+        """Poll until reasoning_worker completes — reporting_worker fires only after that."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            res = await client.get("/api/v1/status", params={"target_id": target_id})
+            jobs = res.json().get("jobs", [])
+            rw = next((j for j in jobs if j["container_name"] == "reasoning_worker"), None)
+            if rw and rw["status"] in ("COMPLETED", "SKIPPED"):
+                return
+            await asyncio.sleep(20)
+>       raise TimeoutError(f"reasoning_worker did not complete within {timeout}s")
+E       TimeoutError: reasoning_worker did not complete within 4200s
+
+e2e\test_reporting_worker.py:48: TimeoutError
+=============================================== short test summary info ===============================================
+ERROR e2e/test_chain_worker.py::test_chain_worker_pipeline_stages - conftest.StageTimeoutError: Stage 'data_collectio...
+ERROR e2e/test_chain_worker.py::test_chain_worker_job_state - conftest.StageTimeoutError: Stage 'data_collection' tim...
+ERROR e2e/test_reasoning_worker.py::test_reasoning_worker_pipeline_stages - TimeoutError: chain_worker did not comple...
+ERROR e2e/test_reasoning_worker.py::test_reasoning_worker_job_state - TimeoutError: chain_worker did not complete wit...
+ERROR e2e/test_reporting_worker.py::test_reporting_worker_pipeline_stages - TimeoutError: reasoning_worker did not co...
+ERROR e2e/test_reporting_worker.py::test_reporting_worker_job_state - TimeoutError: reasoning_worker did not complete...
+=========================================== 6 errors in 9531.37s (2:38:51) ============================================

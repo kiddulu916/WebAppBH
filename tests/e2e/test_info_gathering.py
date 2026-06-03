@@ -30,7 +30,7 @@ STAGE_TIMEOUTS = {
     "search_engine_recon":    300,
     "web_server_fingerprint": 120,
     "web_server_metafiles":   120,
-    "enumerate_applications": 180,
+    "enumerate_applications": 600,  # AmassActive DNS brute-force needs up to TOOL_TIMEOUT
     "review_comments":        180,
     "identify_entry_points":  180,
     "aggregate_entry_points": 120,

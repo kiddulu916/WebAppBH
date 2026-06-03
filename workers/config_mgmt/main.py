@@ -1,18 +1,12 @@
-"""Config management worker entry point.
-
-Listens on ``config_mgmt_queue`` (priority-tiered) and runs the 11-stage
-config management pipeline for each incoming target.
-"""
+"""Config management worker entry point."""
 
 from __future__ import annotations
 
 import asyncio
-import json
-import os
-from datetime import datetime
-from pathlib import Path
+import socket
+from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, update
 
 from lib_webbh import (
     JobState,
@@ -28,135 +22,74 @@ from workers.config_mgmt.pipeline import Pipeline
 
 logger = setup_logger("config-mgmt")
 
-HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "30"))
-
-
-def get_container_name() -> str:
-    return os.environ.get("HOSTNAME", "config-mgmt-unknown")
-
-
-async def handle_message(msg_id: str, data: dict) -> None:
-    """Process a single config_mgmt_queue message."""
-    target_id = data.get("target_id")
-    action = data.get("action", "full_config_mgmt")
-
-    if not target_id:
-        logger.error("Message missing target_id", extra={"msg_id": msg_id})
-        return
-
-    log = logger.bind(target_id=target_id)
-    log.info(f"Received {action}", extra={"msg_id": msg_id})
-
-    # Load target
-    async with get_session() as session:
-        stmt = select(Target).where(Target.id == target_id)
-        result = await session.execute(stmt)
-        target = result.scalar_one_or_none()
-
-    if not target:
-        log.error("Target not found", extra={"target_id": target_id})
-        return
-
-    # Create scope manager
-    scope_manager = ScopeManager(target.scope_config or {})
-
-    # Get or create job state
-    container_name = get_container_name()
-    async with get_session() as session:
-        stmt = select(JobState).where(
-            JobState.target_id == target_id,
-            JobState.container_name == container_name,
-        )
-        result = await session.execute(stmt)
-        job = result.scalar_one_or_none()
-
-        if not job:
-            job = JobState(
-                target_id=target_id,
-                container_name=container_name,
-                status="RUNNING",
-                current_phase="",
-                job_type="config_mgmt",
-            )
-            session.add(job)
-            await session.commit()
-            log.info("Created new job state")
-        else:
-            job.status = "RUNNING"
-            job.last_seen = datetime.utcnow()
-            await session.commit()
-            log.info("Resumed existing job state")
-
-    # Run pipeline with heartbeat
-    try:
-        pipeline = Pipeline(target_id, container_name)
-        await asyncio.wait_for(
-            _run_pipeline_with_heartbeat(pipeline, target, scope_manager),
-            timeout=None,  # Let it run until completion
-        )
-        log.info("Pipeline completed successfully")
-    except Exception as e:
-        log.error("Pipeline failed", extra={"error": str(e)})
-        async with get_session() as session:
-            stmt = select(JobState).where(
-                JobState.target_id == target_id,
-                JobState.container_name == container_name,
-            )
-            result = await session.execute(stmt)
-            job = result.scalar_one_or_none()
-            if job:
-                job.status = "FAILED"
-                job.last_seen = datetime.utcnow()
-                await session.commit()
-
-
-async def _run_pipeline_with_heartbeat(
-    pipeline: Pipeline, target, scope_manager: ScopeManager
-) -> None:
-    """Run the pipeline while maintaining a heartbeat."""
-    heartbeat_task = asyncio.create_task(_heartbeat_loop(pipeline.target_id, pipeline.container_name))
-    try:
-        await pipeline.run(target, scope_manager)
-    finally:
-        heartbeat_task.cancel()
-        try:
-            await heartbeat_task
-        except asyncio.CancelledError:
-            pass
-
-
-async def _heartbeat_loop(target_id: int, container_name: str) -> None:
-    """Update job_state.last_seen every HEARTBEAT_INTERVAL seconds."""
-    while True:
-        await asyncio.sleep(HEARTBEAT_INTERVAL)
-        try:
-            async with get_session() as session:
-                stmt = select(JobState).where(
-                    JobState.target_id == target_id,
-                    JobState.container_name == container_name,
-                )
-                result = await session.execute(stmt)
-                job = result.scalar_one_or_none()
-                if job:
-                    job.last_seen = datetime.utcnow()
-                    await session.commit()
-        except Exception as e:
-            logger.warning("Heartbeat update failed", extra={"error": str(e)})
+WORKER_TYPE = "config_mgmt"
 
 
 async def main() -> None:
-    """Start the config management worker."""
-    consumer_group = "config_mgmt_group"
-    consumer_name = get_container_name()
+    consumer_group = f"{WORKER_TYPE}_group"
+    consumer_name = f"{WORKER_TYPE}_{socket.gethostname()}"
     logger.info("Starting config management worker")
 
     async for message in listen_priority_queues(
-        "config_mgmt_queue", consumer_group, consumer_name
+        f"{WORKER_TYPE}_queue", consumer_group, consumer_name
     ):
+        target_id = message["payload"]["target_id"]
+        logger.info("Job received", extra={"target_id": target_id})
+
         try:
-            await handle_message(message["msg_id"], message["payload"])
+            async with get_session() as session:
+                await session.execute(
+                    delete(JobState).where(
+                        JobState.target_id == target_id,
+                        JobState.container_name == WORKER_TYPE,
+                    )
+                )
+                session.add(JobState(
+                    target_id=target_id,
+                    container_name=WORKER_TYPE,
+                    status="RUNNING",
+                    started_at=datetime.now(timezone.utc),
+                ))
+                await session.commit()
+
+            async with get_session() as session:
+                target = await session.get(Target, target_id)
+            if target is None:
+                logger.error("Target not found", extra={"target_id": target_id})
+                r = get_redis()
+                await r.xack(message["stream"], consumer_group, message["msg_id"])
+                continue
+
+            profile = target.target_profile or {
+                "in_scope_domains": [f"*.{target.base_domain}", target.base_domain]
+            }
+            scope_manager = ScopeManager(profile)
+
+            pipeline = Pipeline(target_id=target_id, container_name=WORKER_TYPE)
+            await pipeline.run(target, scope_manager)
+
+            async with get_session() as session:
+                await session.execute(
+                    update(JobState)
+                    .where(JobState.target_id == target_id)
+                    .where(JobState.container_name == WORKER_TYPE)
+                    .values(status="COMPLETED", completed_at=datetime.now(timezone.utc))
+                )
+                await session.commit()
+
         except Exception as e:
-            logger.error("Message handling failed", extra={"error": str(e)})
+            logger.error("Job failed", extra={"target_id": target_id, "error": str(e)})
+            try:
+                async with get_session() as session:
+                    await session.execute(
+                        update(JobState)
+                        .where(JobState.target_id == target_id)
+                        .where(JobState.container_name == WORKER_TYPE)
+                        .values(status="FAILED", error=str(e)[:500])
+                    )
+                    await session.commit()
+            except Exception:
+                pass
 
         r = get_redis()
         await r.xack(message["stream"], consumer_group, message["msg_id"])

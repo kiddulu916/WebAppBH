@@ -121,7 +121,7 @@ async def _promote_chain_only_findings(target_id: int) -> int:
                 try:
                     qualifying_vuln_ids.add(int(vid))
                 except (TypeError, ValueError):
-                    logger.warning("Skipping non-integer linked_vulnerability_id", value=repr(vid), chain_id=chain.id)
+                    logger.warning("Skipping non-integer linked_vulnerability_id", extra={"value": repr(vid), "chain_id": chain.id})
 
         if not qualifying_vuln_ids:
             return 0

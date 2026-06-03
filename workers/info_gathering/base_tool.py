@@ -91,6 +91,8 @@ class InfoGatheringTool(ABC):
                          source_tool: str, scope_manager: ScopeManager | None = None,
                          **extra) -> int | None:
         """Insert an Asset record with fast scope classification. Returns asset ID or None if duplicate."""
+        if len(asset_value) > 500:
+            return None
         async with get_session() as session:
             stmt = select(Asset).where(
                 Asset.target_id == target_id,

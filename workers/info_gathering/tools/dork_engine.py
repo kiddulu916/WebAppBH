@@ -57,21 +57,36 @@ class DorkEngine(InfoGatheringTool):
             engine = _ENGINES[i % len(_ENGINES)]
             engine_assignments[engine].append((query, category))
 
-        # Scrape each engine's batch sequentially (with delays between queries)
-        for engine_name, engine_dorks in engine_assignments.items():
-            for query, category in engine_dorks:
-                try:
-                    await self.acquire_rate_limit(rate_limiter)
+        # Run dork queries concurrently (max 5 in-flight) with a 90 s budget.
+        sem = asyncio.Semaphore(5)
+
+        async def _one_query(engine_name: str, query: str, category: str) -> list[dict]:
+            try:
+                async with sem:
                     results = await self._scrape_engine(engine_name, query)
-                    # Tag each result with the dork category
-                    for r in results:
-                        r["category"] = category
-                    all_results.extend(results)
-                except Exception as e:
-                    logger.warning(
-                        f"Dork query failed on {engine_name}",
-                        extra={"dork": query, "error": str(e)},
-                    )
+                for r in results:
+                    r["category"] = category
+                return results
+            except Exception as e:
+                logger.warning(
+                    f"Dork query failed on {engine_name}",
+                    extra={"dork": query, "error": str(e)},
+                )
+                return []
+
+        tasks = [
+            asyncio.create_task(_one_query(engine_name, query, category))
+            for engine_name, engine_dorks in engine_assignments.items()
+            for query, category in engine_dorks
+        ]
+        try:
+            done, pending = await asyncio.wait(tasks, timeout=90)
+            for t in pending:
+                t.cancel()
+            for t in done:
+                all_results.extend(t.result() if not t.exception() else [])
+        except Exception:
+            pass
 
         # Deduplicate by URL (keep first category encountered)
         seen_urls: set[str] = set()

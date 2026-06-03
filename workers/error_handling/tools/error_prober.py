@@ -10,33 +10,48 @@ from workers.error_handling.base_tool import ErrorHandlingTool
 class ErrorProber(ErrorHandlingTool):
     """Probe for error disclosure by triggering error conditions."""
 
-    async def execute(self, target_id: int, **kwargs):
+    async def execute(self, target_id: int, **kwargs) -> dict:
         """Execute error probing against target URLs."""
         scope_manager = kwargs.get("scope_manager")
         if not scope_manager:
-            return
+            return {"found": 0, "vulnerable": 0}
 
         # Get all URL assets in scope
         async with aiohttp.ClientSession() as session:
             urls = await self._get_url_assets(target_id, scope_manager)
-
-            for asset_id, url in urls:
-                await self._probe_url_errors(session, target_id, asset_id, url)
+            await asyncio.gather(
+                *[self._probe_url_errors(session, target_id, asset_id, url) for asset_id, url in urls],
+                return_exceptions=True,
+            )
+        return {"found": len(urls), "vulnerable": 0}
 
     async def _get_url_assets(self, target_id: int, scope_manager: ScopeManager):
-        """Get all URL assets for the target."""
-        from lib_webbh import get_session, Asset
+        """Get all URL assets for the target, seeding base URL if none exist."""
+        from lib_webbh import get_session
+        from lib_webbh.database import Asset, Target
+        from sqlalchemy import select
 
-        urls = []
         async with get_session() as session:
-            result = await session.execute(
-                f"SELECT id, asset_value FROM assets WHERE target_id = {target_id} AND asset_type = 'url'"
-            )
-            for row in result:
-                asset_id, asset_value = row
-                if scope_manager.is_in_scope(asset_value):
-                    urls.append((asset_id, asset_value))
-        return urls
+            rows = (await session.execute(
+                select(Asset.id, Asset.asset_value).where(
+                    Asset.target_id == target_id,
+                    Asset.asset_type == "url",
+                )
+            )).all()
+
+        if not rows:
+            async with get_session() as session:
+                target = await session.get(Target, target_id)
+            if target and target.base_domain:
+                base_url = f"http://{target.base_domain}"
+                asset_id = await self.save_asset(target_id, "url", base_url)
+                rows = [(asset_id, base_url)]
+
+        return [
+            (asset_id, url)
+            for asset_id, url in rows
+            if scope_manager.is_in_scope(url)
+        ]
 
     async def _probe_url_errors(self, session: aiohttp.ClientSession, target_id: int, asset_id: int, base_url: str):
         """Probe a single URL for error conditions."""
@@ -79,13 +94,12 @@ class ErrorProber(ErrorHandlingTool):
             "?data=<!ENTITY xxe SYSTEM \"file:///etc/passwd\">",
         ]
 
-        for payload in error_payloads:
+        async def _probe_payload(payload: str) -> None:
+            test_url = base_url + payload
             try:
-                test_url = base_url + payload
-                async with session.get(test_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                async with session.get(test_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                     response_body = await resp.text()
 
-                    # Check for framework error pages
                     framework = self.detect_framework_error_page(response_body)
                     if framework:
                         await self.save_vulnerability(
@@ -95,33 +109,28 @@ class ErrorProber(ErrorHandlingTool):
                             title=f"{framework} Error Page Disclosure",
                             description=f"Framework error page detected for {framework} at {test_url}",
                             poc=test_url,
-                            evidence=response_body[:500],  # First 500 chars
+                            evidence=response_body[:500],
                         )
 
-                    # Check for stack traces
                     stack_traces = self.extract_stack_trace(response_body)
-                    if stack_traces:
-                        for trace in stack_traces:
-                            await self.save_vulnerability(
-                                target_id=target_id,
-                                asset_id=asset_id,
-                                severity="high",
-                                title="Stack Trace Disclosure",
-                                description=f"Stack trace leaked in {trace.get('framework', 'unknown')} framework at {test_url}",
-                                poc=test_url,
-                                evidence=str(trace),
-                            )
+                    for trace in stack_traces:
+                        await self.save_vulnerability(
+                            target_id=target_id,
+                            asset_id=asset_id,
+                            severity="high",
+                            title="Stack Trace Disclosure",
+                            description=f"Stack trace leaked in {trace.get('framework', 'unknown')} framework at {test_url}",
+                            poc=test_url,
+                            evidence=str(trace),
+                        )
 
-                    # Check for generic error patterns
                     error_indicators = [
                         "error", "exception", "fatal", "warning",
-                        "traceback", "debug", "stack", "internal server error"
+                        "traceback", "debug", "stack", "internal server error",
                     ]
-
                     lower_body = response_body.lower()
                     if any(indicator in lower_body for indicator in error_indicators):
-                        # Additional check: avoid false positives from normal pages
-                        if resp.status >= 400 or len(response_body) < 10000:  # Error status or short error response
+                        if resp.status >= 400 or len(response_body) < 10000:
                             await self.save_vulnerability(
                                 target_id=target_id,
                                 asset_id=asset_id,
@@ -131,6 +140,7 @@ class ErrorProber(ErrorHandlingTool):
                                 poc=test_url,
                                 evidence=response_body[:300],
                             )
-
             except (aiohttp.ClientError, asyncio.TimeoutError):
-                continue  # Skip network errors
+                pass
+
+        await asyncio.gather(*[_probe_payload(p) for p in error_payloads], return_exceptions=True)

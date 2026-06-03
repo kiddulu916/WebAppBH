@@ -148,6 +148,7 @@ def _build_ffuf_cmd(
         "-mc", "200,204,301,302,307,401,403",
         "-rate", str(rate_limit),
         "-t", str(min(rate_limit, 50)),
+        "-maxtime", "60",
     ]
     if supplemental_wl:
         cmd.extend(["-w", f"{supplemental_wl}:FUZZ"])

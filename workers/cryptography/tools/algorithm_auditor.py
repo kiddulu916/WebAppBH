@@ -15,6 +15,7 @@ class AlgorithmAuditor(CryptographyTool):
 
         for domain in domains:
             await self._audit_domain_algorithms(target_id, domain)
+        return {"found": len(domains), "vulnerable": 0}
 
     async def _get_target_domains(self, target_id: int):
         """Get domains for the target."""
