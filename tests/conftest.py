@@ -448,21 +448,22 @@ async def assert_job_completed(
 
 
 async def assert_chain_findings(
-    client: httpx.AsyncClient,
     target_id: int,
     min_count: int = 1,
 ) -> list:
-    """Assert >= min_count vulnerabilities with worker_type='chain_worker' exist."""
-    res = await client.get(
-        "/api/v1/vulnerabilities",
-        params={"target_id": target_id, "worker_type": "chain_worker"},
-    )
-    assert res.status_code == 200, f"GET /api/v1/vulnerabilities returned {res.status_code}"
-    data = res.json()
-    assert data["total"] >= min_count, (
-        f"Expected >={min_count} chain findings for target {target_id}, got {data['total']}"
-    )
-    return data["vulnerabilities"]
+    """Assert >= min_count ChainFinding rows exist for target via direct DB query."""
+    from lib_webbh import get_session, ChainFinding
+    from sqlalchemy import select
+
+    async with get_session() as session:
+        result = await session.execute(
+            select(ChainFinding).where(ChainFinding.target_id == target_id)
+        )
+        findings = result.scalars().all()
+        assert len(findings) >= min_count, (
+            f"Expected >={min_count} chain findings for target {target_id}, got {len(findings)}"
+        )
+        return [{"id": f.id, "target_id": f.target_id} for f in findings]
 
 
 async def assert_reports(
@@ -485,19 +486,21 @@ async def wait_for_worker_status(
     target_id: int,
     worker: str,
     expected_statuses: set[str],
-    poll_interval: int = 5,
+    poll_interval: float = 5,
     timeout: int = 300,
 ) -> str:
     """Poll /api/v1/status until worker reaches one of expected_statuses."""
-    import asyncio as _asyncio
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         res = await client.get("/api/v1/status", params={"target_id": target_id})
+        if res.status_code != 200:
+            await asyncio.sleep(poll_interval)
+            continue
         jobs = res.json().get("jobs", [])
         job = next((j for j in jobs if j["container_name"] == worker), None)
         if job and job["status"] in expected_statuses:
             return job["status"]
-        await _asyncio.sleep(poll_interval)
+        await asyncio.sleep(poll_interval)
     raise TimeoutError(
         f"Worker '{worker}' did not reach {expected_statuses} within {timeout}s for target {target_id}"
     )
@@ -509,12 +512,12 @@ async def seed_vulnerability(target_id: int, asset_id: int | None = None) -> dic
     Does NOT use the /api/v1/test/seed endpoint -- that seeds a full fixture.
     """
     from lib_webbh import get_session, Vulnerability, Asset
-    from sqlalchemy import select as _select
+    from sqlalchemy import select
 
     async with get_session() as session:
         if asset_id is None:
             result = await session.execute(
-                _select(Asset).where(Asset.target_id == target_id).limit(1)
+                select(Asset).where(Asset.target_id == target_id).limit(1)
             )
             asset = result.scalar_one_or_none()
             if asset:
