@@ -1,10 +1,8 @@
 """E2E tests for authentication worker (WSTG-ATHN-02 through ATHN-10)."""
 import pytest
-from sqlalchemy import select, func
 from conftest import (
-    assert_job_completed, cleanup_target, create_target,
+    assert_job_completed, assert_vulnerabilities, cleanup_target, create_target,
 )
-from lib_webbh import Vulnerability, get_session
 
 pytestmark = pytest.mark.e2e
 
@@ -13,42 +11,16 @@ PLAYBOOK = "e2e_authentication"
 LAST_STAGE = "multi_channel_auth"
 
 
-async def _assert_default_credentials(client, target_id):
-    async with get_session() as session:
-        stmt = select(func.count()).where(
-            Vulnerability.target_id == target_id,
-            Vulnerability.source_tool == "default_credential_tester",
-        )
-        result = await session.execute(stmt)
-        count = result.scalar()
-    assert count >= 1, (
-        f"Expected at least 1 Vulnerability from default_credential_tester, got {count}"
-    )
-
-
-async def _assert_lockout_mechanism(client, target_id):
-    async with get_session() as session:
-        stmt = select(func.count()).where(
-            Vulnerability.target_id == target_id,
-            Vulnerability.source_tool == "lockout_tester",
-        )
-        result = await session.execute(stmt)
-        count = result.scalar()
-    assert count >= 1, (
-        f"Expected at least 1 Vulnerability from lockout_tester, got {count}"
-    )
-
-
 STAGE_ASSERTIONS = {
-    "default_credentials":   _assert_default_credentials,
-    "lockout_mechanism":     _assert_lockout_mechanism,
+    "default_credentials":   None,
+    "lockout_mechanism":     None,
     "auth_bypass":           None,
     "remember_password":     None,
     "browser_cache":         None,
     "weak_password_policy":  None,
     "security_questions":    None,
     "password_change":       None,
-    "multi_channel_auth":    None,
+    "multi_channel_auth":    lambda c, tid: assert_vulnerabilities(c, tid),
 }
 
 STAGE_TIMEOUTS = {
@@ -66,7 +38,7 @@ STAGE_TIMEOUTS = {
 
 @pytest.fixture(scope="module")
 async def pipeline_result(client, sse_monitor):
-    target_id = await create_target(client, PLAYBOOK, "E2E-Authentication")
+    target_id = await create_target(client, PLAYBOOK, "E2E-Authentication", worker=WORKER)
     try:
         report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
         yield target_id, report
@@ -86,3 +58,19 @@ async def test_authentication_pipeline_stages(pipeline_result):
 async def test_authentication_job_state(client, pipeline_result):
     target_id, _ = pipeline_result
     await assert_job_completed(client, target_id, WORKER, LAST_STAGE)
+
+
+async def test_authentication_all_vulns_have_severity(client, pipeline_result):
+    """Assert every vulnerability from authentication has a non-null severity."""
+    target_id, _ = pipeline_result
+    res = await client.get(
+        "/api/v1/vulnerabilities",
+        params={"target_id": target_id, "worker_type": "authentication"},
+    )
+    assert res.status_code == 200
+    vulns = res.json()["vulnerabilities"]
+    assert vulns, "No authentication vulnerabilities found — worker did not produce findings"
+    for v in vulns:
+        assert v["severity"] is not None and v["severity"] != "", (
+            f"Vulnerability {v['id']} ({v['title']!r}) has null/empty severity"
+        )

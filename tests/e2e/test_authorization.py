@@ -1,7 +1,7 @@
 """E2E tests for authorization worker (WSTG-ATHZ-01 through ATHZ-04)."""
 import pytest
 from conftest import (
-    assert_job_completed, cleanup_target, create_target,
+    assert_job_completed, assert_vulnerabilities, cleanup_target, create_target,
 )
 
 pytestmark = pytest.mark.e2e
@@ -14,7 +14,7 @@ STAGE_ASSERTIONS = {
     "directory_traversal":  None,
     "authz_bypass":         None,
     "privilege_escalation": None,
-    "idor":                 None,
+    "idor":                 lambda c, tid: assert_vulnerabilities(c, tid),
 }
 
 STAGE_TIMEOUTS = {
@@ -27,7 +27,7 @@ STAGE_TIMEOUTS = {
 
 @pytest.fixture(scope="module")
 async def pipeline_result(client, sse_monitor):
-    target_id = await create_target(client, PLAYBOOK, "E2E-Authorization")
+    target_id = await create_target(client, PLAYBOOK, "E2E-Authorization", worker=WORKER)
     try:
         report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
         yield target_id, report
@@ -47,3 +47,19 @@ async def test_authorization_pipeline_stages(pipeline_result):
 async def test_authorization_job_state(client, pipeline_result):
     target_id, _ = pipeline_result
     await assert_job_completed(client, target_id, WORKER, LAST_STAGE)
+
+
+async def test_authorization_all_vulns_have_description(client, pipeline_result):
+    """Assert every authorization vulnerability has a non-empty description."""
+    target_id, _ = pipeline_result
+    res = await client.get(
+        "/api/v1/vulnerabilities",
+        params={"target_id": target_id, "worker_type": "authorization"},
+    )
+    assert res.status_code == 200
+    vulns = res.json()["vulnerabilities"]
+    assert vulns, "No authorization vulnerabilities found"
+    for v in vulns:
+        assert v["description"] is not None and v["description"].strip() != "", (
+            f"Vulnerability {v['id']} ({v['title']!r}) has empty description"
+        )
