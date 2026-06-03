@@ -37,9 +37,8 @@ import asyncio
 import httpx
 import pytest
 
-from tests.conftest import (
+from conftest import (
     _BASE_URL,
-    _read_api_key,  # noqa: F401
     create_target,
     cleanup_target,
     wait_for_worker_status,

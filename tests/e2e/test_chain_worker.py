@@ -24,7 +24,7 @@ STAGE_ASSERTIONS = {
     "chain_evaluation":   None,
     "ai_chain_discovery": None,
     "chain_execution":    None,
-    "reporting":          lambda c, tid: assert_chain_findings(tid),
+    "reporting":          lambda c, tid: assert_chain_findings(tid),  # DB-direct — no HTTP client needed
 }
 
 STAGE_TIMEOUTS = {
