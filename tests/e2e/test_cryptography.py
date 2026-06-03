@@ -1,7 +1,7 @@
 """E2E tests for cryptography worker (WSTG-CRYP-01 through CRYP-04)."""
 import pytest
 from conftest import (
-    assert_assets, assert_job_completed,
+    assert_assets, assert_job_completed, assert_vulnerabilities,
     cleanup_target, create_target,
 )
 
@@ -15,7 +15,7 @@ STAGE_ASSERTIONS = {
     "tls_testing":            lambda c, tid: assert_assets(c, tid),
     "padding_oracle":         None,
     "plaintext_transmission": None,
-    "weak_crypto":            None,
+    "weak_crypto":            lambda c, tid: assert_vulnerabilities(c, tid),
 }
 
 STAGE_TIMEOUTS = {
@@ -28,7 +28,7 @@ STAGE_TIMEOUTS = {
 
 @pytest.fixture(scope="module")
 async def pipeline_result(client, sse_monitor):
-    target_id = await create_target(client, PLAYBOOK, "E2E-Cryptography")
+    target_id = await create_target(client, PLAYBOOK, "E2E-Cryptography", worker=WORKER)
     try:
         report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
         yield target_id, report
@@ -48,3 +48,19 @@ async def test_cryptography_pipeline_stages(pipeline_result):
 async def test_cryptography_job_state(client, pipeline_result):
     target_id, _ = pipeline_result
     await assert_job_completed(client, target_id, WORKER, LAST_STAGE)
+
+
+async def test_cryptography_vuln_severity_set(client, pipeline_result):
+    """Assert all cryptography vulnerabilities have a non-null severity."""
+    target_id, _ = pipeline_result
+    res = await client.get(
+        "/api/v1/vulnerabilities",
+        params={"target_id": target_id, "worker_type": "cryptography"},
+    )
+    assert res.status_code == 200
+    vulns = res.json()["vulnerabilities"]
+    assert vulns, "No cryptography vulnerabilities found"
+    for v in vulns:
+        assert v["severity"] is not None and v["severity"] != "", (
+            f"Crypto vulnerability {v['id']} has null severity"
+        )

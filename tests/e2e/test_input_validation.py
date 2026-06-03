@@ -1,8 +1,7 @@
 """E2E tests for input_validation worker (WSTG-INPV-01 through INPV-19)."""
 import pytest
 from conftest import (
-    assert_vulnerabilities, assert_job_completed,
-    cleanup_target, create_target,
+    assert_job_completed, assert_vulnerabilities, cleanup_target, create_target,
 )
 
 pytestmark = pytest.mark.e2e
@@ -12,11 +11,11 @@ PLAYBOOK = "e2e_input_validation"
 LAST_STAGE = "websocket_injection"
 
 STAGE_ASSERTIONS = {
-    "reflected_xss":         lambda c, tid: assert_vulnerabilities(c, tid),
+    "reflected_xss":         None,
     "stored_xss":            None,
     "http_verb_tampering":   None,
     "http_param_pollution":  None,
-    "sql_injection":         lambda c, tid: assert_vulnerabilities(c, tid),
+    "sql_injection":         None,
     "ldap_injection":        None,
     "xml_injection":         None,
     "ssti":                  None,
@@ -30,7 +29,7 @@ STAGE_ASSERTIONS = {
     "file_inclusion":        None,
     "buffer_overflow":       None,
     "http_smuggling":        None,
-    "websocket_injection":   None,
+    "websocket_injection":   lambda c, tid: assert_vulnerabilities(c, tid),
 }
 
 STAGE_TIMEOUTS = {
@@ -58,7 +57,7 @@ STAGE_TIMEOUTS = {
 
 @pytest.fixture(scope="module")
 async def pipeline_result(client, sse_monitor):
-    target_id = await create_target(client, PLAYBOOK, "E2E-InputValidation")
+    target_id = await create_target(client, PLAYBOOK, "E2E-InputValidation", worker=WORKER)
     try:
         report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
         yield target_id, report
@@ -78,3 +77,19 @@ async def test_input_validation_pipeline_stages(pipeline_result):
 async def test_input_validation_job_state(client, pipeline_result):
     target_id, _ = pipeline_result
     await assert_job_completed(client, target_id, WORKER, LAST_STAGE)
+
+
+async def test_input_validation_vuln_types_diverse(client, pipeline_result):
+    """Assert input_validation produced ≥2 distinct vuln_type values (multiple tool categories ran)."""
+    target_id, _ = pipeline_result
+    res = await client.get(
+        "/api/v1/vulnerabilities",
+        params={"target_id": target_id, "worker_type": "input_validation", "page_size": 500},
+    )
+    assert res.status_code == 200
+    vulns = res.json()["vulnerabilities"]
+    assert vulns, "No input_validation vulnerabilities found"
+    vuln_types = {v["vuln_type"] for v in vulns if v.get("vuln_type")}
+    assert len(vuln_types) >= 2, (
+        f"Expected ≥2 distinct vuln_type values, got {vuln_types}"
+    )

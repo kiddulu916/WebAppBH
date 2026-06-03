@@ -1,7 +1,7 @@
 """E2E tests for business_logic worker (WSTG-BUSL-01 through BUSL-09)."""
 import pytest
 from conftest import (
-    assert_job_completed, cleanup_target, create_target,
+    assert_job_completed, assert_vulnerabilities, cleanup_target, create_target,
 )
 
 pytestmark = pytest.mark.e2e
@@ -19,7 +19,7 @@ STAGE_ASSERTIONS = {
     "workflow_bypass":        None,
     "application_misuse":     None,
     "file_upload_validation": None,
-    "malicious_file_upload":  None,
+    "malicious_file_upload":  lambda c, tid: assert_vulnerabilities(c, tid),
 }
 
 STAGE_TIMEOUTS = {
@@ -37,7 +37,7 @@ STAGE_TIMEOUTS = {
 
 @pytest.fixture(scope="module")
 async def pipeline_result(client, sse_monitor):
-    target_id = await create_target(client, PLAYBOOK, "E2E-BusinessLogic")
+    target_id = await create_target(client, PLAYBOOK, "E2E-BusinessLogic", worker=WORKER)
     try:
         report = await sse_monitor.run(target_id, WORKER, STAGE_ASSERTIONS, STAGE_TIMEOUTS)
         yield target_id, report
@@ -57,3 +57,19 @@ async def test_business_logic_pipeline_stages(pipeline_result):
 async def test_business_logic_job_state(client, pipeline_result):
     target_id, _ = pipeline_result
     await assert_job_completed(client, target_id, WORKER, LAST_STAGE)
+
+
+async def test_business_logic_vuln_confirmed_field_set(client, pipeline_result):
+    """Assert business_logic vulnerabilities have the confirmed field explicitly set."""
+    target_id, _ = pipeline_result
+    res = await client.get(
+        "/api/v1/vulnerabilities",
+        params={"target_id": target_id, "worker_type": "business_logic"},
+    )
+    assert res.status_code == 200
+    vulns = res.json()["vulnerabilities"]
+    assert vulns, "No business_logic vulnerabilities found"
+    for v in vulns:
+        assert v["confirmed"] is not None, (
+            f"Business logic vulnerability {v['id']} has null confirmed field"
+        )
