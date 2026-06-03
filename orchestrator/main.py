@@ -424,16 +424,9 @@ async def metrics_middleware(request: Request, call_next):
     return response
 
 
-# * Outermost: answer OPTIONS preflight before API-key deps and route method checks
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# API key auth middleware — must come AFTER CORSMiddleware but BEFORE routing
+# API key auth middleware — registered first so it runs on the inner side;
+# CORSMiddleware (registered last below) wraps it and always adds CORS headers,
+# including to 401 responses.
 _FRAMEWORK_API_KEY = os.environ.get("WEB_APP_BH_API_KEY", "")
 _UNPROTECTED_PATHS = {"/health", "/metrics"}
 
@@ -450,6 +443,17 @@ async def api_key_middleware(request: Request, call_next):
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
     return await call_next(request)
+
+
+# * Outermost: registered last = runs outermost = first in execution order.
+# * Answers OPTIONS preflight and adds CORS headers to ALL responses (including 401).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/metrics", include_in_schema=False)
