@@ -24,14 +24,21 @@ Covers:
     GET   /api/v1/schedules
     PATCH /api/v1/schedules/{id}
     GET   /api/v1/queue_health
+    GET   /metrics
+    GET   /api/v1/resources/status
+    POST  /api/v1/resources/override
+    GET   /api/v1/status
 """
 
 from __future__ import annotations
 
+import asyncio
+
+import httpx
 import pytest
 
 from tests.conftest import (
-    _BASE_URL,  # noqa: F401 — imported for module documentation
+    _BASE_URL,
     _read_api_key,  # noqa: F401
     create_target,
     cleanup_target,
@@ -408,3 +415,105 @@ class TestDataAPIs:
             assert "health" in queue_info, f"Queue '{queue_name}' missing 'health' field"
             assert isinstance(queue_info["pending"], int)
             assert isinstance(queue_info["health"], str)
+
+
+class TestEdgeCases:
+    """Auth rejection, rate limiting, correlation ID, metrics, resource guard."""
+
+    @pytest.fixture(autouse=True)
+    async def _teardown(self, client):
+        yield
+        await client.post("/api/v1/kill")
+        res = await client.get("/api/v1/targets")
+        for t in res.json().get("targets", []):
+            await client.delete(f"/api/v1/targets/{t['id']}")
+
+    async def test_missing_api_key_returns_401(self):
+        """GET /api/v1/targets without X-API-KEY header returns 401."""
+        async with httpx.AsyncClient(base_url=_BASE_URL, timeout=10.0) as anon:
+            res = await anon.get("/api/v1/targets")
+        assert res.status_code == 401
+
+    async def test_wrong_api_key_returns_401(self):
+        """GET /api/v1/targets with wrong X-API-KEY returns 401."""
+        async with httpx.AsyncClient(
+            base_url=_BASE_URL,
+            headers={"X-API-KEY": "totally-bogus-key-xyz"},
+            timeout=10.0,
+        ) as bad_client:
+            res = await bad_client.get("/api/v1/targets")
+        assert res.status_code == 401
+
+    async def test_health_endpoint_no_auth_required(self):
+        """GET /health returns 200 even without X-API-KEY."""
+        async with httpx.AsyncClient(base_url=_BASE_URL, timeout=10.0) as anon:
+            res = await anon.get("/health")
+        assert res.status_code == 200
+
+    async def test_correlation_id_echoed_in_response(self, client):
+        """X-Correlation-ID sent in request is echoed back in response headers.
+
+        The correlation_id_middleware in main.py reads X-Correlation-ID from
+        the request and writes it back into the response. If not provided, it
+        generates a UUID hex and sets it anyway — so a correlation ID is always
+        present in the response.
+        """
+        res = await client.get(
+            "/api/v1/targets",
+            headers={"X-Correlation-ID": "trace-abc123"},
+        )
+        assert res.status_code == 200
+        assert res.headers.get("x-correlation-id") == "trace-abc123"
+
+    @pytest.mark.slow
+    async def test_rate_limiter_triggers_429_on_burst(self, client):
+        """Sending >200 rapid GET requests triggers 429.
+
+        The rate limiter uses a sliding window of 200 GET requests per 60s per
+        client IP (RATE_LIMIT_READ env var, default 200). Firing 220 concurrent
+        requests should push the count over the threshold.
+        """
+        tasks = [client.get("/api/v1/status") for _ in range(220)]
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        statuses = [r.status_code for r in responses if isinstance(r, httpx.Response)]
+        assert 429 in statuses, (
+            f"Expected at least one 429 response among {len(statuses)} responses; "
+            f"got status codes: {sorted(set(statuses))}"
+        )
+
+    async def test_metrics_endpoint_prometheus_format(self):
+        """GET /metrics returns valid Prometheus text format without auth."""
+        async with httpx.AsyncClient(base_url=_BASE_URL, timeout=10.0) as anon:
+            res = await anon.get("/metrics")
+        assert res.status_code == 200
+        assert "text/plain" in res.headers.get("content-type", ""), (
+            f"Expected text/plain content-type, got: {res.headers.get('content-type')}"
+        )
+
+    async def test_resource_status_returns_tier(self, client):
+        """GET /api/v1/resources/status returns current tier."""
+        res = await client.get("/api/v1/resources/status")
+        assert res.status_code == 200
+        body = res.json()
+        assert "tier" in body, f"Response missing 'tier' key: {body}"
+        assert body["tier"] in {"normal", "high", "critical"}, (
+            f"Unexpected tier value: {body['tier']!r}"
+        )
+
+    async def test_resource_override_then_clear(self, client):
+        """POST /api/v1/resources/override sets tier; clearing restores it."""
+        # Set override to critical
+        res = await client.post("/api/v1/resources/override", json={"tier": "critical"})
+        assert res.status_code == 200, (
+            f"POST /api/v1/resources/override: {res.status_code} {res.text}"
+        )
+        # Verify the override took effect
+        status = (await client.get("/api/v1/resources/status")).json()
+        assert status["tier"] == "critical", (
+            f"Expected tier='critical' after override, got: {status['tier']!r}"
+        )
+        # Clear the override by sending an empty body (tier=None)
+        res = await client.post("/api/v1/resources/override", json={})
+        assert res.status_code == 200, (
+            f"POST /api/v1/resources/override (clear): {res.status_code} {res.text}"
+        )
