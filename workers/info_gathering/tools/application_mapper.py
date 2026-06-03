@@ -68,7 +68,7 @@ class ApplicationMapper(InfoGatheringTool):
             stats["mapped"] = len(execution_paths)
 
         except Exception as exc:
-            logger.error("application_mapper failed", target_id=target_id, error=str(exc))
+            logger.error("application_mapper failed", extra={"target_id": target_id, "error": str(exc)})
 
         return stats
 
@@ -77,7 +77,7 @@ class ApplicationMapper(InfoGatheringTool):
         entry_points = []
 
         for obs in observations:
-            if obs.observation_type == "forms":
+            if getattr(obs, 'observation_type', None) == "forms":
                 for form in obs.data.get("forms", []):
                     entry_points.append({
                         "type": "form",
@@ -130,7 +130,7 @@ class ApplicationMapper(InfoGatheringTool):
                         path_groups[domain] = []
                     path_groups[domain].append(path)
             except Exception as exc:
-                logger.debug("application_mapper url parse failed", url=url, error=str(exc))
+                logger.debug("application_mapper url parse failed", extra={"url": url, "error": str(exc)})
                 continue
 
         for domain, domain_paths in path_groups.items():

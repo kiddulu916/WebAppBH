@@ -52,7 +52,7 @@ class ReverseProxyProbe(InfoGatheringTool):
                 ) as resp:
                     headers = {k.lower(): v for k, v in resp.headers.items()}
         except Exception as exc:
-            logger.warning("reverse_proxy_probe fetch failed", host=host, error=str(exc))
+            logger.warning("reverse_proxy_probe fetch failed", extra={"host": host, "error": str(exc)})
             headers = {}
 
         # Check explicit proxy headers

@@ -66,7 +66,7 @@ class CDNProbe(InfoGatheringTool):
                 ) as resp:
                     headers = {k.lower(): v for k, v in resp.headers.items()}
             except Exception as exc:
-                logger.warning("cdn_probe header fetch failed", host=host, error=str(exc))
+                logger.warning("cdn_probe header fetch failed", extra={"host": host, "error": str(exc)})
                 headers = {}
 
             for hdr, pattern, cdn in _HEADER_SIGNATURES:
@@ -85,7 +85,7 @@ class CDNProbe(InfoGatheringTool):
                     info = await loop.run_in_executor(None, socket.getaddrinfo, host, 80)
                     ips = list({entry[4][0] for entry in info})
                 except Exception as exc:
-                    logger.debug("cdn_probe DNS resolution failed", host=host, error=str(exc))
+                    logger.debug("cdn_probe DNS resolution failed", extra={"host": host, "error": str(exc)})
 
                 for ip in ips[:2]:
                     try:
@@ -100,7 +100,7 @@ class CDNProbe(InfoGatheringTool):
                                 signals.append(f"asn:{org.strip()}")
                                 break
                     except Exception as exc:
-                        logger.debug("cdn_probe ASN lookup failed", ip=ip, error=str(exc))
+                        logger.debug("cdn_probe ASN lookup failed", extra={"ip": ip, "error": str(exc)})
                     if provider:
                         break
 

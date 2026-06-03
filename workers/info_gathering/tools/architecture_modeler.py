@@ -32,7 +32,7 @@ class ArchitectureModeler(InfoGatheringTool):
                 obs_result = await session.execute(obs_stmt)
                 observations = obs_result.scalars().all()
         except Exception as exc:
-            logger.error("architecture_modeler DB query failed", target_id=target_id, error=str(exc))
+            logger.error("architecture_modeler DB query failed", extra={"target_id": target_id, "error": str(exc)})
             return
 
         # Build architecture model

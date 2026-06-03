@@ -87,7 +87,7 @@ class RedirectBodyInspector(InfoGatheringTool):
                         return []
                     html = await resp.text()
         except Exception as exc:
-            logger.debug("redirect_body_inspector fallback fetch failed", error=str(exc))
+            logger.debug("redirect_body_inspector fallback fetch failed", extra={"error": str(exc)})
             return []
 
         hrefs = re.findall(r'href=["\']([^"\'#?][^"\']*)["\']', html)
@@ -128,7 +128,7 @@ class RedirectBodyInspector(InfoGatheringTool):
                         return
                     body = await resp.text(errors="replace")
         except Exception as exc:
-            logger.debug("redirect_body_inspector fetch failed", url=url, error=str(exc))
+            logger.debug("redirect_body_inspector fetch failed", extra={"url": url, "error": str(exc)})
             return
 
         await self.save_observation(

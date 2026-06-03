@@ -115,5 +115,5 @@ class ArchiveProber(InfoGatheringTool):
                     if resp.status == 200:
                         return await resp.text(errors="replace")
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-            logger.warning("archive_prober cached fetch failed", url=url, error=str(exc))
+            logger.warning("archive_prober cached fetch failed", extra={"url": url, "error": str(exc)})
         return None

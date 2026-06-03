@@ -19,7 +19,7 @@ class Paramspider(InfoGatheringTool):
         try:
             stdout = await self.run_subprocess(cmd, timeout=600)
         except Exception as exc:
-            logger.error("paramspider subprocess failed", domain=target.base_domain, error=str(exc))
+            logger.error("paramspider subprocess failed", extra={"domain": target.base_domain, "error": str(exc)})
             return
 
         for line in stdout.strip().splitlines():

@@ -64,7 +64,7 @@ class MetaTagAnalyzer(InfoGatheringTool):
                     raw = await resp.content.read(MAX_BODY_BYTES)
                     html = raw.decode("utf-8", errors="replace")
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-            logger.warning("meta_tag_analyzer fetch failed", host=host, error=str(exc))
+            logger.warning("meta_tag_analyzer fetch failed", extra={"host": host, "error": str(exc)})
             return
 
         findings = self._parse_meta_tags(html)

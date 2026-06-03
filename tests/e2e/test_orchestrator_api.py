@@ -466,19 +466,58 @@ class TestEdgeCases:
 
     @pytest.mark.slow
     async def test_rate_limiter_triggers_429_on_burst(self, client):
-        """Sending >200 rapid GET requests triggers 429.
+        """Sending requests beyond the rate limit triggers 429.
 
-        The rate limiter uses a sliding window of 200 GET requests per 60s per
-        client IP (RATE_LIMIT_READ env var, default 200). Firing 220 concurrent
-        requests should push the count over the threshold.
+        The rate limiter uses a sliding window per client IP (RATE_LIMIT_READ env
+        var, default 200). Strategy:
+          1. Flush the rate-limit key in Redis to start from 0.
+          2. Pre-fill the counter to within 5 of the limit via sequential requests.
+          3. Fire 20 concurrent requests to push it over.
+        The key is also flushed in teardown to avoid polluting subsequent tests.
         """
-        tasks = [client.get("/api/v1/status") for _ in range(220)]
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
-        statuses = [r.status_code for r in responses if isinstance(r, httpx.Response)]
-        assert 429 in statuses, (
-            f"Expected at least one 429 response among {len(statuses)} responses; "
-            f"got status codes: {sorted(set(statuses))}"
+        import subprocess
+
+        def _flush_rate_limit_keys():
+            result = subprocess.run(
+                ["docker", "exec", "webbh-redis", "redis-cli",
+                 "--scan", "--pattern", "ratelimit:*"],
+                capture_output=True, text=True, timeout=10,
+            )
+            keys = [k for k in result.stdout.splitlines() if k]
+            if keys:
+                subprocess.run(
+                    ["docker", "exec", "webbh-redis", "redis-cli", "DEL"] + keys,
+                    capture_output=True, timeout=10,
+                )
+
+        result = subprocess.run(
+            ["docker", "exec", "webbh-orchestrator", "sh", "-c",
+             "python3 -c 'from orchestrator.rate_limit import _read_max; print(_read_max)'"],
+            capture_output=True, text=True, timeout=15,
         )
+        limit = int(result.stdout.strip()) if result.returncode == 0 and result.stdout.strip().isdigit() else 200
+
+        # Clear the bucket so this test starts from 0.
+        _flush_rate_limit_keys()
+
+        try:
+            # Pre-fill to limit-5 using sequential requests.
+            prefill = limit - 5
+            for _ in range(prefill):
+                r = await client.get("/api/v1/status")
+                assert r.status_code == 200, f"Pre-fill request got unexpected {r.status_code}"
+
+            # Fire 20 concurrent requests — these should push the count over the limit.
+            tasks = [client.get("/api/v1/status") for _ in range(20)]
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
+            statuses = [r.status_code for r in responses if isinstance(r, httpx.Response)]
+            assert 429 in statuses, (
+                f"Expected at least one 429 response in the 20-request burst after "
+                f"pre-filling to {prefill}/{limit}; got: {sorted(set(statuses))}"
+            )
+        finally:
+            # Clear the bucket so subsequent tests are not rate-limited.
+            _flush_rate_limit_keys()
 
     async def test_metrics_endpoint_prometheus_format(self):
         """GET /metrics returns valid Prometheus text format without auth."""

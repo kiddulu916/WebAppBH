@@ -33,7 +33,7 @@ class Massdns(InfoGatheringTool):
 
         RESOLVERS = "/app/workers/info_gathering/resolvers.txt"
         if not os.path.exists(RESOLVERS):
-            logger.error("massdns: resolvers file not found", path=RESOLVERS)
+            logger.error("massdns: resolvers file not found", extra={"path": RESOLVERS})
             return
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -51,7 +51,7 @@ class Massdns(InfoGatheringTool):
                     ip = parts[2]
                     await self.save_asset(target_id, "ip", ip, "massdns")
         except Exception as exc:
-            logger.error("massdns failed", error=str(exc))
+            logger.error("massdns failed", extra={"error": str(exc)})
         finally:
             if os.path.exists(input_file):
                 os.unlink(input_file)

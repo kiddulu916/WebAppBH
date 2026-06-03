@@ -89,7 +89,7 @@ class SourceMapProber(InfoGatheringTool):
                         return []
                     html = await resp.text()
         except Exception as exc:
-            logger.debug("source_map_prober fallback fetch failed", error=str(exc))
+            logger.debug("source_map_prober fallback fetch failed", extra={"error": str(exc)})
             return []
 
         found = re.findall(r'<script[^>]+src=["\']([^"\']+\.js)["\']', html)
@@ -135,5 +135,5 @@ class SourceMapProber(InfoGatheringTool):
                 ) as resp:
                     return resp.status == 200
         except Exception as exc:
-            logger.debug("source_map_prober probe failed", map_url=map_url, error=str(exc))
+            logger.debug("source_map_prober probe failed", extra={"map_url": map_url, "error": str(exc)})
             return False

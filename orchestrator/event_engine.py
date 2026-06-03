@@ -70,7 +70,7 @@ class EventEngine:
             if worker_name in disabled:
                 continue
 
-            if worker_states.get(worker_name) in ("RUNNING", "COMPLETED", "QUEUED"):
+            if worker_states.get(worker_name) in ("RUNNING", "COMPLETED", "QUEUED", "KILLED", "STOPPED"):
                 continue
 
             # Treat disabled dependency workers as already completed

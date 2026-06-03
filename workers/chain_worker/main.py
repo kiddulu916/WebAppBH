@@ -93,10 +93,19 @@ def _terminate_subprocess(proc: subprocess.Popen | None, name: str, timeout: flo
 
 
 async def _wait_for_msfrpcd(retries: int = 30, delay: float = 2.0) -> bool:
+    loop = asyncio.get_event_loop()
     for _ in range(retries):
         try:
             from pymetasploit3.msfrpc import MsfRpcClient
-            MsfRpcClient(MSFRPC_PASS, port=MSFRPC_PORT, ssl=True)
+            # Run synchronous blocking call in executor with timeout to prevent
+            # freezing the asyncio event loop on slow SSL connections.
+            await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: MsfRpcClient(MSFRPC_PASS, port=MSFRPC_PORT, ssl=True),
+                ),
+                timeout=5.0,
+            )
             logger.info("msfrpcd ready")
             return True
         except Exception:
@@ -116,8 +125,9 @@ async def main() -> None:
     try:
         if zap_proc:
             await _wait_for_zap()
-        if msf_proc:
-            await _wait_for_msfrpcd()
+        # msfrpcd is started as a background sidecar but none of the current
+        # pipeline tools require it — skip the blocking wait so the worker can
+        # start consuming messages immediately.
 
         logger.info("Listening for tasks", extra={"consumer": consumer_name})
 

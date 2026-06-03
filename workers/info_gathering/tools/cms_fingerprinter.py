@@ -40,7 +40,7 @@ async def _fetch_path(
                     confirmed_paths.append(path)
                     fetched_bodies[path] = await resp.read()
     except Exception as exc:
-        logger.debug("cms_fingerprinter probe failed", host=host, path=path, error=str(exc))
+        logger.debug("cms_fingerprinter probe failed", extra={"host": host, "path": path, "error": str(exc)})
 
 # Canonical display names for known CMS keys (lowercase key → display name).
 # Used when the DB entry lacks a "display_name" field.

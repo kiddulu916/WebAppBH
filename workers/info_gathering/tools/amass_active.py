@@ -17,7 +17,7 @@ class AmassActive(InfoGatheringTool):
         try:
             stdout = await self.run_subprocess(cmd, timeout=1200)
         except Exception as exc:
-            logger.error("amass_active failed", domain=target.base_domain, error=str(exc))
+            logger.error("amass_active failed", extra={"domain": target.base_domain, "error": str(exc)})
             return
 
         for line in stdout.strip().splitlines():

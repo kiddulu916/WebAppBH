@@ -98,7 +98,7 @@ class MetafileParser(InfoGatheringTool):
                     body = ""
                 return resp.status, body
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-            logger.warning("metafile_parser._get failed", url=url, error=str(exc))
+            logger.warning("metafile_parser._get failed", extra={"url": url, "error": str(exc)})
             return None
 
     def _is_same_origin(self, url: str, base_url: str) -> bool:

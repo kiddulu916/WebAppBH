@@ -18,7 +18,7 @@ class Subfinder(InfoGatheringTool):
         try:
             stdout = await self.run_subprocess(cmd)
         except Exception as exc:
-            logger.error("subfinder failed", domain=target.base_domain, error=str(exc))
+            logger.error("subfinder failed", extra={"domain": target.base_domain, "error": str(exc)})
             return
 
         for line in stdout.strip().splitlines():

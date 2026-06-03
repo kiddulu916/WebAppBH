@@ -46,7 +46,7 @@ class ServerlessProbe(InfoGatheringTool):
                 ) as resp:
                     headers = {k.lower(): v for k, v in resp.headers.items()}
         except Exception as exc:
-            logger.warning("serverless_probe fetch failed", host=host, error=str(exc))
+            logger.warning("serverless_probe fetch failed", extra={"host": host, "error": str(exc)})
             headers = {}
 
         for hdr, plt in _HEADER_SIGNATURES:

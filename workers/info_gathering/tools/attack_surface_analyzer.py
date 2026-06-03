@@ -68,7 +68,7 @@ class AttackSurfaceAnalyzer(InfoGatheringTool):
             stats["mapped"] = len(priorities)
 
         except Exception as exc:
-            logger.error("attack_surface_analyzer failed", target_id=target_id, error=str(exc))
+            logger.error("attack_surface_analyzer failed", extra={"target_id": target_id, "error": str(exc)})
 
         return stats
 

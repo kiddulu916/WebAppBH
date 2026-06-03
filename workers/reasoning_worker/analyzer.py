@@ -62,16 +62,18 @@ async def query_target_context(
         "platform": (target.target_profile or {}).get("platform", "unknown"),
     }
 
-    # Get tech stack from observations
+    # Get tech stack from observations (join through Asset since Observation has no target_id)
+    asset_ids_sq = select(Asset.id).where(Asset.target_id == target_id)
     obs_rows = (
         await session.execute(
-            select(Observation).where(Observation.target_id == target_id)
+            select(Observation).where(Observation.asset_id.in_(asset_ids_sq))
         )
     ).scalars().all()
 
     for obs in obs_rows:
-        if obs.observation_value:
-            target_info["tech_stack"].append(obs.observation_value)
+        tech = obs.tech_stack
+        if tech:
+            target_info["tech_stack"].append(json.dumps(tech) if isinstance(tech, dict) else str(tech))
 
     # Get all vulns
     vuln_rows = (

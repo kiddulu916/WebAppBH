@@ -45,7 +45,7 @@ class MetadataExtractor(InfoGatheringTool):
                             tech_stack={"_source": "metadata_extractor", "metadata": metadata},
                         )
             except Exception as exc:
-                logger.error("metadata_extractor failed for url", url=url, error=str(exc))
+                logger.error("metadata_extractor failed for url", extra={"url": url, "error": str(exc)})
                 continue
 
     async def _extract_metadata(self, url: str) -> dict:
@@ -72,10 +72,10 @@ class MetadataExtractor(InfoGatheringTool):
                                 data = json.loads(stdout_bytes.decode("utf-8", errors="replace"))
                                 return data[0] if data else {}
                         except asyncio.TimeoutError:
-                            logger.warning("metadata_extractor exiftool timed out", url=url)
+                            logger.warning("metadata_extractor exiftool timed out", extra={"url": url})
                         finally:
                             if os.path.exists(tmp_path):
                                 os.unlink(tmp_path)
         except Exception as exc:
-            logger.error("metadata_extractor _extract_metadata failed", url=url, error=str(exc))
+            logger.error("metadata_extractor _extract_metadata failed", extra={"url": url, "error": str(exc)})
         return {}

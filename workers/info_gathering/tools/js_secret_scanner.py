@@ -41,7 +41,7 @@ class JsSecretScanner(InfoGatheringTool):
                     timeout=120,
                 )
             except Exception as exc:
-                logger.debug("trufflehog failed", error=str(exc))
+                logger.debug("trufflehog failed", extra={"error": str(exc)})
 
             try:
                 await self.run_subprocess(
@@ -56,7 +56,7 @@ class JsSecretScanner(InfoGatheringTool):
                     timeout=120,
                 )
             except Exception as exc:
-                logger.debug("gitleaks failed", error=str(exc))
+                logger.debug("gitleaks failed", extra={"error": str(exc)})
 
             findings = self._deduplicate(
                 self._parse_trufflehog(th_output) + self._parse_gitleaks(gl_report, tmpdir=tmpdir)
@@ -128,7 +128,7 @@ class JsSecretScanner(InfoGatheringTool):
                         return []
                     html = await resp.text()
         except Exception as exc:
-            logger.debug("js_secret_scanner fallback fetch failed", error=str(exc))
+            logger.debug("js_secret_scanner fallback fetch failed", extra={"error": str(exc)})
             return []
 
         hrefs = re.findall(r'<script[^>]+src=["\']([^"\']+\.js)["\']', html)
@@ -170,7 +170,7 @@ class JsSecretScanner(InfoGatheringTool):
                             downloaded.append(path)
                             path_to_asset[path] = asset_id
                 except Exception as exc:
-                    logger.debug("js_secret_scanner download failed", url=url, error=str(exc))
+                    logger.debug("js_secret_scanner download failed", extra={"url": url, "error": str(exc)})
                     continue
         return downloaded, path_to_asset
 

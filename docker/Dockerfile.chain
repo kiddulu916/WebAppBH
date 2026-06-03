@@ -67,6 +67,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm1 libpango-1.0-0 libcairo2 libasound2t64 libxshmfence1 \
     && rm -rf /var/lib/apt/lists/*
 
+# The py-builder compiled C extensions for Python 3.10 but Kali ships Python 3.13.
+# Reinstall all packages so pip builds wheel for the runtime interpreter.
+COPY shared/lib_webbh/setup.py /tmp/lib_webbh/setup.py
+RUN touch /tmp/lib_webbh/__init__.py && \
+    pip3 install --break-system-packages --force-reinstall \
+        /tmp/lib_webbh \
+        aiohttp \
+        pymetasploit3 \
+        pyyaml \
+        python-owasp-zap-v2.4 \
+        2>/dev/null || true
+
 # Worker source
 COPY workers/chain_worker /app/workers/chain_worker
 

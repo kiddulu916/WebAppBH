@@ -29,7 +29,7 @@ class CommentHarvester(InfoGatheringTool):
                                 tech_stack={"_source": "comment_harvester", "url": url, "comments": comments[:100]},
                             )
         except Exception as exc:
-            logger.error("comment_harvester failed", url=url, error=str(exc))
+            logger.error("comment_harvester failed", extra={"url": url, "error": str(exc)})
 
     def _extract_comments(self, html: str) -> list[str]:
         """Extract HTML and JS comments."""

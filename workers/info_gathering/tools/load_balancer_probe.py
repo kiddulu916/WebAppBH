@@ -65,7 +65,7 @@ class LoadBalancerProbe(InfoGatheringTool):
                         if served_by:
                             served_by_values.append(served_by)
         except Exception as exc:
-            logger.warning("load_balancer_probe failed", host=host, error=str(exc))
+            logger.warning("load_balancer_probe failed", extra={"host": host, "error": str(exc)})
 
         # Header variance: differing X-Served-By/Via values across responses indicates LB pool
         unique_served_by = set(served_by_values)

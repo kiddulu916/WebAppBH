@@ -398,7 +398,12 @@ import time as _time  # noqa: E402
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    await rate_limit_check(request)
+    from fastapi import HTTPException as _HTTPException
+    from starlette.responses import JSONResponse
+    try:
+        await rate_limit_check(request)
+    except _HTTPException as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
     return await call_next(request)
 
 
@@ -490,6 +495,7 @@ async def create_target(body: TargetCreate):
                 detail="Another target is currently active. Stop it before starting a new target.",
             )
 
+    from sqlalchemy.exc import IntegrityError as _IntegrityError
     async with get_session() as session:
         target = Target(
             company_name=body.company_name,
@@ -498,7 +504,13 @@ async def create_target(body: TargetCreate):
             last_playbook=body.playbook,
         )
         session.add(target)
-        await session.commit()
+        try:
+            await session.commit()
+        except _IntegrityError:
+            raise HTTPException(
+                status_code=409,
+                detail=f"A target for '{body.company_name}' / '{body.base_domain}' already exists. Delete it first.",
+            )
         await session.refresh(target)
 
     # Write target_profile.json to shared volume

@@ -23,7 +23,7 @@ class Waybackurls(InfoGatheringTool):
                     asset_type = classify_url(url)
                     await self.save_asset(target_id, asset_type, url, "waybackurls")
         except Exception as exc:
-            logger.error("waybackurls failed", domain=target.base_domain, error=str(exc))
+            logger.error("waybackurls failed", extra={"domain": target.base_domain, "error": str(exc)})
 
         # CommonCrawl (extended)
         await self._query_commoncrawl(target_id, target.base_domain)
@@ -48,4 +48,4 @@ class Waybackurls(InfoGatheringTool):
                             except json.JSONDecodeError:
                                 continue
         except Exception as exc:
-            logger.warning("commoncrawl query failed", domain=domain, error=str(exc))
+            logger.warning("commoncrawl query failed", extra={"domain": domain, "error": str(exc)})
