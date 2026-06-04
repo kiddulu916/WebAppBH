@@ -328,3 +328,109 @@ class AuthBypassTester(AuthenticationTool):
                 pass
 
         return entropy_bits, is_sequential
+
+    # ------------------------------------------------------------------
+    # Safe request helpers
+    # ------------------------------------------------------------------
+
+    async def _safe_get(
+        self, client: httpx.AsyncClient, url: str, headers: dict, cookies: dict | None = None
+    ) -> httpx.Response | None:
+        try:
+            return await client.get(url, headers=headers, cookies=cookies or {})
+        except Exception:
+            return None
+
+    async def _safe_request(
+        self, client: httpx.AsyncClient, method: str, url: str, headers: dict
+    ) -> httpx.Response | None:
+        try:
+            return await client.request(method, url, headers=headers)
+        except Exception:
+            return None
+
+    async def _safe_post(
+        self, client: httpx.AsyncClient, url: str, data: dict, headers: dict
+    ) -> httpx.Response | None:
+        try:
+            return await client.post(url, data=data, headers=headers)
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
+    # DB persistence
+    # ------------------------------------------------------------------
+
+    async def _save_finding(
+        self, target_id: int, severity: str, title: str, evidence: dict
+    ) -> None:
+        async with get_session() as session:
+            vuln = Vulnerability(
+                target_id=target_id,
+                severity=severity,
+                title=title,
+                source_tool=self.name,
+                section_id="4.4",
+                worker_type="authentication",
+                stage_name="auth_bypass",
+                evidence=evidence,
+            )
+            session.add(vuln)
+            await session.commit()
+        await push_task(f"events:{target_id}", {
+            "event": "NEW_VULNERABILITY",
+            "target_id": target_id,
+            "severity": severity,
+            "title": title,
+            "source_tool": self.name,
+        })
+
+    # ------------------------------------------------------------------
+    # DB / path discovery
+    # ------------------------------------------------------------------
+
+    async def _discover_targets(self, base_url: str, target_id: int) -> list[str]:
+        """Return protected paths from DB assets; fall back to hardcoded list."""
+        async with get_session() as session:
+            stmt = select(Asset).where(
+                Asset.target_id == target_id,
+                Asset.asset_type.in_(["admin_interface", "url", "endpoint"]),
+            )
+            result = await session.execute(stmt)
+            assets = result.scalars().all()
+
+        paths: list[str] = []
+        for asset in assets:
+            try:
+                parsed = urlparse(asset.value)
+                if parsed.path and parsed.path != "/":
+                    paths.append(parsed.path)
+            except Exception:
+                pass
+
+        return paths if paths else list(_PROTECTED_PATHS)
+
+    async def _discover_login_forms(self, base_url: str, target_id: int) -> list[str]:
+        """Return login URLs from DB assets; probe common paths as fallback."""
+        async with get_session() as session:
+            stmt = select(Asset).where(
+                Asset.target_id == target_id,
+                Asset.asset_type == "admin_interface",
+            )
+            result = await session.execute(stmt)
+            assets = result.scalars().all()
+
+        if assets:
+            return [asset.value for asset in assets]
+
+        login_urls: list[str] = []
+        async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=5) as client:
+            for path in _LOGIN_PATHS:
+                url = urljoin(base_url, path)
+                try:
+                    r = await client.get(url)
+                    if r.status_code == 200 and "<form" in r.text.lower():
+                        login_urls.append(url)
+                except Exception:
+                    pass
+        return login_urls
