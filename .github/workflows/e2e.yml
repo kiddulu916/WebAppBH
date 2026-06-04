@@ -98,7 +98,7 @@ jobs:
           done
 
       - name: Run Playwright suite (chromium project — seeded data only)
-        run: cd dashboard && npx playwright test --project=chromium
+        run: cd dashboard && npx playwright test --config=e2e/playwright.config.ts --project=chromium
         env:
           WEB_APP_BH_API_KEY: ${{ secrets.WEB_APP_BH_API_KEY }}
 
