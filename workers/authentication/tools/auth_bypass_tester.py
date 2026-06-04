@@ -258,11 +258,7 @@ class AuthBypassTester(AuthenticationTool):
         """Extract form action URL; return fallback_url if no action found."""
         match = re.search(r'<form[^>]+action=["\']([^"\']+)["\']', html, re.IGNORECASE)
         if match:
-            action = match.group(1)
-            if action.startswith("http"):
-                return action
-            parsed = urlparse(fallback_url)
-            return f"{parsed.scheme}://{parsed.netloc}{action}"
+            return urljoin(fallback_url, match.group(1))
         return fallback_url
 
     # ------------------------------------------------------------------
@@ -402,7 +398,7 @@ class AuthBypassTester(AuthenticationTool):
         paths: list[str] = []
         for asset in assets:
             try:
-                parsed = urlparse(asset.value)
+                parsed = urlparse(asset.asset_value)
                 if parsed.path and parsed.path != "/":
                     paths.append(parsed.path)
             except Exception:
@@ -421,7 +417,7 @@ class AuthBypassTester(AuthenticationTool):
             assets = result.scalars().all()
 
         if assets:
-            return [asset.value for asset in assets]
+            return [asset.asset_value for asset in assets]
 
         login_urls: list[str] = []
         async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=5) as client:
@@ -506,7 +502,8 @@ class AuthBypassTester(AuthenticationTool):
 
             # e. Path traversal
             for trav_path in _TRAVERSAL_PATHS:
-                trav_url = urljoin(base_url, trav_path)
+                parsed_base = urlparse(base_url)
+                trav_url = f"{parsed_base.scheme}://{parsed_base.netloc}{trav_path}"
                 if not scope_manager.is_in_scope(trav_url).in_scope:
                     continue
                 r = await self._safe_get(client, trav_url, custom_headers)
@@ -633,17 +630,17 @@ class AuthBypassTester(AuthenticationTool):
         findings: list[dict] = []
         session_ids: list[str] = []
 
-        async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=10) as client:
-            for _ in range(15):
-                try:
+        for _ in range(15):
+            try:
+                async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=10) as client:
                     r = await client.get(base_url)
-                    for cookie_name, cookie_value in r.cookies.items():
-                        if _SESSION_COOKIE_RE.search(cookie_name) and cookie_value:
-                            session_ids.append(cookie_value)
-                            break
-                    await asyncio.sleep(settings["probe_delay_secs"])
-                except Exception:
-                    pass
+                for cookie_name, cookie_value in r.cookies.items():
+                    if _SESSION_COOKIE_RE.search(cookie_name) and cookie_value:
+                        session_ids.append(cookie_value)
+                        break
+                await asyncio.sleep(settings["probe_delay_secs"])
+            except Exception:
+                pass
 
         if len(session_ids) < 5:
             findings.append({
