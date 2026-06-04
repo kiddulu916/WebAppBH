@@ -290,7 +290,8 @@ class AuthBypassTester(AuthenticationTool):
                 .decode()
             )
             return f"{none_header}.{parts[1]}."
-        except Exception:
+        except Exception as exc:
+            logger.warning("_build_none_jwt failed to parse token", error=str(exc))
             return jwt_token
 
     # ------------------------------------------------------------------

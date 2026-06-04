@@ -206,6 +206,14 @@ def test_extract_jwt_finds_jwt_cookie_name():
     result = AuthBypassTester()._extract_jwt(r)
     assert result == _SAMPLE_JWT
 
+def test_extract_jwt_finds_auth_cookie_name():
+    r = _resp(200, headers={"set-cookie": f"auth={_SAMPLE_JWT}; Path=/"})
+    assert AuthBypassTester()._extract_jwt(r) == _SAMPLE_JWT
+
+def test_extract_jwt_finds_session_cookie_name():
+    r = _resp(200, headers={"set-cookie": f"session={_SAMPLE_JWT}; Path=/"})
+    assert AuthBypassTester()._extract_jwt(r) == _SAMPLE_JWT
+
 def test_extract_jwt_returns_none_when_no_jwt():
     r = _resp(200, headers={"set-cookie": "PHPSESSID=abc123; Path=/"})
     result = AuthBypassTester()._extract_jwt(r)
