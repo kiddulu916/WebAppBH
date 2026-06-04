@@ -24,6 +24,9 @@ jobs:
       - name: Install test dependencies
         run: pip install pytest pytest-asyncio pytest-timeout httpx
 
+      - name: Generate API key
+        run: echo "WEB_APP_BH_API_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')" >> $GITHUB_ENV
+
       - name: Build base image
         run: docker compose build webbh-base
 
@@ -38,6 +41,7 @@ jobs:
             --scale mobsf=0
         env:
           OLLAMA_AVAILABLE: "false"
+          WEB_APP_BH_API_KEY: ${{ env.WEB_APP_BH_API_KEY }}
 
       - name: Wait for orchestrator health
         run: |
@@ -49,10 +53,10 @@ jobs:
           echo "Stack did not become healthy" && exit 1
 
       - name: Run backend e2e suite
-        # WEB_APP_BH_API_KEY is auto-read from shared/config/.env by conftest.py
         run: pytest tests/e2e/ --e2e -v --timeout=7200
         env:
           OLLAMA_AVAILABLE: "false"
+          WEB_APP_BH_API_KEY: ${{ env.WEB_APP_BH_API_KEY }}
 
       - name: Dump container logs on failure
         if: failure()
