@@ -226,4 +226,4 @@ class AuthBypassTester(AuthenticationTool):
         }
 
     def _load_settings(self, target_id: int) -> dict:
-        return self._load_settings_from_dir(Path(f"/shared/config/{target_id}"))
+        return self._load_settings_from_dir(Path(f"/app/shared/config/{target_id}"))
