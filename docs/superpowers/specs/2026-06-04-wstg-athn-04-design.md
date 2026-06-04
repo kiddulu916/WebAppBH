@@ -89,7 +89,9 @@ def parse_output(self, stdout: str) -> list:
    For each login URL × payload:
      → Rotate User-Agent from settings.user_agents (cycle by index; fallback: 5 built-in browser strings)
      → Rotate X-Forwarded-For from settings.ip_rotation_pool (if populated)
-     → POST {discovered_username_field: payload, discovered_password_field: 'x'}
+     → GET login URL, parse HTML for <input type="password"> (password field name) and
+       <input type="text"|"email"> (username field name); fallback names: "username"/"password"
+     → POST {username_field: payload, password_field: 'x'}
      → asyncio.sleep(sqli_delay_secs + random.uniform(0, 0.5)) between attempts
      → On 200 + no auth-required markers → flag Vulnerability(severity=critical)
      → On 429 / lockout signal → abort remaining payloads for this URL
