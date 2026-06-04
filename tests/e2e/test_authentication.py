@@ -11,10 +11,23 @@ PLAYBOOK = "e2e_authentication"
 LAST_STAGE = "multi_channel_auth"
 
 
+async def _assert_auth_bypass(client, target_id):
+    res = await client.get(
+        "/api/v1/vulnerabilities",
+        params={"target_id": target_id, "worker_type": "authentication"},
+    )
+    assert res.status_code == 200
+    vulns = res.json()["vulnerabilities"]
+    bypass_vulns = [v for v in vulns if v.get("source_tool") == "auth_bypass_tester"]
+    assert len(bypass_vulns) >= 1, (
+        f"Expected at least 1 Vulnerability from auth_bypass_tester, got {len(bypass_vulns)}"
+    )
+
+
 STAGE_ASSERTIONS = {
     "default_credentials":   None,
     "lockout_mechanism":     None,
-    "auth_bypass":           None,
+    "auth_bypass":           _assert_auth_bypass,
     "remember_password":     None,
     "browser_cache":         None,
     "weak_password_policy":  None,
