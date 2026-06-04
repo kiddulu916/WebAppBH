@@ -488,21 +488,22 @@ class AuthBypassTester(AuthenticationTool):
 
             # d. Header injection — tested against root URL
             root_url = urljoin(base_url, "/")
-            for bypass_headers in _BYPASS_HEADERS:
-                merged = {**custom_headers, **bypass_headers}
-                r = await self._safe_get(client, root_url, merged)
-                if r and not self._is_protected(r) and r.status_code not in (400, 404):
-                    header_str = ", ".join(f"{k}: {v}" for k, v in bypass_headers.items())
-                    findings.append({
-                        "severity": "high",
-                        "title": f"Auth bypass via header injection: {header_str}",
-                        "evidence": {"headers": bypass_headers, "status_code": r.status_code},
-                    })
-                await asyncio.sleep(delay)
+            if scope_manager.is_in_scope(root_url).in_scope:
+                for bypass_headers in _BYPASS_HEADERS:
+                    merged = {**custom_headers, **bypass_headers}
+                    r = await self._safe_get(client, root_url, merged)
+                    if r and not self._is_protected(r) and r.status_code not in (400, 404):
+                        header_str = ", ".join(f"{k}: {v}" for k, v in bypass_headers.items())
+                        findings.append({
+                            "severity": "high",
+                            "title": f"Auth bypass via header injection: {header_str}",
+                            "evidence": {"headers": bypass_headers, "status_code": r.status_code},
+                        })
+                    await asyncio.sleep(delay)
 
             # e. Path traversal
+            parsed_base = urlparse(base_url)
             for trav_path in _TRAVERSAL_PATHS:
-                parsed_base = urlparse(base_url)
                 trav_url = f"{parsed_base.scheme}://{parsed_base.netloc}{trav_path}"
                 if not scope_manager.is_in_scope(trav_url).in_scope:
                     continue
@@ -528,24 +529,26 @@ class AuthBypassTester(AuthenticationTool):
                         })
                     await asyncio.sleep(delay)
 
-            # g. JWT none algorithm — trigger on root; test /admin
+            # g. JWT none algorithm — trigger on root; test /admin (scope-guarded)
             root_r = await self._safe_get(client, root_url, custom_headers)
             if root_r:
                 jwt_token = self._extract_jwt(root_r)
                 if jwt_token:
                     none_jwt = self._build_none_jwt(jwt_token)
-                    r = await self._safe_get(
-                        client,
-                        urljoin(base_url, "/admin"),
-                        custom_headers,
-                        cookies={"token": none_jwt},
-                    )
-                    if r and not self._is_protected(r):
-                        findings.append({
-                            "severity": "critical",
-                            "title": "JWT none algorithm bypass: authentication token accepted without signature",
-                            "evidence": {"none_jwt_prefix": none_jwt[:40]},
-                        })
+                    jwt_admin_url = urljoin(base_url, "/admin")
+                    if scope_manager.is_in_scope(jwt_admin_url).in_scope:
+                        r = await self._safe_get(
+                            client,
+                            jwt_admin_url,
+                            custom_headers,
+                            cookies={"token": none_jwt},
+                        )
+                        if r and not self._is_protected(r):
+                            findings.append({
+                                "severity": "critical",
+                                "title": "JWT none algorithm bypass: authentication token accepted without signature",
+                                "evidence": {"none_jwt_prefix": none_jwt[:40]},
+                            })
 
         return findings
 
@@ -589,10 +592,10 @@ class AuthBypassTester(AuthenticationTool):
                     data = {username_field: payload, password_field: "x"}
                     r = await self._safe_post(client, form_action, data=data, headers=headers)
 
-                    await asyncio.sleep(settings["sqli_delay_secs"] + random.uniform(0, 0.5))
-
                     if r is None:
                         continue
+
+                    await asyncio.sleep(settings["sqli_delay_secs"] + random.uniform(0, 0.5))
 
                     if self._is_rate_limited(r):
                         findings.append({
@@ -634,10 +637,10 @@ class AuthBypassTester(AuthenticationTool):
             try:
                 async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=10) as client:
                     r = await client.get(base_url)
-                for cookie_name, cookie_value in r.cookies.items():
-                    if _SESSION_COOKIE_RE.search(cookie_name) and cookie_value:
-                        session_ids.append(cookie_value)
-                        break
+                    for cookie_name, cookie_value in r.cookies.items():
+                        if _SESSION_COOKIE_RE.search(cookie_name) and cookie_value:
+                            session_ids.append(cookie_value)
+                            break
                 await asyncio.sleep(settings["probe_delay_secs"])
             except Exception:
                 pass
@@ -748,7 +751,8 @@ class AuthBypassTester(AuthenticationTool):
                 )
                 inserted += 1
 
-            # Summary always saved — ensures >=1 Vulnerability for e2e assertion
+            # Summary always saved — ensures >=1 Vulnerability for e2e assertion.
+            # Not counted in `inserted` so stats reflect probe findings only.
             await self._save_finding(
                 target_id=target_id,
                 severity="info",
@@ -762,7 +766,6 @@ class AuthBypassTester(AuthenticationTool):
                     "login_urls_tested": len(login_urls),
                 },
             )
-            inserted += 1
 
             async with get_session() as session:
                 stmt = select(JobState).where(

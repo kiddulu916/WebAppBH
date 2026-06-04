@@ -47,7 +47,7 @@ STAGE_INDEX = {stage.name: i for i, stage in enumerate(STAGES)}
 
 
 class Pipeline(CheckpointMixin):
-    """Orchestrates the 10-stage authentication pipeline with checkpointing."""
+    """Orchestrates the 9-stage authentication pipeline with checkpointing."""
 
     def __init__(self, target_id: int, container_name: str):
         self.target_id = target_id
