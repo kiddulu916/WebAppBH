@@ -130,3 +130,61 @@ def test_load_settings_reads_max_sqli_payloads(tmp_path):
     (tmp_path / "bypass.json").write_text('{"max_sqli_payloads": 5}')
     s = AuthBypassTester()._load_settings_from_dir(tmp_path)
     assert s["max_sqli_payloads"] == 5
+
+
+# ---------------------------------------------------------------------------
+# _parse_form_fields
+# ---------------------------------------------------------------------------
+
+def test_parse_form_fields_extracts_password_field_name():
+    html = '<form><input type="text" name="user"><input type="password" name="pass"></form>'
+    _, pw = AuthBypassTester()._parse_form_fields(html)
+    assert pw == "pass"
+
+def test_parse_form_fields_extracts_username_field_name():
+    html = '<form><input type="text" name="user"><input type="password" name="pass"></form>'
+    un, _ = AuthBypassTester()._parse_form_fields(html)
+    assert un == "user"
+
+def test_parse_form_fields_detects_email_type_as_username():
+    html = '<form><input type="email" name="email_addr"><input type="password" name="pwd"></form>'
+    un, _ = AuthBypassTester()._parse_form_fields(html)
+    assert un == "email_addr"
+
+def test_parse_form_fields_reversed_attribute_order():
+    html = '<form><input name="pass" type="password"><input name="user" type="text"></form>'
+    un, pw = AuthBypassTester()._parse_form_fields(html)
+    assert pw == "pass"
+    assert un == "user"
+
+def test_parse_form_fields_falls_back_to_defaults_when_no_inputs():
+    html = "<form><button type='submit'>Login</button></form>"
+    un, pw = AuthBypassTester()._parse_form_fields(html)
+    assert un == "username"
+    assert pw == "password"
+
+def test_parse_form_fields_case_insensitive():
+    html = '<form><INPUT TYPE="PASSWORD" NAME="PW"><INPUT TYPE="TEXT" NAME="UN"></form>'
+    un, pw = AuthBypassTester()._parse_form_fields(html)
+    assert pw == "PW"
+    assert un == "UN"
+
+
+# ---------------------------------------------------------------------------
+# _parse_form_action
+# ---------------------------------------------------------------------------
+
+def test_parse_form_action_extracts_relative_action():
+    html = '<form action="/do_login" method="post"><input name="u"></form>'
+    action = AuthBypassTester()._parse_form_action(html, "https://example.com/login")
+    assert action == "https://example.com/do_login"
+
+def test_parse_form_action_extracts_absolute_action():
+    html = '<form action="https://other.com/auth"><input name="u"></form>'
+    action = AuthBypassTester()._parse_form_action(html, "https://example.com/login")
+    assert action == "https://other.com/auth"
+
+def test_parse_form_action_falls_back_to_login_url_when_no_form():
+    html = "<html><body>No form here</body></html>"
+    action = AuthBypassTester()._parse_form_action(html, "https://example.com/login")
+    assert action == "https://example.com/login"

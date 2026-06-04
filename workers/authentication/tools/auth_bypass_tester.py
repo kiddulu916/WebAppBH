@@ -227,3 +227,40 @@ class AuthBypassTester(AuthenticationTool):
 
     def _load_settings(self, target_id: int) -> dict:
         return self._load_settings_from_dir(Path(f"/app/shared/config/{target_id}"))
+
+    # ------------------------------------------------------------------
+    # Form parsing helpers
+    # ------------------------------------------------------------------
+
+    def _parse_form_fields(self, html: str) -> tuple[str, str]:
+        """Return (username_field_name, password_field_name) from HTML form."""
+        pw_match = re.search(
+            r'<input[^>]+type=["\']password["\'][^>]*name=["\']([^"\']+)["\']',
+            html, re.IGNORECASE,
+        ) or re.search(
+            r'<input[^>]+name=["\']([^"\']+)["\'][^>]*type=["\']password["\']',
+            html, re.IGNORECASE,
+        )
+        password_field = pw_match.group(1) if pw_match else "password"
+
+        un_match = re.search(
+            r'<input[^>]+type=["\'](?:text|email)["\'][^>]*name=["\']([^"\']+)["\']',
+            html, re.IGNORECASE,
+        ) or re.search(
+            r'<input[^>]+name=["\']([^"\']+)["\'][^>]*type=["\'](?:text|email)["\']',
+            html, re.IGNORECASE,
+        )
+        username_field = un_match.group(1) if un_match else "username"
+
+        return username_field, password_field
+
+    def _parse_form_action(self, html: str, fallback_url: str) -> str:
+        """Extract form action URL; return fallback_url if no action found."""
+        match = re.search(r'<form[^>]+action=["\']([^"\']+)["\']', html, re.IGNORECASE)
+        if match:
+            action = match.group(1)
+            if action.startswith("http"):
+                return action
+            parsed = urlparse(fallback_url)
+            return f"{parsed.scheme}://{parsed.netloc}{action}"
+        return fallback_url
