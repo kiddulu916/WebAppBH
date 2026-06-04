@@ -66,7 +66,6 @@ _AUTH_REQUIRED_SIGNALS = [
     "login required",
     "please log in",
     "sign in to continue",
-    "unauthorized",
     "access denied",
     "authentication required",
 ]

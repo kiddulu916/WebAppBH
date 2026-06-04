@@ -32,6 +32,15 @@ def test_is_protected_redirect_to_login_returns_true():
 def test_is_protected_redirect_to_signin_returns_true():
     assert AuthBypassTester()._is_protected(_resp(302, location="/signin")) is True
 
+def test_is_protected_redirect_to_auth_returns_true():
+    assert AuthBypassTester()._is_protected(_resp(302, location="/auth/login")) is True
+
+def test_is_protected_redirect_to_unauthorized_returns_true():
+    assert AuthBypassTester()._is_protected(_resp(302, location="/unauthorized")) is True
+
+def test_is_protected_307_redirect_to_login_returns_true():
+    assert AuthBypassTester()._is_protected(_resp(307, location="/login")) is True
+
 def test_is_protected_body_login_required_returns_true():
     assert AuthBypassTester()._is_protected(_resp(200, text="login required")) is True
 
