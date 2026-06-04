@@ -22,7 +22,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install test dependencies
-        run: pip install pytest pytest-asyncio httpx
+        run: pip install pytest pytest-asyncio pytest-timeout httpx
 
       - name: Build base image
         run: docker compose build webbh-base
@@ -49,9 +49,9 @@ jobs:
           echo "Stack did not become healthy" && exit 1
 
       - name: Run backend e2e suite
+        # WEB_APP_BH_API_KEY is auto-read from shared/config/.env by conftest.py
         run: pytest tests/e2e/ --e2e -v --timeout=7200
         env:
-          WEB_APP_BH_API_KEY: ${{ secrets.WEB_APP_BH_API_KEY }}
           OLLAMA_AVAILABLE: "false"
 
       - name: Dump container logs on failure
