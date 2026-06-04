@@ -434,3 +434,120 @@ class AuthBypassTester(AuthenticationTool):
                 except Exception:
                     pass
         return login_urls
+
+    # ------------------------------------------------------------------
+    # Phase 1: Forced browsing
+    # ------------------------------------------------------------------
+
+    async def _probe_forced_browsing(
+        self,
+        base_url: str,
+        paths: list[str],
+        settings: dict,
+        scope_manager: ScopeManager,
+    ) -> list[dict]:
+        findings: list[dict] = []
+        delay = settings["forced_browsing_delay_secs"]
+        custom_headers = settings["custom_headers"]
+
+        async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=10) as client:
+            for path in paths:
+                url = urljoin(base_url, path)
+                if not scope_manager.is_in_scope(url).in_scope:
+                    continue
+
+                # a. Direct GET — skip bypass tests if already accessible
+                r = await self._safe_get(client, url, custom_headers)
+                if r and not self._is_protected(r) and r.status_code not in (400, 404):
+                    findings.append({
+                        "severity": "high",
+                        "title": f"Forced browsing: {path} accessible without authentication",
+                        "evidence": {"path": path, "status_code": r.status_code, "url": url},
+                    })
+                    await asyncio.sleep(delay)
+                    continue
+
+                # b. Param modification
+                for param, value in _BYPASS_PARAMS:
+                    bypass_url = f"{url}?{param}={value}"
+                    r = await self._safe_get(client, bypass_url, custom_headers)
+                    if r and not self._is_protected(r) and r.status_code not in (400, 404):
+                        findings.append({
+                            "severity": "high",
+                            "title": f"Auth bypass via parameter modification: {path}?{param}={value}",
+                            "evidence": {"path": path, "param": param, "value": value, "status_code": r.status_code},
+                        })
+                    await asyncio.sleep(delay)
+
+                # c. HTTP method override
+                for method in _HTTP_METHODS:
+                    r = await self._safe_request(client, method, url, custom_headers)
+                    if r and not self._is_protected(r) and r.status_code not in (400, 404, 405, 501):
+                        findings.append({
+                            "severity": "high",
+                            "title": f"Auth bypass via HTTP method override: {method} {path}",
+                            "evidence": {"path": path, "method": method, "status_code": r.status_code},
+                        })
+                    await asyncio.sleep(delay)
+
+            # d. Header injection — tested against root URL
+            root_url = urljoin(base_url, "/")
+            for bypass_headers in _BYPASS_HEADERS:
+                merged = {**custom_headers, **bypass_headers}
+                r = await self._safe_get(client, root_url, merged)
+                if r and not self._is_protected(r) and r.status_code not in (400, 404):
+                    header_str = ", ".join(f"{k}: {v}" for k, v in bypass_headers.items())
+                    findings.append({
+                        "severity": "high",
+                        "title": f"Auth bypass via header injection: {header_str}",
+                        "evidence": {"headers": bypass_headers, "status_code": r.status_code},
+                    })
+                await asyncio.sleep(delay)
+
+            # e. Path traversal
+            for trav_path in _TRAVERSAL_PATHS:
+                trav_url = urljoin(base_url, trav_path)
+                if not scope_manager.is_in_scope(trav_url).in_scope:
+                    continue
+                r = await self._safe_get(client, trav_url, custom_headers)
+                if r and not self._is_protected(r) and r.status_code not in (400, 404):
+                    findings.append({
+                        "severity": "high",
+                        "title": f"Auth bypass via path traversal: {trav_path}",
+                        "evidence": {"path": trav_path, "status_code": r.status_code},
+                    })
+                await asyncio.sleep(delay)
+
+            # f. Cookie manipulation — tested on /admin
+            admin_url = urljoin(base_url, "/admin")
+            if scope_manager.is_in_scope(admin_url).in_scope:
+                for cookie_name, cookie_value in _BYPASS_COOKIES:
+                    r = await self._safe_get(client, admin_url, custom_headers, cookies={cookie_name: cookie_value})
+                    if r and not self._is_protected(r) and r.status_code not in (404,):
+                        findings.append({
+                            "severity": "high",
+                            "title": f"Auth bypass via cookie manipulation: {cookie_name}={cookie_value}",
+                            "evidence": {"cookie": cookie_name, "value": cookie_value, "status_code": r.status_code},
+                        })
+                    await asyncio.sleep(delay)
+
+            # g. JWT none algorithm — trigger on root; test /admin
+            root_r = await self._safe_get(client, root_url, custom_headers)
+            if root_r:
+                jwt_token = self._extract_jwt(root_r)
+                if jwt_token:
+                    none_jwt = self._build_none_jwt(jwt_token)
+                    r = await self._safe_get(
+                        client,
+                        urljoin(base_url, "/admin"),
+                        custom_headers,
+                        cookies={"token": none_jwt},
+                    )
+                    if r and not self._is_protected(r):
+                        findings.append({
+                            "severity": "critical",
+                            "title": "JWT none algorithm bypass: authentication token accepted without signature",
+                            "evidence": {"none_jwt_prefix": none_jwt[:40]},
+                        })
+
+        return findings
