@@ -32,9 +32,12 @@ jobs:
           docker compose \
             -f docker-compose.yml \
             -f docker-compose.test.yml \
-            up -d --build
+            up -d --build \
+            --scale ollama=0 \
+            --scale docker-android=0 \
+            --scale mobsf=0
         env:
-          OLLAMA_AVAILABLE: "true"
+          OLLAMA_AVAILABLE: "false"
 
       - name: Wait for orchestrator health
         run: |
@@ -49,7 +52,7 @@ jobs:
         run: pytest tests/e2e/ --e2e -v --timeout=7200
         env:
           WEB_APP_BH_API_KEY: ${{ secrets.WEB_APP_BH_API_KEY }}
-          OLLAMA_AVAILABLE: "true"
+          OLLAMA_AVAILABLE: "false"
 
       - name: Dump container logs on failure
         if: failure()
