@@ -188,3 +188,96 @@ def test_parse_form_action_falls_back_to_login_url_when_no_form():
     html = "<html><body>No form here</body></html>"
     action = AuthBypassTester()._parse_form_action(html, "https://example.com/login")
     assert action == "https://example.com/login"
+
+
+# ---------------------------------------------------------------------------
+# _extract_jwt
+# ---------------------------------------------------------------------------
+
+_SAMPLE_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+
+def test_extract_jwt_finds_token_cookie():
+    r = _resp(200, headers={"set-cookie": f"token={_SAMPLE_JWT}; Path=/"})
+    result = AuthBypassTester()._extract_jwt(r)
+    assert result == _SAMPLE_JWT
+
+def test_extract_jwt_finds_jwt_cookie_name():
+    r = _resp(200, headers={"set-cookie": f"jwt={_SAMPLE_JWT}; HttpOnly"})
+    result = AuthBypassTester()._extract_jwt(r)
+    assert result == _SAMPLE_JWT
+
+def test_extract_jwt_returns_none_when_no_jwt():
+    r = _resp(200, headers={"set-cookie": "PHPSESSID=abc123; Path=/"})
+    result = AuthBypassTester()._extract_jwt(r)
+    assert result is None
+
+def test_extract_jwt_returns_none_when_no_set_cookie():
+    r = _resp(200)
+    result = AuthBypassTester()._extract_jwt(r)
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _build_none_jwt
+# ---------------------------------------------------------------------------
+
+def test_build_none_jwt_changes_alg_to_none():
+    none_jwt = AuthBypassTester()._build_none_jwt(_SAMPLE_JWT)
+    import base64
+    header_b64 = none_jwt.split(".")[0]
+    padding = 4 - len(header_b64) % 4
+    if padding != 4:
+        header_b64 += "=" * padding
+    header = base64.urlsafe_b64decode(header_b64).decode()
+    assert '"alg":"none"' in header
+
+def test_build_none_jwt_preserves_original_payload():
+    none_jwt = AuthBypassTester()._build_none_jwt(_SAMPLE_JWT)
+    original_payload = _SAMPLE_JWT.split(".")[1]
+    assert none_jwt.split(".")[1] == original_payload
+
+def test_build_none_jwt_has_empty_signature():
+    none_jwt = AuthBypassTester()._build_none_jwt(_SAMPLE_JWT)
+    assert none_jwt.endswith(".")
+
+def test_build_none_jwt_returns_input_on_malformed_token():
+    bad_token = "not.a.valid.jwt.token.with.too.many.parts"
+    result = AuthBypassTester()._build_none_jwt(bad_token)
+    assert result == bad_token
+
+
+# ---------------------------------------------------------------------------
+# _estimate_entropy
+# ---------------------------------------------------------------------------
+
+def test_estimate_entropy_sequential_numeric_ids_flagged():
+    ids = [str(i) for i in range(1000, 1015)]  # 1000, 1001, ..., 1014
+    _, is_sequential = AuthBypassTester()._estimate_entropy(ids)
+    assert is_sequential is True
+
+def test_estimate_entropy_sequential_hex_ids_flagged():
+    ids = [hex(i)[2:] for i in range(0xA000, 0xA00F)]  # a000, a001, ..., a00e
+    _, is_sequential = AuthBypassTester()._estimate_entropy(ids)
+    assert is_sequential is True
+
+def test_estimate_entropy_high_entropy_not_sequential():
+    import secrets
+    ids = [secrets.token_hex(16) for _ in range(15)]
+    _, is_sequential = AuthBypassTester()._estimate_entropy(ids)
+    assert is_sequential is False
+
+def test_estimate_entropy_short_ids_low_entropy():
+    ids = ["ab12", "cd34", "ef56", "gh78", "ij90"] * 3  # 15 short IDs
+    entropy_bits, _ = AuthBypassTester()._estimate_entropy(ids)
+    assert entropy_bits < 32
+
+def test_estimate_entropy_empty_list_returns_zero():
+    entropy_bits, is_sequential = AuthBypassTester()._estimate_entropy([])
+    assert entropy_bits == 0.0
+    assert is_sequential is False
+
+def test_estimate_entropy_long_random_ids_above_64_bits():
+    import secrets
+    ids = [secrets.token_hex(32) for _ in range(15)]  # 64-char hex = 256 bits
+    entropy_bits, _ = AuthBypassTester()._estimate_entropy(ids)
+    assert entropy_bits > 64

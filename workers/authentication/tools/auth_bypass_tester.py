@@ -264,3 +264,66 @@ class AuthBypassTester(AuthenticationTool):
             parsed = urlparse(fallback_url)
             return f"{parsed.scheme}://{parsed.netloc}{action}"
         return fallback_url
+
+    # ------------------------------------------------------------------
+    # JWT helpers
+    # ------------------------------------------------------------------
+
+    def _extract_jwt(self, response) -> str | None:
+        """Find a JWT pattern (header.payload.signature) in Set-Cookie header."""
+        set_cookie = response.headers.get("set-cookie", "")
+        match = re.search(
+            r'(?:token|jwt|auth|session)=([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)',
+            set_cookie,
+        )
+        return match.group(1) if match else None
+
+    def _build_none_jwt(self, jwt_token: str) -> str:
+        """Rebuild a JWT with 'none' algorithm, preserving the original payload."""
+        try:
+            parts = jwt_token.split(".")
+            if len(parts) != 3:
+                return jwt_token
+            none_header = (
+                base64.urlsafe_b64encode(b'{"alg":"none","typ":"JWT"}')
+                .rstrip(b"=")
+                .decode()
+            )
+            return f"{none_header}.{parts[1]}."
+        except Exception:
+            return jwt_token
+
+    # ------------------------------------------------------------------
+    # Entropy / prediction helpers
+    # ------------------------------------------------------------------
+
+    def _estimate_entropy(self, session_ids: list[str]) -> tuple[float, bool]:
+        """Return (entropy_bits, is_sequential).
+
+        entropy_bits: estimated via charset-size × avg-length.
+        is_sequential: True if sorted numeric/hex IDs have max gap < 1000.
+        """
+        if not session_ids:
+            return 0.0, False
+
+        all_chars = set("".join(session_ids))
+        charset_size = max(len(all_chars), 2)
+        avg_length = sum(len(s) for s in session_ids) / len(session_ids)
+        entropy_bits = avg_length * math.log2(charset_size)
+
+        is_sequential = False
+        try:
+            nums = sorted(int(sid) for sid in session_ids)
+            gaps = [nums[i + 1] - nums[i] for i in range(len(nums) - 1)]
+            if gaps and max(gaps) < 1000:
+                is_sequential = True
+        except ValueError:
+            try:
+                nums = sorted(int(sid, 16) for sid in session_ids)
+                gaps = [nums[i + 1] - nums[i] for i in range(len(nums) - 1)]
+                if gaps and max(gaps) < 1000:
+                    is_sequential = True
+            except ValueError:
+                pass
+
+        return entropy_bits, is_sequential
