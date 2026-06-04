@@ -75,3 +75,58 @@ def test_is_rate_limited_body_rate_limit_returns_true():
 
 def test_is_rate_limited_200_normal_returns_false():
     assert AuthBypassTester()._is_rate_limited(_resp(200, text="Welcome")) is False
+
+
+# ---------------------------------------------------------------------------
+# _load_settings_from_dir
+# ---------------------------------------------------------------------------
+
+def test_load_settings_defaults_when_no_files(tmp_path):
+    s = AuthBypassTester()._load_settings_from_dir(tmp_path)
+    assert s["probe_delay_secs"] == 0.3
+    assert s["forced_browsing_delay_secs"] == 0.3
+    assert s["sqli_delay_secs"] == 2.0
+    assert s["ip_rotation_pool"] == []
+    assert s["max_sqli_payloads"] == 15
+    assert s["custom_headers"] == {}
+    assert len(s["user_agents"]) == 5  # falls back to _DEFAULT_USER_AGENTS (5 built-in entries)
+
+def test_load_settings_reads_probe_delay_from_rate_limits(tmp_path):
+    (tmp_path / "rate_limits.json").write_text('{"probe_delay_secs": 1.5}')
+    s = AuthBypassTester()._load_settings_from_dir(tmp_path)
+    assert s["probe_delay_secs"] == 1.5
+
+def test_load_settings_reads_sqli_delay_from_bypass(tmp_path):
+    (tmp_path / "bypass.json").write_text('{"sqli_delay_secs": 5.0}')
+    s = AuthBypassTester()._load_settings_from_dir(tmp_path)
+    assert s["sqli_delay_secs"] == 5.0
+
+def test_load_settings_reads_ip_rotation_pool(tmp_path):
+    (tmp_path / "bypass.json").write_text('{"ip_rotation_pool": ["1.1.1.1", "2.2.2.2"]}')
+    s = AuthBypassTester()._load_settings_from_dir(tmp_path)
+    assert s["ip_rotation_pool"] == ["1.1.1.1", "2.2.2.2"]
+
+def test_load_settings_empty_user_agents_falls_back_to_defaults(tmp_path):
+    (tmp_path / "bypass.json").write_text('{"user_agents": []}')
+    s = AuthBypassTester()._load_settings_from_dir(tmp_path)
+    assert len(s["user_agents"]) == 5  # _DEFAULT_USER_AGENTS has 5 entries
+
+def test_load_settings_custom_user_agents_override_defaults(tmp_path):
+    (tmp_path / "bypass.json").write_text('{"user_agents": ["MyBot/1.0"]}')
+    s = AuthBypassTester()._load_settings_from_dir(tmp_path)
+    assert s["user_agents"] == ["MyBot/1.0"]
+
+def test_load_settings_reads_custom_headers(tmp_path):
+    (tmp_path / "custom_headers.json").write_text('{"Authorization": "Bearer tok"}')
+    s = AuthBypassTester()._load_settings_from_dir(tmp_path)
+    assert s["custom_headers"] == {"Authorization": "Bearer tok"}
+
+def test_load_settings_tolerates_malformed_json(tmp_path):
+    (tmp_path / "bypass.json").write_text("not json {{{{")
+    s = AuthBypassTester()._load_settings_from_dir(tmp_path)
+    assert s["sqli_delay_secs"] == 2.0  # falls back to default
+
+def test_load_settings_reads_max_sqli_payloads(tmp_path):
+    (tmp_path / "bypass.json").write_text('{"max_sqli_payloads": 5}')
+    s = AuthBypassTester()._load_settings_from_dir(tmp_path)
+    assert s["max_sqli_payloads"] == 5

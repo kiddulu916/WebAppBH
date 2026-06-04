@@ -183,3 +183,47 @@ class AuthBypassTester(AuthenticationTool):
             return True
         text = response.text.lower() if response.text else ""
         return any(x in text for x in _RATE_LIMIT_SIGNALS)
+
+    # ------------------------------------------------------------------
+    # Settings
+    # ------------------------------------------------------------------
+
+    def _load_settings_from_dir(self, config_dir: Path) -> dict:
+        """Read probe settings from config_dir. Accepts a Path for testability."""
+        rate_limits: dict = {}
+        rl_path = config_dir / "rate_limits.json"
+        if rl_path.exists():
+            try:
+                rate_limits = json.loads(rl_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        custom_headers: dict = {}
+        ch_path = config_dir / "custom_headers.json"
+        if ch_path.exists():
+            try:
+                custom_headers = json.loads(ch_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        bypass: dict = {}
+        bp_path = config_dir / "bypass.json"
+        if bp_path.exists():
+            try:
+                bypass = json.loads(bp_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        user_agents = bypass.get("user_agents") or _DEFAULT_USER_AGENTS
+        return {
+            "probe_delay_secs": float(rate_limits.get("probe_delay_secs", 0.3)),
+            "forced_browsing_delay_secs": float(bypass.get("forced_browsing_delay_secs", 0.3)),
+            "sqli_delay_secs": float(bypass.get("sqli_delay_secs", 2.0)),
+            "ip_rotation_pool": bypass.get("ip_rotation_pool", []),
+            "user_agents": user_agents,
+            "max_sqli_payloads": int(bypass.get("max_sqli_payloads", 15)),
+            "custom_headers": custom_headers,
+        }
+
+    def _load_settings(self, target_id: int) -> dict:
+        return self._load_settings_from_dir(Path(f"/shared/config/{target_id}"))
