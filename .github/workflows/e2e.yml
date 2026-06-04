@@ -38,7 +38,8 @@ jobs:
             up -d --build \
             --scale ollama=0 \
             --scale docker-android=0 \
-            --scale mobsf=0
+            --scale mobsf=0 \
+            --scale chain-worker=0
         env:
           OLLAMA_AVAILABLE: "false"
           WEB_APP_BH_API_KEY: ${{ env.WEB_APP_BH_API_KEY }}
