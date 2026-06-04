@@ -23,7 +23,7 @@ from lib_webbh import (
     push_task,
     setup_logger,
 )
-from lib_webbh.scope import ScopeManager, ScopeResult
+from lib_webbh.scope import ScopeManager
 
 from workers.authentication.base_tool import AuthenticationTool
 from workers.authentication.concurrency import WeightClass, get_semaphore
