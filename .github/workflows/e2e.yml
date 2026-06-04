@@ -24,6 +24,9 @@ jobs:
       - name: Install test dependencies
         run: pip install pytest pytest-asyncio httpx
 
+      - name: Build base image
+        run: docker compose build webbh-base
+
       - name: Start stack
         run: |
           docker compose \
@@ -76,6 +79,9 @@ jobs:
 
       - name: Install Playwright browsers
         run: cd dashboard && npx playwright install --with-deps chromium
+
+      - name: Build base image
+        run: docker compose build webbh-base
 
       - name: Start stack (postgres + redis + orchestrator + dashboard)
         run: |
