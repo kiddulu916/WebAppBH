@@ -53,6 +53,9 @@ jobs:
           done
           echo "Stack did not become healthy" && exit 1
 
+      - name: Fix shared config permissions
+        run: sudo chmod -R a+rX shared/config/ || true
+
       - name: Run backend e2e suite
         run: pytest tests/e2e/ --e2e -v --timeout=7200
         env:
