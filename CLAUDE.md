@@ -35,7 +35,12 @@ The historical "what-was-built" map is the M-numbered restructure series (`docs/
 ## Build & Run
 
 ```bash
-# Full stack
+# IMPORTANT: webbh-base:latest is a LOCAL-only image — never pulled from Docker Hub.
+# On a fresh environment or after a Docker cache wipe, build it first:
+docker compose build webbh-base        # must run before any worker build
+docker compose up --build              # then build + start the rest
+
+# Full stack (subsequent runs, base image already cached)
 docker compose up --build
 
 # Individual services
@@ -65,9 +70,12 @@ npm run dev          # next dev (port 3000)
 npm run build        # next build
 npm run lint         # eslint
 
-# Playwright — two projects:
-npx playwright test --project=chromium        # seeded-data suite (default CI, fast)
-npx playwright test --project=live            # live pipeline against testphp.vulnweb.com
+# Playwright — two projects (config lives in e2e/, must pass --config or use npm scripts):
+npx playwright test --config=e2e/playwright.config.ts --project=chromium   # seeded-data suite (default CI, fast)
+npx playwright test --config=e2e/playwright.config.ts --project=live        # live pipeline against testphp.vulnweb.com
+# Or via npm:
+npm run test:e2e -- --project=chromium
+npm run test:e2e -- --project=live
 ```
 
 The `chromium` project skips `flows/live-pipeline-journey.spec.ts`; the `live` project runs only that file. Frontend e2e needs the stack started with `docker-compose.test.yml` so the seed endpoint is active.

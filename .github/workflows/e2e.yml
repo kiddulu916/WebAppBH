@@ -11,7 +11,7 @@ jobs:
   backend-e2e:
     name: Backend E2E (pytest + SSEMonitor)
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
@@ -22,31 +22,45 @@ jobs:
           python-version: "3.11"
 
       - name: Install test dependencies
-        run: pip install pytest pytest-asyncio httpx
+        run: pip install pytest pytest-asyncio pytest-timeout httpx
+
+      - name: Generate API key
+        run: echo "WEB_APP_BH_API_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')" >> $GITHUB_ENV
+
+      - name: Build base image
+        run: docker compose build webbh-base
 
       - name: Start stack
         run: |
           docker compose \
             -f docker-compose.yml \
             -f docker-compose.test.yml \
-            up -d --build
+            up -d --build \
+            --scale ollama=0 \
+            --scale docker-android=0 \
+            --scale mobsf=0 \
+            --scale chain-worker=0
         env:
-          OLLAMA_AVAILABLE: "true"
+          OLLAMA_AVAILABLE: "false"
+          WEB_APP_BH_API_KEY: ${{ env.WEB_APP_BH_API_KEY }}
 
       - name: Wait for orchestrator health
         run: |
           for i in $(seq 1 30); do
-            curl -sf http://localhost:8001/api/v1/health && exit 0
+            curl -sf http://localhost:8001/health && exit 0
             echo "Waiting for stack... attempt $i"
             sleep 10
           done
           echo "Stack did not become healthy" && exit 1
 
       - name: Run backend e2e suite
-        run: pytest tests/e2e/ --e2e -v --timeout=7200
+        # Use sudo because the orchestrator container creates shared/config/{target_id}/
+        # directories as root mid-test; the conftest needs to write credentials.json into
+        # them. --preserve-env keeps WEB_APP_BH_API_KEY and OLLAMA_AVAILABLE available.
+        run: sudo --preserve-env=PATH,WEB_APP_BH_API_KEY,OLLAMA_AVAILABLE env "PATH=$PATH" pytest tests/e2e/ --e2e -v --timeout=7200
         env:
-          WEB_APP_BH_API_KEY: ${{ secrets.WEB_APP_BH_API_KEY }}
-          OLLAMA_AVAILABLE: "true"
+          OLLAMA_AVAILABLE: "false"
+          WEB_APP_BH_API_KEY: ${{ env.WEB_APP_BH_API_KEY }}
 
       - name: Dump container logs on failure
         if: failure()
@@ -76,6 +90,9 @@ jobs:
 
       - name: Install Playwright browsers
         run: cd dashboard && npx playwright install --with-deps chromium
+
+      - name: Build base image
+        run: docker compose build webbh-base
 
       - name: Start stack (postgres + redis + orchestrator + dashboard)
         run: |
